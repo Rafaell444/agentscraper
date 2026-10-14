@@ -1,0 +1,6 @@
+# Vercel deploys only crm/; the collector and its data live on GitHub Actions.
+.venv/
+data/
+sites/
+*.py
+*.xlsx

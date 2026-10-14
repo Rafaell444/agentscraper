@@ -1,0 +1,117 @@
+name: Collect real-estate listings
+
+on:
+  schedule:
+    # Twice hourly, offset from :00 to reduce GitHub scheduler congestion.
+    - cron: "13,43 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      backfill_pages:
+        description: "Deep backfill: result pages to read per site (leave empty for a normal run)"
+        required: false
+        default: ""
+      detail_limit:
+        description: "Detail pages to read per site in this run (leave empty for the default)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: listings-collector
+  cancel-in-progress: false
+
+env:
+  # The CRM database (Supabase Postgres) is the single store for listings:
+  # the collector reads known listings from it and writes new ones to it.
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # Scheduled runs finish in minutes; a manual deep backfill may need hours.
+    timeout-minutes: ${{ github.event.inputs.backfill_pages != '' && 330 || 45 }}
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Fail early when the database secret is missing
+        if: env.DATABASE_URL == ''
+        run: |
+          echo "::error::Add the DATABASE_URL repository secret (Supabase connection string, port 5432)."
+          exit 1
+
+      - name: Collect listings from every site
+        env:
+          FILTER_CITY: "თბილისი"
+          OWNERS_ONLY: "0"
+          NEW_WITHIN_DAYS: "2"
+          MAX_AGE_DAYS: "30"
+          BACKFILL_PAGES: "20"
+          DELTA_PAGES: "10"
+          DETAIL_LIMIT: "150"
+          SSGE_DETAIL_LIMIT: "300"
+          BINEBI_DETAIL_LIMIT: "300"
+          REQUEST_DELAY_SECONDS: "0.35"
+          DEEP_BACKFILL_PAGES: ${{ github.event.inputs.backfill_pages }}
+          DEEP_DETAIL_LIMIT: ${{ github.event.inputs.detail_limit }}
+        shell: bash
+        run: |
+          args=(--no-workbook)
+          if [ -n "$DEEP_BACKFILL_PAGES" ]; then
+            args+=(--backfill --backfill-pages "$DEEP_BACKFILL_PAGES")
+          fi
+          if [ -n "$DEEP_DETAIL_LIMIT" ]; then
+            args+=(--detail-limit "$DEEP_DETAIL_LIMIT")
+          fi
+          python collect.py "${args[@]}"
+
+      - name: Reveal MyHome owner phone numbers through the browser flow
+        # Phone reveal is best-effort: a MyHome login or CAPTCHA problem must
+        # not stop the data commit, the workbook or the CRM sync.
+        continue-on-error: true
+        env:
+          MYHOME_STORAGE_STATE_B64: ${{ secrets.MYHOME_STORAGE_STATE_B64 }}
+          MYHOME_EMAIL: ${{ secrets.MYHOME_EMAIL }}
+          MYHOME_PASSWORD: ${{ secrets.MYHOME_PASSWORD }}
+          PHONE_BROWSER_RETRY_LIMIT: "12"
+          PHONE_REVEAL_ATTEMPTS: "2"
+          PLAYWRIGHT_CHANNEL: "chrome"
+          PLAYWRIGHT_HEADLESS: "false"
+        # ubuntu-latest already includes Google Chrome and a virtual X display.
+        run: xvfb-run --auto-servernum python phone_enricher.py
+
+      - name: Build properties.xlsx
+        run: python build_workbook.py properties.xlsx
+
+      - name: Upload workbook as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: properties-xlsx
+          path: properties.xlsx
+          retention-days: 14
+
+      - name: Synchronize workbook to personal Google Drive
+        env:
+          GOOGLE_DRIVE_WEBHOOK_URL: ${{ secrets.GOOGLE_DRIVE_WEBHOOK_URL }}
+          GOOGLE_DRIVE_UPLOAD_TOKEN: ${{ secrets.GOOGLE_DRIVE_UPLOAD_TOKEN }}
+          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
+          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
+          GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+        run: python drive_sync.py properties.xlsx --skip-if-unconfigured

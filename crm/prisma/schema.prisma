@@ -1,0 +1,142 @@
+// Local development uses SQLite.  `npm run build` rewrites the datasource to
+// PostgreSQL (Supabase) when DATABASE_URL starts with "postgres" — see
+// scripts/prepare-schema.mjs.  Table and column names are snake_case so the
+// Python collector (sync_db.py) can write listings directly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Listing {
+  id            String    @id
+  site          String
+  siteName      String    @map("site_name")
+  propertyId    String    @map("property_id")
+  link          String?
+  title         String?
+  dealType      String?   @map("deal_type")
+  propertyType  String?   @map("property_type")
+  status        String?
+  condition     String?
+  city          String?
+  district      String?
+  neighbourhood String?
+  address       String?
+  ownerType     String?   @map("owner_type")
+  ownerName     String?   @map("owner_name")
+  phone         String?
+  agency        String?
+  vip           String?
+  description   String?
+  image         String?
+  detailStatus  String?   @map("detail_status")
+  posterKind    String?   @map("poster_kind") // owner | agent
+  propertyKey   String?   @map("property_key") // deal|area bucket|rooms|place: links copies of one property
+  areaM2        Float?    @map("area_m2")
+  yardAreaM2    Float?    @map("yard_area_m2")
+  priceUsd      Float?    @map("price_usd")
+  priceGel      Float?    @map("price_gel")
+  pricePerM2Usd Float?    @map("price_per_m2_usd")
+  rooms         Int?
+  bedrooms      Int?
+  bathrooms     Int?
+  floor         Int?
+  totalFloors   Int?      @map("total_floors")
+  postedAt      DateTime? @map("posted_at")
+  siteUpdatedAt DateTime? @map("site_updated_at")
+  collectedAt   DateTime? @map("collected_at")
+  archived      Boolean   @default(false)
+  lastSyncAt    DateTime? @map("last_sync_at")
+
+  lead         Lead?
+  notes        Note[]
+  activities   Activity[]
+  priceHistory PriceHistory[]
+
+  @@unique([site, propertyId])
+  @@index([postedAt])
+  @@index([collectedAt])
+  @@index([district])
+  @@index([phone])
+  @@index([posterKind])
+  @@index([propertyKey])
+  @@map("listings")
+}
+
+model PriceHistory {
+  id        String   @id
+  listingId String   @map("listing_id")
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  priceUsd  Float?   @map("price_usd")
+  seenAt    DateTime @map("seen_at")
+
+  @@index([listingId])
+  @@map("price_history")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  role         String   @default("agent")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  leads      Lead[]
+  notes      Note[]
+  activities Activity[]
+
+  @@map("users")
+}
+
+model Lead {
+  id           String    @id @default(cuid())
+  listingId    String    @unique @map("listing_id")
+  listing      Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  status       String    @default("new")
+  assignedToId String?   @map("assigned_to_id")
+  assignedTo   User?     @relation(fields: [assignedToId], references: [id])
+  followUpAt   DateTime? @map("follow_up_at")
+  priority     Int       @default(0)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([followUpAt])
+  @@index([assignedToId])
+  @@map("leads")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  listingId String   @map("listing_id")
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  text      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([listingId])
+  @@map("notes")
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  listingId String?  @map("listing_id")
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  detail    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([userId])
+  @@map("activities")
+}

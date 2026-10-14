@@ -1,0 +1,24 @@
+# Personal Google OAuth downloads must never be committed.
+client_secret*.json
+credentials*.json
+token.json
+myhome-storage-state.json
+myhome-storage-state.b64.txt
+__pycache__/
+*.py[cod]
+.venv/
+
+# Generated from data/*.csv on every run; download it from Google Drive or the workflow artifact.
+properties.xlsx
+
+# CRM app (crm/): dependencies, build output, local database and secrets
+crm/node_modules/
+crm/.next/
+crm/prisma/dev.db*
+crm/.env
+crm/.env.local
+crm/*.tsbuildinfo
+crm/next-env.d.ts
+
+# Listings live in the CRM database; CSV files are only a local fallback.
+data/

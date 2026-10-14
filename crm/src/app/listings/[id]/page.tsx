@@ -1,0 +1,370 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
+import { PRIORITIES, STATUSES, statusColor } from "@/lib/options";
+import { fmtDate, fmtMoney, fmtNum, waHref } from "@/lib/format";
+import { Button, Card, Input, LinkButton, PhoneButton, PosterBadge, Select, SiteBadge, StatusBadge } from "@/components/ui";
+import { addNote, logCall, setFollowUp, setStatus, updateLead } from "./actions";
+import { ListingsLink } from "@/components/ListingsLink";
+
+export const dynamic = "force-dynamic";
+
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value === null || value === undefined || value === "") return null;
+  return (
+    <div className="rounded-lg bg-gray-50 px-3 py-2">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-sm font-medium text-gray-900">{value}</div>
+    </div>
+  );
+}
+
+function toLocalInput(date: Date | null | undefined): string {
+  if (!date) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+const ACTIVITY_LABELS: Record<string, string> = { status: "სტატუსი", assign: "მიკუთვნება", note: "ჩანაწერი", call: "ზარი", followup: "დასარეკი" };
+
+export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireUser();
+  const { id } = await params;
+  const listing = await prisma.listing.findUnique({
+    where: { id: decodeURIComponent(id) },
+    include: {
+      lead: { include: { assignedTo: true } },
+      notes: { include: { user: true }, orderBy: { createdAt: "desc" } },
+      activities: { include: { user: true }, orderBy: { createdAt: "desc" }, take: 30 },
+      priceHistory: { orderBy: { seenAt: "asc" } },
+    },
+  });
+  if (!listing) notFound();
+  // Every other posting of the same property (other sites, other posters, other prices).
+  const sameProperty = listing.propertyKey
+    ? await prisma.listing.findMany({
+        where: { propertyKey: listing.propertyKey, NOT: { id: listing.id } },
+        select: {
+          id: true, site: true, siteName: true, title: true, posterKind: true, ownerType: true, ownerName: true, phone: true,
+          priceUsd: true, postedAt: true, collectedAt: true, archived: true, floor: true, areaM2: true, address: true,
+          lead: { select: { status: true } },
+        },
+        orderBy: { collectedAt: "desc" },
+        take: 20,
+      })
+    : [];
+  const prices = listing.priceHistory.map((p) => p.priceUsd).filter((p): p is number => p != null);
+  const priceChange = prices.length >= 2 ? prices[prices.length - 1] - prices[0] : 0;
+  const ownerCopies = sameProperty.filter((c) => c.posterKind === "owner").length;
+  const agentCopies = sameProperty.filter((c) => c.posterKind === "agent").length;
+  const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+  const firstPhone = (listing.phone ?? "").split(";")[0].trim();
+  const samePhone = firstPhone
+    ? await prisma.listing.findMany({
+        where: { phone: { contains: firstPhone }, NOT: { id: listing.id } },
+        select: { id: true, title: true, siteName: true, priceUsd: true, collectedAt: true },
+        take: 10,
+      })
+    : [];
+  const phones = (listing.phone ?? "").split(";").map((p) => p.trim()).filter(Boolean);
+  const currentStatus = listing.lead?.status ?? "new";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ListingsLink className="ui-btn ui-btn-ghost ui-btn-sm -ml-2">← განცხადებები (ფილტრებით)</ListingsLink>
+        <div className="flex gap-2">
+          {listing.link ? (
+            <LinkButton href={listing.link} external size="sm">
+              საიტზე ნახვა ↗
+            </LinkButton>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <Card>
+            <div className="flex flex-col gap-4 md:flex-row">
+              {listing.image ? (
+                <img src={listing.image} alt="" className="h-52 w-full rounded-xl object-cover md:w-64" />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <SiteBadge site={listing.site} name={listing.siteName} />
+                  <PosterBadge kind={listing.posterKind} ownerType={listing.ownerType} />
+                  <StatusBadge status={currentStatus} />
+                  {sameProperty.length ? (
+                    <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">განთავსებულია {sameProperty.length + 1}-ჯერ</span>
+                  ) : null}
+                  {priceChange < 0 ? <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800">ფასი ↓ {fmtMoney(Math.abs(priceChange))}</span> : null}
+                  {priceChange > 0 ? <span className="rounded-md bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800">ფასი ↑ {fmtMoney(priceChange)}</span> : null}
+                  {listing.archived ? <span className="rounded-md bg-gray-200 px-1.5 py-0.5 text-[11px] font-medium">არქივი</span> : null}
+                  {listing.vip ? <span className="rounded-md bg-yellow-100 px-1.5 py-0.5 text-[11px] font-medium text-yellow-800">{listing.vip}</span> : null}
+                </div>
+                <h1 className="text-xl font-bold leading-snug text-gray-900">{listing.title ?? listing.propertyId}</h1>
+                <p className="mt-0.5 text-sm text-gray-500">{[listing.city, listing.district, listing.neighbourhood, listing.address].filter(Boolean).join(" · ")}</p>
+                <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <span className="text-3xl font-bold tabular-nums text-emerald-700">{fmtMoney(listing.priceUsd) || fmtMoney(listing.priceGel, "₾")}</span>
+                  {listing.priceUsd && listing.priceGel ? <span className="text-sm text-gray-500">{fmtMoney(listing.priceGel, "₾")}</span> : null}
+                  {listing.pricePerM2Usd ? <span className="text-sm text-gray-500">{fmtNum(listing.pricePerM2Usd)} $/მ²</span> : null}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Fact label="გარიგება" value={listing.dealType} />
+                  <Fact label="ტიპი" value={listing.propertyType} />
+                  <Fact label="ფართი" value={listing.areaM2 ? `${fmtNum(listing.areaM2)} მ²` : ""} />
+                  <Fact label="ოთახი" value={listing.rooms} />
+                  <Fact label="საძინებელი" value={listing.bedrooms} />
+                  <Fact label="სართული" value={listing.floor != null ? `${listing.floor}${listing.totalFloors ? ` / ${listing.totalFloors}` : ""}` : ""} />
+                  <Fact label="სტატუსი" value={listing.status} />
+                  <Fact label="მდგომარეობა" value={listing.condition} />
+                  <Fact label="სველი წერტილი" value={listing.bathrooms} />
+                  <Fact label="ეზო" value={listing.yardAreaM2 ? `${fmtNum(listing.yardAreaM2)} მ²` : ""} />
+                  <Fact label="განთავსდა" value={fmtDate(listing.postedAt, true)} />
+                  <Fact label="დავინახეთ" value={fmtDate(listing.collectedAt, true)} />
+                </div>
+              </div>
+            </div>
+            {listing.description ? <div className="mt-4 whitespace-pre-line border-t border-gray-100 pt-3 text-sm leading-relaxed text-gray-800">{listing.description}</div> : null}
+            <div className="mt-3 text-xs text-gray-400">ID {listing.propertyId} · განახლდა საიტზე {fmtDate(listing.siteUpdatedAt, true) || "—"}</div>
+          </Card>
+
+          <Card
+            title={sameProperty.length ? `იგივე ობიექტი: ${sameProperty.length + 1} განცხადება` : "იგივე ობიექტი"}
+            action={
+              sameProperty.length ? (
+                <span className="text-xs text-gray-500">
+                  {ownerCopies ? `${ownerCopies} მესაკუთრისგან` : ""}
+                  {ownerCopies && agentCopies ? " · " : ""}
+                  {agentCopies ? `${agentCopies} აგენტისგან` : ""}
+                </span>
+              ) : null
+            }
+          >
+            {sameProperty.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                სხვა განცხადება ამ ობიექტზე არ ჩანს
+                {listing.posterKind === "owner" ? " — სავარაუდოდ აგენტებთან ჯერ არ მუშაობს." : ""}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="py-1 pr-2">საიტი</th>
+                      <th className="py-1 pr-2">ვინ</th>
+                      <th className="py-1 pr-2">სახელი / ტელეფონი</th>
+                      <th className="py-1 pr-2 text-right">ფასი</th>
+                      <th className="py-1 pr-2">განთავსდა</th>
+                      <th className="py-1">სტატუსი</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sameProperty.map((copy) => (
+                      <tr key={copy.id} className={`border-t border-gray-100 ${copy.archived ? "opacity-50" : ""}`}>
+                        <td className="py-1.5 pr-2">
+                          <Link href={`/listings/${copy.id}`} className="hover:underline">
+                            <SiteBadge site={copy.site} name={copy.siteName} />
+                          </Link>
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <PosterBadge kind={copy.posterKind} ownerType={copy.ownerType} />
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <div className="text-gray-800">{copy.ownerName || "—"}</div>
+                          {copy.phone ? <PhoneButton phone={copy.phone} /> : <span className="text-xs text-gray-400">ნომერი არ არის</span>}
+                        </td>
+                        <td className={`py-1.5 pr-2 text-right font-semibold tabular-nums ${copy.priceUsd && listing.priceUsd && copy.priceUsd < listing.priceUsd ? "text-emerald-700" : "text-gray-900"}`}>
+                          {fmtMoney(copy.priceUsd)}
+                        </td>
+                        <td className="py-1.5 pr-2 text-xs text-gray-500">{fmtDate(copy.postedAt ?? copy.collectedAt)}</td>
+                        <td className="py-1.5">
+                          <StatusBadge status={copy.lead?.status} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-2 text-xs text-gray-400">ემთხვევა გარიგება, ფართი (±1 მ²), ოთახები და უბანი. შეადარე სართული და მისამართი დარწმუნებისთვის.</p>
+              </div>
+            )}
+            {listing.priceHistory.length > 1 ? (
+              <div className="mt-3 border-t border-gray-100 pt-2 text-xs text-gray-600">
+                <span className="font-medium text-gray-700">ფასის ისტორია: </span>
+                {listing.priceHistory.map((p, i) => (
+                  <span key={p.id}>
+                    {i ? " → " : ""}
+                    {fmtMoney(p.priceUsd)} <span className="text-gray-400">({fmtDate(p.seenAt)})</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </Card>
+
+          <Card title="ჩანაწერები">
+            <form action={addNote} className="mb-3 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <Input name="text" required placeholder="რა ითქვა საუბარში…" className="min-w-0 flex-1" />
+              <Button type="submit">დამატება</Button>
+            </form>
+            {listing.notes.length === 0 ? <p className="text-sm text-gray-400">ჩანაწერები ჯერ არ არის</p> : null}
+            <ul className="space-y-2">
+              {listing.notes.map((note) => (
+                <li key={note.id} className="rounded-xl bg-gray-50 p-3 text-sm">
+                  <div className="text-gray-900">{note.text}</div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {note.user.name} · {fmtDate(note.createdAt, true)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Card title="ისტორია">
+            {listing.activities.length === 0 ? <p className="text-sm text-gray-400">ჯერ არაფერი</p> : null}
+            <ul className="space-y-1.5 text-xs text-gray-600">
+              {listing.activities.map((activity) => (
+                <li key={activity.id} className="flex gap-2">
+                  <span className="shrink-0 tabular-nums text-gray-400">{fmtDate(activity.createdAt, true)}</span>
+                  <span>
+                    <span className="font-medium text-gray-700">{activity.user.name}</span> · {ACTIVITY_LABELS[activity.type] ?? activity.type}
+                    {activity.detail ? `: ${activity.detail}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+
+        <div className="space-y-4 lg:sticky lg:top-16 lg:self-start">
+          <Card title="მესაკუთრე">
+            <div className="text-lg font-semibold text-gray-900">{listing.ownerName || "—"}</div>
+            <div className="text-xs text-gray-500">{listing.ownerType ?? ""}</div>
+            {phones.length ? (
+              <ul className="mt-3 space-y-2">
+                {phones.map((phone) => (
+                  <li key={phone} className="flex items-center gap-2">
+                    <PhoneButton phone={phone} size="md" />
+                    <a href={waHref(phone)} target="_blank" rel="noreferrer" className="ui-btn ui-btn-secondary" aria-label="WhatsApp">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-green-600">
+                        <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20zm4.4-6c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1-.6.8-.8 1-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.7-1.7c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5 5 0 0 0 1 2.6 11.4 11.4 0 0 0 4.4 3.9c1.6.7 2.2.7 3 .6a2.6 2.6 0 0 0 1.7-1.2 2 2 0 0 0 .2-1.2c-.1-.1-.3-.2-.5-.3z" />
+                      </svg>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-gray-400">ნომერი ჯერ არ არის გამოვლენილი</p>
+            )}
+            <form action={logCall} className="mt-3">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <Button type="submit" variant="secondary" className="w-full">
+                ✓ დავრეკე — ჩაწერე ზარი
+              </Button>
+            </form>
+          </Card>
+
+          <Card title="სტატუსი">
+            <div className="flex flex-wrap gap-1.5">
+              {STATUSES.map((status) => (
+                <form key={status.value} action={setStatus}>
+                  <input type="hidden" name="listingId" value={listing.id} />
+                  <input type="hidden" name="status" value={status.value} />
+                  <button
+                    type="submit"
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      currentStatus === status.value ? `${statusColor(status.value)} border-transparent ring-2 ring-emerald-500/30` : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {status.label}
+                  </button>
+                </form>
+              ))}
+            </div>
+          </Card>
+
+          <Card title="შემდეგი ზარი">
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { days: 0, label: "დღეს" },
+                { days: 1, label: "ხვალ" },
+                { days: 3, label: "3 დღეში" },
+                { days: 7, label: "1 კვირაში" },
+                { days: -1, label: "გაუქმება" },
+              ].map((item) => (
+                <form key={item.days} action={setFollowUp}>
+                  <input type="hidden" name="listingId" value={listing.id} />
+                  <input type="hidden" name="days" value={item.days} />
+                  <button type="submit" className="ui-chip">
+                    {item.label}
+                  </button>
+                </form>
+              ))}
+            </div>
+            {listing.lead?.followUpAt ? (
+              <p className="mt-2 text-sm text-gray-700">
+                დაგეგმილია: <span className="font-medium">{fmtDate(listing.lead.followUpAt, true)}</span>
+                {listing.lead.assignedTo ? <span className="text-gray-500"> · {listing.lead.assignedTo.name}</span> : null}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-gray-400">ზარი არ არის დაგეგმილი</p>
+            )}
+          </Card>
+
+          <Card title="აგენტი და პრიორიტეტი">
+            <form key={listing.lead?.updatedAt?.toISOString() ?? "none"} action={updateLead} className="space-y-3 text-sm">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <input type="hidden" name="status" value={currentStatus} />
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-600">პასუხისმგებელი აგენტი</span>
+                <Select name="assignedToId" defaultValue={listing.lead?.assignedToId ?? ""}>
+                  <option value="">— არავინ</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-600">ზუსტი დრო</span>
+                <Input type="datetime-local" name="followUpAt" defaultValue={toLocalInput(listing.lead?.followUpAt)} />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-600">პრიორიტეტი</span>
+                <Select name="priority" defaultValue={listing.lead?.priority ?? 0}>
+                  {PRIORITIES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <Button type="submit" className="w-full">
+                შენახვა
+              </Button>
+            </form>
+          </Card>
+
+          {samePhone.length ? (
+            <Card title="იგივე ნომრით">
+              <ul className="space-y-1.5 text-sm">
+                {samePhone.map((other) => (
+                  <li key={other.id}>
+                    <Link href={`/listings/${other.id}`} className="font-medium text-gray-800 hover:text-emerald-700">
+                      {other.title ?? other.id}
+                    </Link>
+                    <div className="text-xs text-gray-500">
+                      {other.siteName} · {fmtMoney(other.priceUsd)} · {fmtDate(other.collectedAt)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}

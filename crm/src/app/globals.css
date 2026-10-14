@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+html {
+  color-scheme: light;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Georgian", Arial, sans-serif;
+  background:
+    radial-gradient(1200px 400px at 10% -10%, rgba(16, 185, 129, 0.08), transparent 60%),
+    radial-gradient(900px 300px at 90% 0%, rgba(37, 99, 235, 0.06), transparent 60%),
+    #f6f8fa;
+}
+
+@layer components {
+  .ui-field {
+    @apply h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm transition;
+    @apply placeholder:text-gray-400 hover:border-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25;
+  }
+  .ui-select {
+    @apply h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm transition;
+    @apply hover:border-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25;
+    @apply cursor-pointer appearance-none pr-9;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 8l4 4 4-4'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 1rem;
+  }
+  .ui-select:disabled {
+    @apply cursor-not-allowed bg-gray-50 text-gray-400;
+  }
+  .ui-select.is-active {
+    @apply border-emerald-500 bg-emerald-50 text-emerald-900;
+  }
+  .ui-card {
+    @apply rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)];
+  }
+  .ui-btn {
+    @apply inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium transition;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .ui-btn-sm {
+    @apply h-8 px-3 text-xs;
+  }
+  .ui-btn-primary {
+    @apply bg-emerald-600 text-white shadow-sm hover:bg-emerald-700;
+  }
+  .ui-btn-secondary {
+    @apply border border-gray-300 bg-white text-gray-700 shadow-sm hover:bg-gray-50;
+  }
+  .ui-btn-ghost {
+    @apply text-gray-700 hover:bg-gray-100;
+  }
+  .ui-btn-danger {
+    @apply border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100;
+  }
+  .ui-chip {
+    @apply inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition;
+    @apply border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800;
+  }
+  .ui-chip.is-active {
+    @apply border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:text-white;
+  }
+  .ui-table thead th {
+    @apply sticky top-0 z-10 bg-gray-50/95 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 backdrop-blur;
+  }
+  .ui-table tbody td {
+    @apply border-t border-gray-100 px-3 py-2.5 align-middle;
+  }
+  .ui-table tbody tr:hover td {
+    @apply bg-emerald-50/40;
+  }
+}
+
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 8px;
+}
