@@ -57,6 +57,8 @@ model Listing {
   notes        Note[]
   activities   Activity[]
   priceHistory PriceHistory[]
+  publications Publication[]
+  shortlists   Shortlist[]
 
   @@unique([site, propertyId])
   @@index([postedAt])
@@ -88,9 +90,11 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  leads      Lead[]
-  notes      Note[]
-  activities Activity[]
+  leads        Lead[]
+  notes        Note[]
+  activities   Activity[]
+  publications Publication[]
+  clients      Client[]
 
   @@map("users")
 }
@@ -104,6 +108,8 @@ model Lead {
   assignedTo   User?     @relation(fields: [assignedToId], references: [id])
   followUpAt   DateTime? @map("follow_up_at")
   priority     Int       @default(0)
+  manualPhone  String?   @map("manual_phone") // number an agent found by hand (e.g. MyHome)
+  hidden       Boolean   @default(false) // keep off public pages
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
@@ -111,6 +117,81 @@ model Lead {
   @@index([followUpAt])
   @@index([assignedToId])
   @@map("leads")
+}
+
+// A listing queued for (re)posting on our own channels with our contact details.
+model Publication {
+  id           String    @id @default(cuid())
+  listingId    String    @map("listing_id")
+  listing      Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  channel      String // telegram | facebook | website
+  target       String? // channel/chat id, page id or website name
+  text         String
+  contactPhone String?   @map("contact_phone")
+  status       String    @default("queued") // queued | posted | failed | manual | cancelled
+  externalId   String?   @map("external_id")
+  error        String?
+  createdById  String    @map("created_by_id")
+  createdBy    User      @relation(fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  postedAt     DateTime? @map("posted_at")
+
+  @@index([status])
+  @@index([listingId])
+  @@map("publications")
+}
+
+// Tenants/buyers we represent (tourists, expats, Indian community, ...).
+model Client {
+  id            String    @id @default(cuid())
+  name          String
+  phone         String?
+  messenger     String? // whatsapp / telegram handle
+  nationality   String?
+  language      String?
+  segment       String? // expat | tourist | indian | local | other
+  dealType      String?   @map("deal_type") // ქირავდება | იყიდება | ქირავდება დღიურად
+  budgetMin     Float?    @map("budget_min")
+  budgetMax     Float?    @map("budget_max")
+  roomsMin      Int?      @map("rooms_min")
+  areas         String? // comma-separated neighbourhoods/districts
+  moveIn        DateTime? @map("move_in")
+  durationMonths Int?     @map("duration_months")
+  notes         String?
+  status        String    @default("new") // new | searching | viewing | closed_won | closed_lost
+  assignedToId  String?   @map("assigned_to_id")
+  assignedTo    User?     @relation(fields: [assignedToId], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  shortlists Shortlist[]
+
+  @@index([status])
+  @@index([segment])
+  @@map("clients")
+}
+
+model Shortlist {
+  id        String   @id @default(cuid())
+  clientId  String   @map("client_id")
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  listingId String   @map("listing_id")
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  status    String   @default("proposed") // proposed | sent | viewed | liked | rejected | rented
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([clientId, listingId])
+  @@map("shortlists")
+}
+
+// Free-form settings edited in the CRM (agency phone, public page texts, channel ids).
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
 }
 
 model Note {

@@ -81,7 +81,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                 {listing.ownerName ?? ""}
                 {listing.lead?.assignedTo?.name ? <span className="text-gray-400"> · {listing.lead.assignedTo.name}</span> : null}
               </span>
-              <PhoneButton phone={listing.phone} />
+              <PhoneButton phone={listing.phone || listing.lead?.manualPhone} />
             </div>
           </li>
         ))}
@@ -142,7 +142,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                   </td>
                   <td>
                     <div className="truncate text-gray-700">{listing.ownerName ?? ""}</div>
-                    <PhoneButton phone={listing.phone} />
+                    <PhoneButton phone={listing.phone || listing.lead?.manualPhone} />
                   </td>
                   <td>
                     <StatusBadge status={listing.lead?.status} />

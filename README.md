@@ -21,8 +21,12 @@ listing's text are extracted automatically.
 |--------------|--------------------------|-------|
 | `MyHome`     | myhome.ge                | Site filter: Tbilisi, owner listings. Phones are masked on the site; `phone_enricher.py` reveals them through the site's own button. |
 | `SS.ge`      | home.ss.ge               | Site filter: Tbilisi, individual posters. Phone and building details come from each detail page. |
-| `binebi.ge`  | binebi.ge                | Site filter: Tbilisi. The owner/agent flag is only on the detail page, so every listing is read once and agents are dropped. |
+| `binebi.ge`  | binebi.ge                | Site filter: Tbilisi. The owner/agent flag is only on the detail page, so every listing is read once. |
 | `place.ge`   | place.ge                 | Small portal; phone and owner/agent flag are on the list page. |
+| `rentals.ge` | rentals.ge               | Expat-oriented agency site; read through the public data API its own pages use. All posts are agency posts. |
+
+Not added: livo.ge is the same TNET database as MyHome (identical listing
+IDs), so it would only duplicate MyHome posts.
 
 Optional, collected only with `--sites housing,makler` and not in the
 owners-only scope: housing.ge never says who posted an ad, and makler.ge is an
@@ -32,11 +36,24 @@ and agency sites such as tbilisihome.ge or rentals.ge.
 
 ## CRM web app
 
-The `crm/` folder contains a web CRM for agents (login, filters, call
-tracking, notes, lead statuses, follow-ups, owners grouped by phone, analytics
-dashboard). It runs locally on SQLite and deploys for free to Vercel with a
-Supabase Postgres database; the GitHub Actions run pushes every new listing
-into it through `sync_db.py`. See [crm/README.md](crm/README.md).
+The `crm/` folder contains a web CRM for agents: owner/agent tabs, filters,
+call tracking, manual phone entry (for MyHome, whose numbers can only be
+revealed by a person), notes, lead statuses, follow-ups, posters grouped by
+phone, "same property posted N times" with prices per copy, analytics,
+clients (tourists/expats we represent) with automatic matching and
+shortlists, a publishing queue that posts listings with our contact to
+Telegram/Facebook (`publish.py`), and public QR-code pages per target group
+(e.g. `/p/indian` for the Indian community). It runs locally on SQLite and
+deploys for free to Vercel with a Supabase Postgres database, which is also
+where the collector writes. See [crm/README.md](crm/README.md).
+
+## MyHome phone numbers
+
+MyHome shows phones only after a logged-in click behind Cloudflare's bot
+check, which never completes for an automated browser (tested from GitHub,
+Tor and a home connection). The cloud run therefore does not try; agents open
+the ad, press "ნომრის ნახვა" and type the number into the listing's manual
+phone field in the CRM. `phone_enricher.py` is kept for manual local use.
 
 ## Columns
 

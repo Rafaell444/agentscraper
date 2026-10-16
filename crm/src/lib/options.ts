@@ -35,6 +35,7 @@ export const SITE_COLORS: Record<string, string> = {
   place: "#7C3AED",
   housing: "#DB2777",
   makler: "#64748B",
+  rentals: "#0891B2",
 };
 
 export const PAGE_SIZE = 50;

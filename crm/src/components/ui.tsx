@@ -83,6 +83,7 @@ const SITE_STYLES: Record<string, string> = {
   place: "bg-violet-100 text-violet-800",
   housing: "bg-pink-100 text-pink-800",
   makler: "bg-slate-200 text-slate-700",
+  rentals: "bg-cyan-100 text-cyan-800",
 };
 
 export function SiteBadge({ site, name }: { site: string; name: string }) {

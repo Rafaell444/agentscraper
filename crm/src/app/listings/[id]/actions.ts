@@ -72,6 +72,57 @@ export async function setFollowUp(formData: FormData) {
   revalidate(listingId);
 }
 
+export async function setManualPhone(formData: FormData) {
+  const user = await requireUser();
+  const listingId = String(formData.get("listingId") ?? "");
+  const phone = String(formData.get("manualPhone") ?? "").replace(/[^\d+;]/g, "").trim();
+  if (!listingId) return;
+  await prisma.lead.upsert({
+    where: { listingId },
+    update: { manualPhone: phone || null },
+    create: { listingId, manualPhone: phone || null },
+  });
+  await logActivity(user.id, "phone", listingId, phone || "წაიშალა");
+  revalidate(listingId);
+}
+
+export async function setHidden(formData: FormData) {
+  const user = await requireUser();
+  const listingId = String(formData.get("listingId") ?? "");
+  const hidden = String(formData.get("hidden") ?? "") === "1";
+  if (!listingId) return;
+  await prisma.lead.upsert({ where: { listingId }, update: { hidden }, create: { listingId, hidden } });
+  await logActivity(user.id, "hidden", listingId, hidden ? "დამალულია საჯარო გვერდიდან" : "ჩანს საჯარო გვერდზე");
+  revalidate(listingId);
+  revalidatePath("/p", "layout");
+}
+
+export async function queuePublication(formData: FormData) {
+  const user = await requireUser();
+  const listingId = String(formData.get("listingId") ?? "");
+  const channels = formData.getAll("channel").map(String).filter((c) => ["telegram", "facebook", "website"].includes(c));
+  const text = String(formData.get("text") ?? "").trim();
+  const contactPhone = String(formData.get("contactPhone") ?? "").trim();
+  const website = String(formData.get("website") ?? "").trim();
+  if (!listingId || !channels.length || !text) return;
+  for (const channel of channels) {
+    await prisma.publication.create({
+      data: {
+        listingId,
+        channel,
+        target: channel === "website" ? website || null : null,
+        text,
+        contactPhone: contactPhone || null,
+        createdById: user.id,
+        status: "queued",
+      },
+    });
+  }
+  await logActivity(user.id, "publish", listingId, channels.join(", "));
+  revalidate(listingId);
+  revalidatePath("/publish");
+}
+
 export async function addNote(formData: FormData) {
   const user = await requireUser();
   const listingId = String(formData.get("listingId") ?? "");

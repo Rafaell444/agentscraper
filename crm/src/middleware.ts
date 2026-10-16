@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC_PATHS = ["/login", "/api/health"];
+// /p/* are public listing pages reached through QR codes (no login).
+const PUBLIC_PATHS = ["/login", "/api/health", "/p/"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -82,20 +82,16 @@ jobs:
           fi
           python collect.py "${args[@]}"
 
-      - name: Reveal MyHome owner phone numbers through the browser flow
-        # Phone reveal is best-effort: a MyHome login or CAPTCHA problem must
-        # not stop the data commit, the workbook or the CRM sync.
+      # MyHome phone reveal is not run here: MyHome's bot check never completes
+      # for an automated browser, so agents enter MyHome numbers in the CRM by
+      # hand (phone_enricher.py remains available for manual local use).
+
+      - name: Publish queued listings to Telegram / Facebook
         continue-on-error: true
         env:
-          MYHOME_STORAGE_STATE_B64: ${{ secrets.MYHOME_STORAGE_STATE_B64 }}
-          MYHOME_EMAIL: ${{ secrets.MYHOME_EMAIL }}
-          MYHOME_PASSWORD: ${{ secrets.MYHOME_PASSWORD }}
-          PHONE_BROWSER_RETRY_LIMIT: "12"
-          PHONE_REVEAL_ATTEMPTS: "2"
-          PLAYWRIGHT_CHANNEL: "chrome"
-          PLAYWRIGHT_HEADLESS: "false"
-        # ubuntu-latest already includes Google Chrome and a virtual X display.
-        run: xvfb-run --auto-servernum python phone_enricher.py
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
+        run: python publish.py
 
       - name: Build properties.xlsx
         run: python build_workbook.py properties.xlsx

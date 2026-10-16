@@ -5,8 +5,10 @@ import { requireUser } from "@/lib/auth";
 import { PRIORITIES, STATUSES, statusColor } from "@/lib/options";
 import { fmtDate, fmtMoney, fmtNum, waHref } from "@/lib/format";
 import { Button, Card, Input, LinkButton, PhoneButton, PosterBadge, Select, SiteBadge, StatusBadge } from "@/components/ui";
-import { addNote, logCall, setFollowUp, setStatus, updateLead } from "./actions";
+import { addNote, logCall, queuePublication, setFollowUp, setHidden, setManualPhone, setStatus, updateLead } from "./actions";
 import { ListingsLink } from "@/components/ListingsLink";
+import { getSettings } from "@/lib/settings";
+import { buildPublicationText } from "@/lib/publishText";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +40,13 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       notes: { include: { user: true }, orderBy: { createdAt: "desc" } },
       activities: { include: { user: true }, orderBy: { createdAt: "desc" }, take: 30 },
       priceHistory: { orderBy: { seenAt: "asc" } },
+      publications: { orderBy: { createdAt: "desc" }, take: 10 },
     },
   });
   if (!listing) notFound();
+  const settings = await getSettings();
+  const defaultText = buildPublicationText(listing, settings.agency_phone, settings.agency_name);
+  const PUB_STATUS: Record<string, string> = { queued: "რიგშია", posted: "გამოქვეყნდა", failed: "შეცდომა", manual: "ხელით", cancelled: "გაუქმდა" };
   // Every other posting of the same property (other sites, other posters, other prices).
   const sameProperty = listing.propertyKey
     ? await prisma.listing.findMany({
@@ -68,6 +74,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       })
     : [];
   const phones = (listing.phone ?? "").split(";").map((p) => p.trim()).filter(Boolean);
+  if (listing.lead?.manualPhone) phones.unshift(listing.lead.manualPhone);
   const currentStatus = listing.lead?.status ?? "new";
 
   return (
@@ -257,6 +264,14 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             ) : (
               <p className="mt-2 text-sm text-gray-400">ნომერი ჯერ არ არის გამოვლენილი</p>
             )}
+            <form action={setManualPhone} className="mt-3 flex gap-1">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <Input name="manualPhone" defaultValue={listing.lead?.manualPhone ?? ""} placeholder="ნომერი ხელით (მაგ. MyHome-დან)" inputMode="tel" className="min-w-0 flex-1" />
+              <Button type="submit" variant="secondary">✓</Button>
+            </form>
+            {listing.site === "myhome" && !listing.phone ? (
+              <p className="mt-1 text-xs text-gray-500">MyHome-ზე ღილაკი „ნომრის ნახვა“ → ჩაწერე აქ.</p>
+            ) : null}
             <form action={logCall} className="mt-3">
               <input type="hidden" name="listingId" value={listing.id} />
               <Button type="submit" variant="secondary" className="w-full">
@@ -344,6 +359,38 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               <Button type="submit" className="w-full">
                 შენახვა
               </Button>
+            </form>
+          </Card>
+
+          <Card title="გამოქვეყნება ჩვენი ნომრით" action={<span className="text-xs text-gray-400">Telegram / Facebook / საიტი</span>}>
+            <form action={queuePublication} className="space-y-2 text-sm">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-1.5"><input type="checkbox" name="channel" value="telegram" defaultChecked className="h-4 w-4 accent-emerald-600" /> Telegram</label>
+                <label className="flex items-center gap-1.5"><input type="checkbox" name="channel" value="facebook" className="h-4 w-4 accent-emerald-600" /> Facebook</label>
+                <label className="flex items-center gap-1.5"><input type="checkbox" name="channel" value="website" className="h-4 w-4 accent-emerald-600" /> საიტი</label>
+              </div>
+              <Input name="website" placeholder="საიტის სახელი (ხელით დასადები)" />
+              <Input name="contactPhone" defaultValue={settings.agency_phone} placeholder="ჩვენი ნომერი პოსტში" />
+              <textarea name="text" defaultValue={defaultText} rows={8} className="ui-field h-auto py-2 text-xs" />
+              <Button type="submit" variant="secondary" className="w-full">რიგში ჩასმა</Button>
+            </form>
+            {listing.publications.length ? (
+              <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">
+                {listing.publications.map((p) => (
+                  <li key={p.id}>
+                    {p.channel}{p.target ? ` (${p.target})` : ""} · {PUB_STATUS[p.status] ?? p.status} · {fmtDate(p.postedAt ?? p.createdAt, true)}
+                    {p.error ? <span className="text-rose-600"> · {p.error.slice(0, 80)}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <form action={setHidden} className="mt-2 border-t border-gray-100 pt-2">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <input type="hidden" name="hidden" value={listing.lead?.hidden ? "0" : "1"} />
+              <button type="submit" className="text-xs text-gray-500 underline-offset-2 hover:underline">
+                {listing.lead?.hidden ? "ჩანს საჯარო გვერდზე: არა — დააბრუნე" : "დამალე საჯარო (QR) გვერდიდან"}
+              </button>
             </form>
           </Card>
 

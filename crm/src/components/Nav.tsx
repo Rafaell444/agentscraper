@@ -13,6 +13,9 @@ const LINKS = [
   { href: "/listings", label: "განცხადებები", icon: "M4 6h16M4 12h16M4 18h10" },
   { href: "/owners", label: "განმთავსებლები", icon: "M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0" },
   { href: "/followups", label: "დასარეკი", icon: "M8 2v3M16 2v3M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" },
+  { href: "/clients", label: "კლიენტები", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
+  { href: "/segments/indian", label: "ინდოელები", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h2M18 14h3" },
+  { href: "/publish", label: "გამოქვეყნება", icon: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" },
   { href: "/agents", label: "აგენტები", icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
 ];
 

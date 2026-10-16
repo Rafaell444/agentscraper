@@ -53,9 +53,14 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <Link href="/agents" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
             აგენტები და პაროლი
           </Link>
-          <Link href="/followups" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+          <Link href="/followups?who=me" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
             ჩემი დასარეკი
           </Link>
+          {user.role === "admin" ? (
+            <Link href="/settings" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              პარამეტრები
+            </Link>
+          ) : null}
           <form action={logout} className="border-t border-gray-100">
             <button type="submit" className="block w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">
               გასვლა

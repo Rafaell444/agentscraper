@@ -19,6 +19,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import storage
 from sites.common import OWNER_PHYSICAL
@@ -343,6 +344,19 @@ def enrich_rows(limit: int, owners_only: bool) -> tuple[int, int]:
             channel = os.getenv("PLAYWRIGHT_CHANNEL", "chrome").strip()
             if channel:
                 launch_args["channel"] = channel
+            # Optional proxy for the browser (e.g. a residential proxy in CI, or
+            # Tor Browser's SOCKS port locally): PHONE_PROXY_URL=socks5://127.0.0.1:9150
+            # or http://user:pass@host:port.
+            proxy_url = os.getenv("PHONE_PROXY_URL", "").strip()
+            if proxy_url:
+                proxy: dict[str, str] = {"server": proxy_url}
+                parsed = urlparse(proxy_url)
+                if parsed.username:
+                    proxy["server"] = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+                    proxy["username"] = unquote(parsed.username)
+                    proxy["password"] = unquote(parsed.password or "")
+                launch_args["proxy"] = proxy
+                LOGGER.info("Browser proxy: %s", proxy["server"])
             browser = playwright.chromium.launch(**launch_args)
             context_args: dict[str, Any] = {
                 "locale": "ka-GE",

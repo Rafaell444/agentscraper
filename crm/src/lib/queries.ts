@@ -80,8 +80,8 @@ export function buildWhere(filters: ListingFilters): Prisma.ListingWhereInput {
   if (filters.type) where.propertyType = filters.type;
   if (filters.district) where.district = filters.district;
   if (filters.neighbourhood) where.neighbourhood = filters.neighbourhood;
-  if (filters.phone === "1") and.push({ NOT: { phone: null } }, { NOT: { phone: "" } });
-  else if (filters.phone === "0") and.push({ OR: [{ phone: null }, { phone: "" }] });
+  if (filters.phone === "1") and.push({ OR: [{ AND: [{ NOT: { phone: null } }, { NOT: { phone: "" } }] }, { lead: { manualPhone: { not: null } } }] });
+  else if (filters.phone === "0") and.push({ OR: [{ phone: null }, { phone: "" }] }, { OR: [{ lead: null }, { lead: { manualPhone: null } }] });
   else if (filters.phone) where.phone = { contains: filters.phone };
   const priceMin = num(filters.priceMin);
   const priceMax = num(filters.priceMax);
