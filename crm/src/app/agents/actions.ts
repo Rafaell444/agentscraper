@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { hashPassword, requireAdmin } from "@/lib/auth";
+import { hashPassword, requireAdmin, requireUser } from "@/lib/auth";
 
 export async function createUser(formData: FormData) {
   await requireAdmin();
@@ -26,6 +26,15 @@ export async function setUserActive(formData: FormData) {
   const active = String(formData.get("active") ?? "") === "1";
   if (!id || id === admin.id) return;
   await prisma.user.update({ where: { id }, data: { active } });
+  revalidatePath("/agents");
+}
+
+export async function setTelegram(formData: FormData) {
+  const me = await requireUser();
+  const id = String(formData.get("id") ?? "");
+  const chatId = String(formData.get("telegramChatId") ?? "").trim() || null;
+  if (!id || (id !== me.id && me.role !== "admin")) return;
+  await prisma.user.update({ where: { id }, data: { telegramChatId: chatId } });
   revalidatePath("/agents");
 }
 

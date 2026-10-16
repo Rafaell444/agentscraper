@@ -9,6 +9,10 @@ import { addNote, logCall, queuePublication, setFollowUp, setHidden, setManualPh
 import { ListingsLink } from "@/components/ListingsLink";
 import { getSettings } from "@/lib/settings";
 import { buildPublicationText } from "@/lib/publishText";
+import { benchmark } from "@/lib/market";
+import { WaTemplates } from "@/components/WaTemplates";
+import { createViewing } from "@/app/viewings/actions";
+import { createDeal } from "@/app/deals/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +35,7 @@ function toLocalInput(date: Date | null | undefined): string {
 const ACTIVITY_LABELS: Record<string, string> = { status: "სტატუსი", assign: "მიკუთვნება", note: "ჩანაწერი", call: "ზარი", followup: "დასარეკი" };
 
 export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { id } = await params;
   const listing = await prisma.listing.findUnique({
     where: { id: decodeURIComponent(id) },
@@ -44,8 +48,27 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     },
   });
   if (!listing) notFound();
-  const settings = await getSettings();
+  const [settings, bench, clients, viewings] = await Promise.all([
+    getSettings(),
+    benchmark(listing),
+    prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] } }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 200 }),
+    prisma.viewing.findMany({ where: { listingId: listing.id }, include: { client: { select: { name: true } }, agent: { select: { name: true } } }, orderBy: { scheduledAt: "desc" }, take: 5 }),
+  ]);
   const defaultText = buildPublicationText(listing, settings.agency_phone, settings.agency_name);
+  const publicBase = settings.public_base_url.replace(/\/$/, "");
+  const publicCard = `${publicBase}/p/l/${listing.id}`;
+  const templateValues = {
+    agent: me.name,
+    agency: settings.agency_name,
+    phone: settings.agency_phone,
+    listing: listing.title ?? "",
+    price: fmtMoney(listing.priceUsd) || fmtMoney(listing.priceGel, "₾"),
+    area: listing.areaM2 ? `${fmtNum(listing.areaM2)} მ²` : "",
+    address: listing.address ?? listing.neighbourhood ?? "",
+    link: publicCard,
+    name: "",
+    time: "",
+  };
   const PUB_STATUS: Record<string, string> = { queued: "რიგშია", posted: "გამოქვეყნდა", failed: "შეცდომა", manual: "ხელით", cancelled: "გაუქმდა" };
   // Other postings of the same property.  "Confirmed" copies share the full
   // property key (deal, area, rooms, place, floor, street).  "Possible" ones
@@ -152,6 +175,12 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   {listing.priceUsd && listing.priceGel ? <span className="text-sm text-gray-500">{fmtMoney(listing.priceGel, "₾")}</span> : null}
                   {listing.pricePerM2Usd ? <span className="text-sm text-gray-500">{fmtNum(listing.pricePerM2Usd)} $/მ²</span> : null}
                 </div>
+                {bench && bench.diffPct != null ? (
+                  <div className={`mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${bench.diffPct <= -10 ? "bg-emerald-50 text-emerald-800" : bench.diffPct >= 10 ? "bg-rose-50 text-rose-800" : "bg-gray-50 text-gray-700"}`}>
+                    <span className="font-semibold">{bench.diffPct > 0 ? "+" : ""}{bench.diffPct}%</span>
+                    <span className="text-xs">მედიანასთან შედარებით ({fmtNum(bench.medianPpm)} $/მ², {bench.scope}, {bench.samples} განცხადება)</span>
+                  </div>
+                ) : null}
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <Fact label="გარიგება" value={listing.dealType} />
                   <Fact label="ტიპი" value={listing.propertyType} />
@@ -322,6 +351,63 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               <Button type="submit" variant="secondary" className="w-full">
                 ✓ დავრეკე — ჩაწერე ზარი
               </Button>
+            </form>
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <WaTemplates phone={phones[0]} kinds={["owner_first", "owner_followup"]} values={templateValues} />
+            </div>
+          </Card>
+
+          <Card title="საჯარო ბარათი კლიენტისთვის">
+            <p className="text-xs text-gray-500">გვერდი ჩვენი კონტაქტით, მესაკუთრის ნომრის გარეშე — გაუგზავნე კლიენტს ორიგინალი ბმულის ნაცვლად.</p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {(["en", "ru", "ka"] as const).map((l) => (
+                <a key={l} href={`/p/l/${listing.id}?lang=${l}`} target="_blank" rel="noreferrer" className="ui-chip">{l.toUpperCase()} ↗</a>
+              ))}
+            </div>
+            <input readOnly value={publicCard} className="ui-field mt-2 text-xs" onFocus={undefined} />
+          </Card>
+
+          <Card title="დათვალიერების დაგეგმვა">
+            <form action={createViewing} className="space-y-2 text-sm">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <input type="hidden" name="agentId" value={me.id} />
+              <input type="hidden" name="address" value={listing.address ?? ""} />
+              <Input name="scheduledAt" type="datetime-local" required />
+              <Select name="clientId" defaultValue="">
+                <option value="">კლიენტი (არასავალდებულო)</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+              <Button type="submit" variant="secondary" className="w-full">დაგეგმვა</Button>
+            </form>
+            {viewings.length ? (
+              <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">
+                {viewings.map((v) => (
+                  <li key={v.id}>{fmtDate(v.scheduledAt, true)} · {v.agent.name}{v.client ? ` · ${v.client.name}` : ""} · {v.status}</li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
+          <Card title="გარიგება დაიდო?">
+            <form action={createDeal} className="grid grid-cols-2 gap-2 text-sm">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <input type="hidden" name="agentId" value={listing.lead?.assignedToId ?? me.id} />
+              <Select name="kind" defaultValue={listing.dealType === "იყიდება" ? "sale" : listing.dealType === "ქირავდება დღიურად" ? "daily" : "rent"} className="col-span-2">
+                <option value="sale">გაყიდვა</option>
+                <option value="rent">გაქირავება</option>
+                <option value="daily">დღიური</option>
+              </Select>
+              <Input name="amount" defaultValue={listing.priceUsd ?? ""} placeholder="თანხა $" inputMode="numeric" required />
+              <Input name="commissionPct" placeholder="საკომისიო %" inputMode="numeric" />
+              <Select name="clientId" defaultValue="" className="col-span-2">
+                <option value="">კლიენტი (არასავალდებულო)</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+              <Button type="submit" className="col-span-2">დაფიქსირება</Button>
             </form>
           </Card>
 

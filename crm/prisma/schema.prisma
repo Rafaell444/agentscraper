@@ -59,6 +59,8 @@ model Listing {
   priceHistory PriceHistory[]
   publications Publication[]
   shortlists   Shortlist[]
+  viewings     Viewing[]
+  deals        Deal[]
 
   @@unique([site, propertyId])
   @@index([postedAt])
@@ -90,13 +92,72 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  leads        Lead[]
-  notes        Note[]
-  activities   Activity[]
-  publications Publication[]
-  clients      Client[]
+  telegramChatId String? @map("telegram_chat_id") // for personal alerts
+
+  leads         Lead[]
+  notes         Note[]
+  activities    Activity[]
+  publications  Publication[]
+  clients       Client[]
+  viewings      Viewing[]
+  deals         Deal[]
+  notifications Notification[]
 
   @@map("users")
+}
+
+model Viewing {
+  id          String   @id @default(cuid())
+  listingId   String?  @map("listing_id")
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  clientId    String?  @map("client_id")
+  client      Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  agentId     String   @map("agent_id")
+  agent       User     @relation(fields: [agentId], references: [id])
+  scheduledAt DateTime @map("scheduled_at")
+  address     String?
+  status      String   @default("planned") // planned | done | cancelled | no_show
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([scheduledAt])
+  @@index([agentId])
+  @@map("viewings")
+}
+
+model Deal {
+  id           String    @id @default(cuid())
+  listingId    String?   @map("listing_id")
+  listing      Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  clientId     String?   @map("client_id")
+  client       Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  agentId      String    @map("agent_id")
+  agent        User      @relation(fields: [agentId], references: [id])
+  kind         String // sale | rent | daily
+  amount       Float? // deal amount (sale price or monthly rent), USD
+  commission   Float? // our commission, USD
+  closedAt     DateTime  @map("closed_at")
+  note         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([closedAt])
+  @@index([agentId])
+  @@map("deals")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // match | reminder | system
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, readAt])
+  @@map("notifications")
 }
 
 model Lead {
@@ -165,6 +226,8 @@ model Client {
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   shortlists Shortlist[]
+  viewings   Viewing[]
+  deals      Deal[]
 
   @@index([status])
   @@index([segment])

@@ -14,7 +14,10 @@ const LINKS = [
   { href: "/owners", label: "განმთავსებლები", icon: "M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0" },
   { href: "/followups", label: "დასარეკი", icon: "M8 2v3M16 2v3M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" },
   { href: "/clients", label: "კლიენტები", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
-  { href: "/segments/indian", label: "ინდოელები", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h2M18 14h3" },
+  { href: "/viewings", label: "ჩვენებები", icon: "M3 4h18v16H3zM3 10h18M8 2v4M16 2v4" },
+  { href: "/segments/indian", label: "სეგმენტები", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h2M18 14h3" },
+  { href: "/market", label: "ბაზარი", icon: "M3 20h18M5 16l4-6 4 3 6-8" },
+  { href: "/deals", label: "გარიგებები", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
   { href: "/publish", label: "გამოქვეყნება", icon: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" },
   { href: "/agents", label: "აგენტები", icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
 ];
@@ -27,7 +30,7 @@ function Icon({ d }: { d: string }) {
   );
 }
 
-export function Nav({ user }: { user: SessionUser }) {
+export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -62,7 +65,11 @@ export function Nav({ user }: { user: SessionUser }) {
             ),
           )}
         </nav>
-        <div className="ml-auto hidden md:block">
+        <Link href="/notifications" aria-label="შეტყობინებები" className="relative ml-auto rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:ml-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" /></svg>
+          {unread > 0 ? <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold text-white">{unread > 99 ? "99+" : unread}</span> : null}
+        </Link>
+        <div className="hidden md:block">
           <UserMenu user={user} />
         </div>
         <button
@@ -70,7 +77,7 @@ export function Nav({ user }: { user: SessionUser }) {
           aria-label="მენიუ"
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
-          className="ml-auto rounded-lg border border-gray-300 p-2 text-gray-700 md:hidden"
+          className="rounded-lg border border-gray-300 p-2 text-gray-700 md:hidden"
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             {open ? (

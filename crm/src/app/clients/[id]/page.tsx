@@ -7,6 +7,10 @@ import { fmtDate, fmtMoney, fmtNum, waHref } from "@/lib/format";
 import { CLIENT_SEGMENTS, CLIENT_STATUSES, SHORTLIST_STATUSES, splitAreas } from "@/lib/clients";
 import { Button, Card, Input, PageHeader, PhoneButton, PosterBadge, Select, SiteBadge } from "@/components/ui";
 import { addToShortlist, removeFromShortlist, setClientStatus, updateClient, updateShortlist } from "../actions";
+import { WaTemplates } from "@/components/WaTemplates";
+import { createViewing } from "@/app/viewings/actions";
+import { getSettings } from "@/lib/settings";
+import { renderTemplate, waLink } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +19,7 @@ function toDateInput(date: Date | null | undefined): string {
 }
 
 export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { id } = await params;
   const client = await prisma.client.findUnique({
     where: { id },
@@ -25,7 +29,14 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     },
   });
   if (!client) notFound();
-  const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+  const [users, settings, viewings] = await Promise.all([
+    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    getSettings(),
+    prisma.viewing.findMany({ where: { clientId: client.id }, include: { listing: { select: { id: true, title: true, address: true } }, agent: { select: { name: true } } }, orderBy: { scheduledAt: "desc" }, take: 10 }),
+  ]);
+  const publicBase = settings.public_base_url.replace(/\/$/, "");
+  const lang = (client.language ?? "").toLowerCase().startsWith("ru") || client.segment === "ru" ? "ru" : client.language && !client.language.toLowerCase().startsWith("ka") && !client.language.toLowerCase().startsWith("ქართ") ? "en" : "ka";
+  const templateValues = { name: client.name.split(" ")[0], agent: me.name, agency: settings.agency_name, phone: settings.agency_phone, listing: "", price: "", area: "", time: "", address: "", link: "" };
 
   // Listings matching the client's wishes (newest first), excluding ones already shortlisted.
   const areas = splitAreas(client.areas);
@@ -60,6 +71,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               </>
             }
           />
+
+          <Card title="სწრაფი კავშირი">
+            <WaTemplates phone={client.messenger || client.phone} kinds={["client_first", "client_followup"]} values={templateValues} />
+          </Card>
 
           <Card title="სტატუსი">
             <div className="flex flex-wrap gap-1.5">
@@ -125,6 +140,20 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                       </div>
                       <PhoneButton phone={item.listing.phone || item.listing.lead?.manualPhone} />
                     </div>
+                    <div className="flex flex-wrap items-center gap-1 text-xs">
+                      {item.note === "auto" ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">ავტომატური დამთხვევა</span> : null}
+                      {client.messenger || client.phone ? (
+                        <a
+                          href={waLink(client.messenger || client.phone, renderTemplate("client_card", lang, { ...templateValues, listing: item.listing.title ?? "", price: fmtMoney(item.listing.priceUsd), area: item.listing.areaM2 ? `${fmtNum(item.listing.areaM2)} m²` : "", link: `${publicBase}/p/l/${item.listingId}?lang=${lang}` }))}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ui-chip"
+                        >
+                          💬 ბარათის გაგზავნა ({lang.toUpperCase()})
+                        </a>
+                      ) : null}
+                      <a href={`/p/l/${item.listingId}?lang=${lang}`} target="_blank" rel="noreferrer" className="ui-chip">ბარათი ↗</a>
+                    </div>
                     <div className="flex flex-wrap items-center gap-1">
                       <form action={updateShortlist} className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                         <input type="hidden" name="id" value={item.id} />
@@ -151,6 +180,41 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="space-y-4">
+          <Card title="დათვალიერება">
+            <form action={createViewing} className="space-y-2 text-sm">
+              <input type="hidden" name="clientId" value={client.id} />
+              <input type="hidden" name="agentId" value={client.assignedToId ?? me.id} />
+              <Input name="scheduledAt" type="datetime-local" required />
+              <Select name="listingId" defaultValue="">
+                <option value="">ობიექტი (შერჩეულებიდან)</option>
+                {client.shortlists.map((s) => (
+                  <option key={s.listingId} value={s.listingId}>{s.listing.title ?? s.listingId}</option>
+                ))}
+              </Select>
+              <Input name="address" placeholder="მისამართი / შეხვედრის ადგილი" />
+              <Button type="submit" variant="secondary" className="w-full">დაგეგმვა</Button>
+            </form>
+            {viewings.length ? (
+              <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">
+                {viewings.map((v) => (
+                  <li key={v.id} className="flex flex-wrap items-center justify-between gap-1">
+                    <span>{fmtDate(v.scheduledAt, true)} · {v.listing?.title ?? v.address ?? ""} · {v.status}</span>
+                    {client.messenger || client.phone ? (
+                      <a
+                        href={waLink(client.messenger || client.phone, renderTemplate("viewing_confirm", lang, { ...templateValues, time: fmtDate(v.scheduledAt, true), address: v.address ?? v.listing?.address ?? "", listing: v.listing?.title ?? "", price: "" }))}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-700 hover:underline"
+                      >
+                        💬 დადასტურება
+                      </a>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
           <Card title="მოთხოვნა">
             <form action={updateClient} className="space-y-2 text-sm">
               <input type="hidden" name="id" value={client.id} />

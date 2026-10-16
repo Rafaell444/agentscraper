@@ -1,15 +1,19 @@
 import type { Prisma } from "@prisma/client";
 
 /** Public listing collections for a target group, reachable without login (QR code). */
+export type PublicLang = "en" | "ru";
+
 export type Segment = {
   slug: string;
   title: string; // Georgian, for the CRM
-  titleEn: string; // for the public page
+  titleEn: string; // for the public page (in the page language)
   descriptionEn: string;
+  lang: PublicLang;
   dealTypes: string[];
   districts: string[];
   neighbourhoods: string[];
   maxPriceUsd?: number;
+  minPriceUsd?: number;
 };
 
 export const SEGMENTS: Segment[] = [
@@ -18,12 +22,101 @@ export const SEGMENTS: Segment[] = [
     title: "ინდოელი მდგმურები",
     titleEn: "Apartments for rent — Indian community",
     descriptionEn: "Long-term rentals in Samgori, Varketili, 300 Aragveli, Isani and nearby. We help you view and sign; owners are verified.",
+    lang: "en",
     dealTypes: ["ქირავდება"],
     districts: ["ისანი-სამგორი"],
     neighbourhoods: ["სამგორი", "ვარკეთილი", "ისანი", "ვაზისუბანი", "ნავთლუღი", "მესამე მასივი", "ორხევი", "ლილო", "აეროპორტის დასახლება", "დამპალოს დასახლება"],
     maxPriceUsd: 1200,
   },
+  {
+    slug: "students",
+    title: "სტუდენტები",
+    titleEn: "Student rentals near the universities",
+    descriptionEn: "Affordable long-term rentals in Saburtalo, Vake, Vera and Didube, close to TSU, GTU, Medical University and Ilia State. We arrange viewings and contracts.",
+    lang: "en",
+    dealTypes: ["ქირავდება"],
+    districts: [],
+    neighbourhoods: ["საბურთალო", "ვაკე", "ვერა", "დიდუბე", "ვაჟა-ფშაველას კვარტლები", "ბაგები", "დიღმის მასივი"],
+    maxPriceUsd: 700,
+  },
+  {
+    slug: "tourists",
+    title: "ტურისტები (დღიური)",
+    titleEn: "Short-term apartments in central Tbilisi",
+    descriptionEn: "Daily and weekly rentals in Vake, Vera, Sololaki, Mtatsminda, Avlabari and Old Tbilisi. Message us with your dates and we confirm availability.",
+    lang: "en",
+    dealTypes: ["ქირავდება დღიურად"],
+    districts: ["ძველი თბილისი"],
+    neighbourhoods: ["ვაკე", "ვერა", "სოლოლაკი", "მთაწმინდა", "ავლაბარი", "საბურთალო", "ჩუღურეთი", "აბანოთუბანი"],
+  },
+  {
+    slug: "ru",
+    title: "რუსულენოვანი ექსპატები",
+    titleEn: "Аренда квартир в Тбилиси — для экспатов",
+    descriptionEn: "Долгосрочная аренда в Ваке, Сабуртало, Вера, Мтацминда и Сололаки. Поможем с просмотром и договором, объявления от проверенных собственников.",
+    lang: "ru",
+    dealTypes: ["ქირავდება"],
+    districts: [],
+    neighbourhoods: ["ვაკე", "საბურთალო", "ვერა", "მთაწმინდა", "სოლოლაკი", "ჩუღურეთი", "ავლაბარი", "დიდუბე", "დიღმის მასივი", "ბაგები"],
+    minPriceUsd: 500,
+  },
 ];
+
+export const PUBLIC_TEXT: Record<PublicLang, Record<string, string>> = {
+  en: {
+    agency: "Real estate agency",
+    listings: "listings",
+    updated: "updated automatically every 30 minutes",
+    none: "No listings at the moment. Contact us and we will find one for you.",
+    month: "/ month",
+    day: "/ day",
+    rooms: "rooms",
+    floor: "floor",
+    bedrooms: "bedrooms",
+    ask: "Ask on WhatsApp",
+    call: "Call us",
+    wa: "WhatsApp us",
+    ref: "Ref",
+    footer: "We act as your agent: viewing, negotiation and contract. Owner contacts are shared after a short call.",
+    today: "today",
+    yesterday: "yesterday",
+    daysAgo: "days ago",
+    interested: "Hello! I am interested in rental",
+  },
+  ru: {
+    agency: "Агентство недвижимости",
+    listings: "объявлений",
+    updated: "обновляется автоматически каждые 30 минут",
+    none: "Сейчас объявлений нет. Напишите нам — подберём.",
+    month: "/ мес.",
+    day: "/ сутки",
+    rooms: "комн.",
+    floor: "этаж",
+    bedrooms: "спальни",
+    ask: "Написать в WhatsApp",
+    call: "Позвонить",
+    wa: "Написать нам",
+    ref: "Код",
+    footer: "Мы выступаем вашим агентом: просмотр, переговоры и договор. Контакты собственника — после короткого звонка.",
+    today: "сегодня",
+    yesterday: "вчера",
+    daysAgo: "дн. назад",
+    interested: "Здравствуйте! Меня интересует объект",
+  },
+};
+
+export const RU_DEAL: Record<string, string> = { "ქირავდება": "Аренда", "ქირავდება დღიურად": "Посуточно", "იყიდება": "Продажа", "გირავდება": "Залог" };
+export const RU_TYPE: Record<string, string> = { "ბინა": "Квартира", "კერძო სახლი": "Дом", "აგარაკი": "Дача", "კომერციული ფართი": "Коммерческая", "მიწის ნაკვეთი": "Участок", "სასტუმრო": "Отель" };
+export const RU_PLACE: Record<string, string> = {
+  "ვაკე": "Ваке", "საბურთალო": "Сабуртало", "ვერა": "Вера", "მთაწმინდა": "Мтацминда", "სოლოლაკი": "Сололаки", "ჩუღურეთი": "Чугурети",
+  "ავლაბარი": "Авлабари", "დიდუბე": "Дидубе", "დიღმის მასივი": "Дигоми", "ბაგები": "Багеби", "თბილისი": "Тбилиси", "ვაკე-საბურთალო": "Ваке-Сабуртало",
+  "ძველი თბილისი": "Старый Тбилиси", "დიდუბე-ჩუღურეთი": "Дидубе-Чугурети", "ისანი-სამგორი": "Исани-Самгори", "გლდანი-ნაძალადევი": "Глдани-Надзаладеви",
+};
+export const RU_CONDITION: Record<string, string> = {
+  "ახალი გარემონტებული": "Свежий ремонт", "გარემონტებული": "С ремонтом", "ძველი გარემონტებული": "Старый ремонт", "ევრორემონტი": "Евроремонт",
+  "მიმდინარე რემონტი": "Идёт ремонт", "სარემონტო": "Требует ремонта", "გასარემონტებელი": "Требует ремонта", "თეთრი კარკასი": "Белый каркас", "შავი კარკასი": "Чёрный каркас",
+  "ახალი აშენებული": "Новостройка", "ძველი აშენებული": "Старый фонд", "მშენებარე": "Строится",
+};
 
 export function segmentBySlug(slug: string): Segment | undefined {
   return SEGMENTS.find((segment) => segment.slug === slug);
@@ -36,7 +129,7 @@ export function segmentWhere(segment: Segment): Prisma.ListingWhereInput {
     OR: [{ district: { in: segment.districts } }, { neighbourhood: { in: segment.neighbourhoods } }],
     AND: [{ OR: [{ lead: null }, { lead: { hidden: false } }] }],
   };
-  if (segment.maxPriceUsd) where.priceUsd = { lte: segment.maxPriceUsd };
+  if (segment.maxPriceUsd || segment.minPriceUsd) where.priceUsd = { lte: segment.maxPriceUsd, gte: segment.minPriceUsd };
   return where;
 }
 

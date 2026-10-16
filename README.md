@@ -40,10 +40,16 @@ The `crm/` folder contains a web CRM for agents: owner/agent tabs, filters,
 call tracking, manual phone entry (for MyHome, whose numbers can only be
 revealed by a person), notes, lead statuses, follow-ups, posters grouped by
 phone, "same property posted N times" with prices per copy, analytics,
-clients (tourists/expats we represent) with automatic matching and
-shortlists, a publishing queue that posts listings with our contact to
-Telegram/Facebook (`publish.py`), and public QR-code pages per target group
-(e.g. `/p/indian` for the Indian community). It runs locally on SQLite and
+clients (tourists/expats we represent) with automatic matching, shortlists
+and alerts (`notify.py` runs in the cloud after each collection and notifies
+the assigned agent in the CRM and on Telegram), a publishing queue that
+posts listings with our contact to Telegram/Facebook (`publish.py`), public
+QR-code pages per target group (`/p/indian`, `/p/students`, `/p/tourists`,
+`/p/ru`) and a public card per listing (`/p/l/<id>?lang=en|ru|ka`), a price
+benchmark on every listing against the neighbourhood median, a market page
+(median $/m², rents, new owner posts, days on market per area), a viewing
+calendar with conflict warnings, deals with commission and monthly report per
+agent, and one-tap WhatsApp templates in Georgian, English and Russian. It runs locally on SQLite and
 deploys for free to Vercel with a Supabase Postgres database, which is also
 where the collector writes. See [crm/README.md](crm/README.md).
 

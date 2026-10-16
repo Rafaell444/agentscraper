@@ -86,6 +86,12 @@ jobs:
       # for an automated browser, so agents enter MyHome numbers in the CRM by
       # hand (phone_enricher.py remains available for manual local use).
 
+      - name: Alert agents about listings matching their clients
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python notify.py
+
       - name: Publish queued listings to Telegram / Facebook
         continue-on-error: true
         env:

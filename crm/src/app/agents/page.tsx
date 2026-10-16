@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { daysAgo, fmtDate } from "@/lib/format";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
-import { createUser, resetPassword, setUserActive } from "./actions";
+import { createUser, resetPassword, setTelegram, setUserActive } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +60,13 @@ export default async function AgentsPage() {
                 ))}
               </div>
               <div className="mt-2 text-[11px] text-gray-400">შექმნილია {fmtDate(user.createdAt)}</div>
+              {me.role === "admin" || user.id === me.id ? (
+                <form action={setTelegram} className="mt-2 flex gap-1">
+                  <input type="hidden" name="id" value={user.id} />
+                  <Input name="telegramChatId" defaultValue={user.telegramChatId ?? ""} placeholder="Telegram chat id (შეტყობინებებისთვის)" className="min-w-0 flex-1" />
+                  <Button variant="secondary" type="submit">OK</Button>
+                </form>
+              ) : null}
               {me.role === "admin" ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
                   <form action={resetPassword} className="flex min-w-0 flex-1 gap-1">
