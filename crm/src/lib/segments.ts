@@ -81,6 +81,22 @@ export const EN_PLACE: Record<string, string> = {
   "თბილისი": "Tbilisi",
 };
 
+export const EN_CONDITION: Record<string, string> = {
+  "ახალი გარემონტებული": "Newly renovated",
+  "გარემონტებული": "Renovated",
+  "ძველი გარემონტებული": "Older renovation",
+  "ევრორემონტი": "Euro renovation",
+  "მიმდინარე რემონტი": "Under renovation",
+  "სარემონტო": "Needs renovation",
+  "გასარემონტებელი": "Needs renovation",
+  "თეთრი კარკასი": "White frame",
+  "შავი კარკასი": "Black frame",
+  "მწვანე კარკასი": "Green frame",
+  "ახალი აშენებული": "New building",
+  "ძველი აშენებული": "Old building",
+  "მშენებარე": "Under construction",
+};
+
 export function en(map: Record<string, string>, value: string | null | undefined): string {
   if (!value) return "";
   return map[value] ?? value;

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { EN_DEAL, EN_PLACE, EN_TYPE, en, segmentBySlug, segmentWhere } from "@/lib/segments";
+import { EN_CONDITION, EN_DEAL, EN_PLACE, EN_TYPE, en, segmentBySlug, segmentWhere } from "@/lib/segments";
 import { getSettings } from "@/lib/settings";
 import { fmtMoney, fmtNum } from "@/lib/format";
 
@@ -72,7 +72,8 @@ export default async function PublicSegmentPage({ params }: { params: Promise<{ 
                     {listing.areaM2 ? <span>{fmtNum(listing.areaM2)} m²</span> : null}
                     {listing.floor != null ? <span>floor {listing.floor}{listing.totalFloors ? `/${listing.totalFloors}` : ""}</span> : null}
                     {listing.bedrooms ? <span>{listing.bedrooms} bedrooms</span> : null}
-                    {listing.condition ? <span>{listing.condition}</span> : null}
+                    {listing.condition ? <span>{en(EN_CONDITION, listing.condition)}</span> : null}
+                    {listing.status ? <span>{en(EN_CONDITION, listing.status)}</span> : null}
                   </div>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-[11px] text-gray-400">Ref {ref}</span>

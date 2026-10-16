@@ -6,15 +6,18 @@ const PUBLIC_PATHS = ["/login", "/api/health", "/p/"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // Pass the path to the root layout so public pages render without the CRM menu.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
   if (PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
   const token = request.cookies.get("crm_session")?.value;
   const loginUrl = new URL("/login", request.url);
   if (!token) return NextResponse.redirect(loginUrl);
   try {
     await jwtVerify(token, new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-me"));
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: requestHeaders } });
   } catch {
     return NextResponse.redirect(loginUrl);
   }

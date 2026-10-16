@@ -1,0 +1,12 @@
+{
+  "name": "მესაკუთრე CRM",
+  "short_name": "CRM",
+  "description": "Tbilisi owner listings CRM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8fa",
+  "theme_color": "#059669",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

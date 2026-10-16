@@ -32,7 +32,7 @@ export function Nav({ user }: { user: SessionUser }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const linkClass = (href: string) =>
-    `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+    `flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition lg:px-3 ${
       isActive(href) ? "bg-emerald-600 text-white shadow-sm" : "text-gray-600 hover:bg-emerald-50 hover:text-emerald-800"
     }`;
 
@@ -47,7 +47,7 @@ export function Nav({ user }: { user: SessionUser }) {
           </span>
           <span className="text-base font-bold tracking-tight text-gray-900">მესაკუთრე CRM</span>
         </Link>
-        <nav className="hidden flex-1 items-center gap-1 md:flex">
+        <nav className="hidden flex-1 flex-wrap items-center gap-1 md:flex">
           {LINKS.map((link) =>
             link.href === "/listings" ? (
               <ListingsLink key={link.href} className={linkClass(link.href)}>

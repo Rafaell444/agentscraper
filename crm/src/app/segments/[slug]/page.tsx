@@ -49,8 +49,8 @@ export default async function SegmentPage({ params }: { params: Promise<{ slug: 
         ) : (
           <ul className="divide-y divide-gray-100">
             {listings.map((listing) => (
-              <li key={listing.id} className={`flex items-center gap-3 py-2 ${listing.lead?.hidden ? "opacity-50" : ""}`}>
-                {listing.image ? <img src={listing.image} alt="" className="h-14 w-20 shrink-0 rounded-md object-cover" /> : <div className="h-14 w-20 shrink-0 rounded-md bg-gray-100" />}
+              <li key={listing.id} className={`flex flex-wrap items-center gap-2 py-2 sm:flex-nowrap sm:gap-3 ${listing.lead?.hidden ? "opacity-50" : ""}`}>
+                {listing.image ? <img src={listing.image} alt="" className="hidden h-14 w-20 shrink-0 rounded-md object-cover sm:block" /> : <div className="hidden h-14 w-20 shrink-0 rounded-md bg-gray-100 sm:block" />}
                 <div className="min-w-0 flex-1">
                   <Link href={`/listings/${listing.id}`} className="block truncate text-sm font-medium text-gray-900 hover:text-emerald-700">
                     {listing.title ?? listing.propertyId}

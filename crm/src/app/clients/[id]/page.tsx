@@ -81,8 +81,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             ) : (
               <ul className="divide-y divide-gray-100">
                 {matches.map((listing) => (
-                  <li key={listing.id} className="flex items-center gap-3 py-2">
-                    {listing.image ? <img src={listing.image} alt="" className="h-14 w-20 shrink-0 rounded-md object-cover" /> : <div className="h-14 w-20 shrink-0 rounded-md bg-gray-100" />}
+                  <li key={listing.id} className="flex items-center gap-2 py-2 sm:gap-3">
+                    {listing.image ? <img src={listing.image} alt="" className="hidden h-14 w-20 shrink-0 rounded-md object-cover sm:block" /> : <div className="hidden h-14 w-20 shrink-0 rounded-md bg-gray-100 sm:block" />}
                     <div className="min-w-0 flex-1">
                       <Link href={`/listings/${listing.id}`} className="block truncate text-sm font-medium text-gray-900 hover:text-emerald-700">
                         {listing.title ?? listing.propertyId}
@@ -113,32 +113,36 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             ) : (
               <ul className="divide-y divide-gray-100">
                 {client.shortlists.map((item) => (
-                  <li key={item.id} className="flex flex-col gap-2 py-2 md:flex-row md:items-center">
-                    <div className="min-w-0 flex-1">
-                      <Link href={`/listings/${item.listingId}`} className="block truncate text-sm font-medium text-gray-900 hover:text-emerald-700">
-                        {item.listing.title ?? item.listingId}
-                      </Link>
-                      <div className="text-xs text-gray-500">
-                        {item.listing.neighbourhood ?? item.listing.district} · {fmtMoney(item.listing.priceUsd)} · {item.listing.rooms ? `${item.listing.rooms} ოთ.` : ""}
+                  <li key={item.id} className="space-y-2 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/listings/${item.listingId}`} className="block truncate text-sm font-medium text-gray-900 hover:text-emerald-700">
+                          {item.listing.title ?? item.listingId}
+                        </Link>
+                        <div className="text-xs text-gray-500">
+                          {item.listing.neighbourhood ?? item.listing.district} · {fmtMoney(item.listing.priceUsd)} · {item.listing.rooms ? `${item.listing.rooms} ოთ.` : ""}
+                        </div>
                       </div>
+                      <PhoneButton phone={item.listing.phone || item.listing.lead?.manualPhone} />
                     </div>
-                    <PhoneButton phone={item.listing.phone || item.listing.lead?.manualPhone} />
-                    <form action={updateShortlist} className="flex items-center gap-1">
-                      <input type="hidden" name="id" value={item.id} />
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <Select name="status" defaultValue={item.status} className="w-40">
-                        {SHORTLIST_STATUSES.map((s) => (
-                          <option key={s.value} value={s.value}>{s.label}</option>
-                        ))}
-                      </Select>
-                      <Input name="note" defaultValue={item.note ?? ""} placeholder="შენიშვნა" className="w-40" />
-                      <Button size="sm" variant="secondary" type="submit">OK</Button>
-                    </form>
-                    <form action={removeFromShortlist}>
-                      <input type="hidden" name="id" value={item.id} />
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <Button size="sm" variant="danger" type="submit">×</Button>
-                    </form>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <form action={updateShortlist} className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                        <input type="hidden" name="id" value={item.id} />
+                        <input type="hidden" name="clientId" value={client.id} />
+                        <Select name="status" defaultValue={item.status} className="w-full sm:w-44">
+                          {SHORTLIST_STATUSES.map((s) => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </Select>
+                        <Input name="note" defaultValue={item.note ?? ""} placeholder="შენიშვნა" className="min-w-0 flex-1" />
+                        <Button size="sm" variant="secondary" type="submit">OK</Button>
+                      </form>
+                      <form action={removeFromShortlist}>
+                        <input type="hidden" name="id" value={item.id} />
+                        <input type="hidden" name="clientId" value={client.id} />
+                        <Button size="sm" variant="danger" type="submit">×</Button>
+                      </form>
+                    </div>
                   </li>
                 ))}
               </ul>

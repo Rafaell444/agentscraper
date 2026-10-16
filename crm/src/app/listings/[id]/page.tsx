@@ -80,7 +80,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <ListingsLink className="ui-btn ui-btn-ghost ui-btn-sm -ml-2">← განცხადებები (ფილტრებით)</ListingsLink>
+        <ListingsLink className="ui-btn ui-btn-ghost ui-btn-sm -ml-2">← განცხადებები</ListingsLink>
         <div className="flex gap-2">
           {listing.link ? (
             <LinkButton href={listing.link} external size="sm">
