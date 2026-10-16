@@ -1,10 +1,15 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "./db";
 import { STATUSES } from "./options";
 import { dayKey, daysAgo, endOfToday, median } from "./format";
 
-export type DashboardStats = Awaited<ReturnType<typeof dashboardStats>>;
+export type DashboardStats = Awaited<ReturnType<typeof dashboardStatsUncached>>;
 
-export async function dashboardStats(who = "owner") {
+// Dashboard numbers change when the collector runs (every 30 min) or an agent
+// acts; a one-minute cache keeps page switches fast without hiding changes.
+export const dashboardStats = unstable_cache(dashboardStatsUncached, ["dashboard-stats"], { revalidate: 60 });
+
+async function dashboardStatsUncached(who = "owner") {
   const kind = who === "owner" || who === "agent" ? { posterKind: who } : {};
   const since30 = daysAgo(30);
   const since7 = daysAgo(7);
@@ -53,11 +58,14 @@ export async function dashboardStats(who = "owner") {
         include: { lead: { select: { status: true } } },
       }),
     ]);
-  const copies = await prisma.listing.groupBy({
-    by: ["propertyKey"],
-    where: { archived: false, collectedAt: { gte: since30 }, NOT: { propertyKey: null } },
-    _count: true,
-  });
+  const [copies, reposted] = await Promise.all([
+    prisma.listing.groupBy({
+      by: ["propertyKey"],
+      where: { archived: false, collectedAt: { gte: since30 }, NOT: { propertyKey: null } },
+      _count: true,
+    }),
+    prisma.lead.count({ where: { repostedId: { not: null }, listing: { archived: false, ...kind } } }),
+  ]);
   const multiPosted = copies.filter((row) => row._count > 1).length;
 
   // New listings per day for the last 30 days, split by site.
@@ -162,6 +170,7 @@ export async function dashboardStats(who = "owner") {
       todayFollowUps,
       overdue: overdueFollowUps.length,
       multiPosted,
+      reposted,
     },
     who,
     perDay,

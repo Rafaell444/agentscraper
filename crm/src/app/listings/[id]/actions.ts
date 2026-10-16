@@ -86,6 +86,20 @@ export async function setManualPhone(formData: FormData) {
   revalidate(listingId);
 }
 
+export async function setReposted(formData: FormData) {
+  const user = await requireUser();
+  const listingId = String(formData.get("listingId") ?? "");
+  const repostedId = String(formData.get("repostedId") ?? "").trim();
+  if (!listingId) return;
+  await prisma.lead.upsert({
+    where: { listingId },
+    update: { repostedId: repostedId || null, repostedById: repostedId ? user.id : null, repostedAt: repostedId ? new Date() : null },
+    create: { listingId, repostedId: repostedId || null, repostedById: repostedId ? user.id : null, repostedAt: repostedId ? new Date() : null },
+  });
+  await logActivity(user.id, "repost", listingId, repostedId || "წაიშალა");
+  revalidate(listingId);
+}
+
 export async function setHidden(formData: FormData) {
   const user = await requireUser();
   const listingId = String(formData.get("listingId") ?? "");

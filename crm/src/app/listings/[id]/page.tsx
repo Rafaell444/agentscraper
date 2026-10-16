@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { PRIORITIES, STATUSES, statusColor } from "@/lib/options";
 import { fmtDate, fmtMoney, fmtNum, waHref } from "@/lib/format";
 import { Button, Card, Input, LinkButton, PhoneButton, PosterBadge, Select, SiteBadge, StatusBadge } from "@/components/ui";
-import { addNote, logCall, queuePublication, setFollowUp, setHidden, setManualPhone, setStatus, updateLead } from "./actions";
+import { addNote, logCall, queuePublication, setFollowUp, setHidden, setManualPhone, setReposted, setStatus, updateLead } from "./actions";
 import { ListingsLink } from "@/components/ListingsLink";
 import { getSettings } from "@/lib/settings";
 import { buildPublicationText } from "@/lib/publishText";
@@ -40,7 +40,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   const listing = await prisma.listing.findUnique({
     where: { id: decodeURIComponent(id) },
     include: {
-      lead: { include: { assignedTo: true } },
+      lead: { include: { assignedTo: true, repostedBy: { select: { name: true } } } },
       notes: { include: { user: true }, orderBy: { createdAt: "desc" } },
       activities: { include: { user: true }, orderBy: { createdAt: "desc" }, take: 30 },
       priceHistory: { orderBy: { seenAt: "asc" } },
@@ -131,6 +131,9 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     : [];
   const phones = (listing.phone ?? "").split(";").map((p) => p.trim()).filter(Boolean);
   if (listing.lead?.manualPhone) phones.unshift(listing.lead.manualPhone);
+  // Phone of the same property on another site (confirmed copy) when this one has none.
+  const linked = phones.length ? null : confirmed.find((c) => c.phone) ?? null;
+  if (linked?.phone) phones.push(linked.phone.split(";")[0].trim());
   const currentStatus = listing.lead?.status ?? "new";
 
   return (
@@ -166,6 +169,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   {priceChange < 0 ? <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800">ფასი ↓ {fmtMoney(Math.abs(priceChange))}</span> : null}
                   {priceChange > 0 ? <span className="rounded-md bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800">ფასი ↑ {fmtMoney(priceChange)}</span> : null}
                   {listing.archived ? <span className="rounded-md bg-gray-200 px-1.5 py-0.5 text-[11px] font-medium">არქივი</span> : null}
+                  {listing.lead?.repostedId ? <span className="rounded-md bg-indigo-100 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-800">გაზიარებული: {listing.lead.repostedId}</span> : null}
                   {listing.vip ? <span className="rounded-md bg-yellow-100 px-1.5 py-0.5 text-[11px] font-medium text-yellow-800">{listing.vip}</span> : null}
                 </div>
                 <h1 className="text-xl font-bold leading-snug text-gray-900">{listing.title ?? listing.propertyId}</h1>
@@ -338,6 +342,11 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             ) : (
               <p className="mt-2 text-sm text-gray-400">ნომერი ჯერ არ არის გამოვლენილი</p>
             )}
+            {linked ? (
+              <p className="mt-1 text-xs text-amber-700">
+                ნომერი იგივე ობიექტის განცხადებიდან {linked.siteName}-ზე ({linked.ownerName || "—"}) — <Link href={`/listings/${linked.id}`} className="underline">ნახვა</Link>
+              </p>
+            ) : null}
             <form action={setManualPhone} className="mt-3 flex gap-1">
               <input type="hidden" name="listingId" value={listing.id} />
               <Input name="manualPhone" defaultValue={listing.lead?.manualPhone ?? ""} placeholder="ნომერი ხელით (მაგ. MyHome-დან)" inputMode="tel" className="min-w-0 flex-1" />
@@ -355,6 +364,20 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             <div className="mt-3 border-t border-gray-100 pt-3">
               <WaTemplates phone={phones[0]} kinds={["owner_first", "owner_followup"]} values={templateValues} />
             </div>
+          </Card>
+
+          <Card title="ჩვენი განცხადება (აგენტის ასლი)">
+            <p className="text-xs text-gray-500">თუ ეს ობიექტი შენი პროფილიდანაც დადე (MyHome, SS.ge…), ჩაწერე იმ განცხადების ID ან ბმული — გამოჩნდება სიაში და ფილტრში „გაზიარებული“.</p>
+            <form action={setReposted} className="mt-2 flex gap-1">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <Input name="repostedId" defaultValue={listing.lead?.repostedId ?? ""} placeholder="ID ან ბმული" className="min-w-0 flex-1" />
+              <Button type="submit" variant="secondary">✓</Button>
+            </form>
+            {listing.lead?.repostedId ? (
+              <p className="mt-1 text-xs text-emerald-700">
+                გაზიარებულია: {listing.lead.repostedId} · {listing.lead.repostedBy?.name ?? ""} · {fmtDate(listing.lead.repostedAt)}
+              </p>
+            ) : null}
           </Card>
 
           <Card title="საჯარო ბარათი კლიენტისთვის">

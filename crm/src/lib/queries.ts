@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 import { prisma } from "./db";
 import { PAGE_SIZE } from "./options";
 import { daysAgo } from "./format";
@@ -36,6 +37,7 @@ export type ListingFilters = {
   page: string;
   who: string; // owner | agent | all
   key: string; // property key: every posting of one property
+  reposted: string; // "1" = only ads our agents re-posted under their own profile
 };
 
 export const POSTER_KINDS = [
@@ -66,6 +68,7 @@ export function readFilters(params: SearchParams): ListingFilters {
     page: param(params, "page") || "1",
     who: param(params, "who") || "owner",
     key: param(params, "key"),
+    reposted: param(params, "reposted"),
   };
 }
 
@@ -75,6 +78,7 @@ export function buildWhere(filters: ListingFilters): Prisma.ListingWhereInput {
   if (filters.archived !== "1") where.archived = false;
   if (filters.who === "owner" || filters.who === "agent") where.posterKind = filters.who;
   if (filters.key) where.propertyKey = filters.key;
+  if (filters.reposted === "1") where.lead = { ...(where.lead as Prisma.LeadWhereInput | undefined), repostedId: { not: null } };
   if (filters.site) where.site = filters.site;
   if (filters.deal) where.dealType = filters.deal;
   if (filters.type) where.propertyType = filters.type;
@@ -101,6 +105,9 @@ export function buildWhere(filters: ListingFilters): Prisma.ListingWhereInput {
         { description: { contains: filters.q } },
         { ownerName: { contains: filters.q } },
         { propertyId: { contains: filters.q } },
+        { phone: { contains: filters.q } },
+        { lead: { repostedId: { contains: filters.q } } },
+        { lead: { manualPhone: { contains: filters.q } } },
       ],
     });
   }
@@ -143,20 +150,30 @@ export async function listListings(filters: ListingFilters) {
       orderBy: buildOrder(filters.sort),
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
-      include: { lead: { include: { assignedTo: { select: { id: true, name: true } } } } },
+      include: { lead: { include: { assignedTo: { select: { id: true, name: true } }, repostedBy: { select: { name: true } } } } },
     }),
   ]);
-  // How many postings share each listed property (same property on other sites / by other posters).
+  // How many postings share each listed property, and a phone from another
+  // posting of the same property when this one has none.
   const keys = Array.from(new Set(items.map((item) => item.propertyKey).filter((key): key is string => Boolean(key))));
-  const copies = keys.length
-    ? await prisma.listing.groupBy({ by: ["propertyKey"], where: { propertyKey: { in: keys } }, _count: true })
-    : [];
+  const [copies, phoned] = keys.length
+    ? await Promise.all([
+        prisma.listing.groupBy({ by: ["propertyKey"], where: { propertyKey: { in: keys } }, _count: true }),
+        prisma.listing.findMany({ where: { propertyKey: { in: keys }, NOT: [{ phone: null }, { phone: "" }] }, select: { propertyKey: true, phone: true, siteName: true, id: true } }),
+      ])
+    : [[], []];
   const copyCounts: Record<string, number> = {};
   for (const row of copies) if (row.propertyKey) copyCounts[row.propertyKey] = row._count;
-  return { total, items, page, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)), copyCounts };
+  const linkedPhones: Record<string, { phone: string; siteName: string; id: string }> = {};
+  for (const row of phoned) if (row.propertyKey && row.phone && !linkedPhones[row.propertyKey]) linkedPhones[row.propertyKey] = { phone: row.phone, siteName: row.siteName, id: row.id };
+  return { total, items, page, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)), copyCounts, linkedPhones };
 }
 
-export async function filterOptions(who = "") {
+// Filter option lists change only when the collector runs (every 30 min), so
+// cache them briefly instead of running five GROUP BYs on every page view.
+export const filterOptions = unstable_cache(filterOptionsUncached, ["filter-options"], { revalidate: 300 });
+
+async function filterOptionsUncached(who = "") {
   const kind: Prisma.ListingWhereInput = who === "owner" || who === "agent" ? { posterKind: who } : {};
   const [sites, deals, types, areas, users] = await Promise.all([
     prisma.listing.groupBy({ by: ["site", "siteName"], where: { archived: false, ...kind }, _count: true, orderBy: { site: "asc" } }),
@@ -186,4 +203,4 @@ export async function filterOptions(who = "") {
   };
 }
 
-export type FilterOptions = Awaited<ReturnType<typeof filterOptions>>;
+export type FilterOptions = Awaited<ReturnType<typeof filterOptionsUncached>>;

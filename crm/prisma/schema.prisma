@@ -69,6 +69,9 @@ model Listing {
   @@index([phone])
   @@index([posterKind])
   @@index([propertyKey])
+  @@index([archived, collectedAt])
+  @@index([archived, posterKind, collectedAt])
+  @@index([neighbourhood, dealType])
   @@map("listings")
 }
 
@@ -94,7 +97,8 @@ model User {
 
   telegramChatId String? @map("telegram_chat_id") // for personal alerts
 
-  leads         Lead[]
+  leads         Lead[]   @relation("LeadAssignee")
+  reposts       Lead[]   @relation("LeadReposter")
   notes         Note[]
   activities    Activity[]
   publications  Publication[]
@@ -166,17 +170,22 @@ model Lead {
   listing      Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
   status       String    @default("new")
   assignedToId String?   @map("assigned_to_id")
-  assignedTo   User?     @relation(fields: [assignedToId], references: [id])
+  assignedTo   User?     @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  repostedBy   User?     @relation("LeadReposter", fields: [repostedById], references: [id])
   followUpAt   DateTime? @map("follow_up_at")
   priority     Int       @default(0)
   manualPhone  String?   @map("manual_phone") // number an agent found by hand (e.g. MyHome)
   hidden       Boolean   @default(false) // keep off public pages
+  repostedId   String?   @map("reposted_id") // id/url of our agent's own copy of this ad
+  repostedById String?   @map("reposted_by_id")
+  repostedAt   DateTime? @map("reposted_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([followUpAt])
   @@index([assignedToId])
+  @@index([repostedId])
   @@map("leads")
 }
 

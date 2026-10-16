@@ -18,6 +18,19 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
   const filters = readFilters(await searchParams);
   const [options, result] = await Promise.all([filterOptions(filters.who), listListings(filters)]);
   const base = Object.fromEntries(Object.entries(filters).filter(([key]) => key !== "page")) as Record<string, string>;
+  type Item = (typeof result.items)[number];
+  const phoneFor = (listing: Item) => {
+    if (listing.phone) return { phone: listing.phone, linked: false, from: "" };
+    if (listing.lead?.manualPhone) return { phone: listing.lead.manualPhone, linked: false, from: "" };
+    const link = listing.propertyKey ? result.linkedPhones[listing.propertyKey] : undefined;
+    return link ? { phone: link.phone, linked: true, from: link.siteName } : { phone: null, linked: false, from: "" };
+  };
+  const repostBadge = (listing: Item) =>
+    listing.lead?.repostedId ? (
+      <span title={`გაზიარებული ${listing.lead.repostedBy?.name ?? ""}`} className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-800">
+        ↗ {listing.lead.repostedId.length > 14 ? `${listing.lead.repostedId.slice(0, 12)}…` : listing.lead.repostedId}
+      </span>
+    ) : null;
   const copiesBadge = (key: string | null) => {
     const count = key ? result.copyCounts[key] ?? 0 : 0;
     if (count < 2) return null;
@@ -62,6 +75,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                 <SiteBadge site={listing.site} name={listing.siteName} />
                 <PosterBadge kind={listing.posterKind} ownerType={listing.ownerType} />
                 {copiesBadge(listing.propertyKey)}
+                {repostBadge(listing)}
                 <StatusBadge status={listing.lead?.status} />
               </div>
               <span className="text-xs text-gray-500">{fmtDate(listing.collectedAt, true)}</span>
@@ -81,7 +95,15 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                 {listing.ownerName ?? ""}
                 {listing.lead?.assignedTo?.name ? <span className="text-gray-400"> · {listing.lead.assignedTo.name}</span> : null}
               </span>
-              <PhoneButton phone={listing.phone || listing.lead?.manualPhone} />
+              {(() => {
+                const p = phoneFor(listing);
+                return (
+                  <span className="flex items-center gap-1">
+                    <PhoneButton phone={p.phone} />
+                    {p.linked ? <span className="text-[10px] text-amber-700">{p.from}</span> : null}
+                  </span>
+                );
+              })()}
             </div>
           </li>
         ))}
@@ -116,9 +138,10 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                   <td>
                     <div className="flex flex-col items-start gap-1">
                       <SiteBadge site={listing.site} name={listing.siteName} />
-                      <span className="flex items-center gap-1">
+                      <span className="flex flex-wrap items-center gap-1">
                         <PosterBadge kind={listing.posterKind} ownerType={listing.ownerType} />
                         {copiesBadge(listing.propertyKey)}
+                        {repostBadge(listing)}
                       </span>
                     </div>
                   </td>
@@ -142,7 +165,15 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                   </td>
                   <td>
                     <div className="truncate text-gray-700">{listing.ownerName ?? ""}</div>
-                    <PhoneButton phone={listing.phone || listing.lead?.manualPhone} />
+                    {(() => {
+                      const p = phoneFor(listing);
+                      return (
+                        <>
+                          <PhoneButton phone={p.phone} />
+                          {p.linked ? <div className="text-[10px] text-amber-700">იგივე ობიექტი, {p.from}</div> : null}
+                        </>
+                      );
+                    })()}
                   </td>
                   <td>
                     <StatusBadge status={listing.lead?.status} />

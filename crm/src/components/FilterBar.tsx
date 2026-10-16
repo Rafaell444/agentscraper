@@ -55,16 +55,17 @@ export function FilterBar({ filters, options, userId, total }: Props) {
   const deals = useMemo(() => [...options.deals].sort((a, b) => DEAL_ORDER.indexOf(a) - DEAL_ORDER.indexOf(b)), [options.deals]);
 
   const quick = [
-    { key: "all", label: "ყველა", values: {} as Record<string, string>, active: !filters.days && !filters.status && !filters.phone && !filters.assigned },
+    { key: "all", label: "ყველა", values: {} as Record<string, string>, active: !filters.days && !filters.status && !filters.phone && !filters.assigned && !filters.reposted },
     { key: "today", label: "დღეს", values: { days: "1" }, active: filters.days === "1" },
     { key: "week", label: "7 დღე", values: { days: "7" }, active: filters.days === "7" },
     { key: "new", label: "დაუმუშავებელი", values: { status: "new" }, active: filters.status === "new" },
     { key: "phone", label: "ტელეფონით", values: { phone: "1" }, active: filters.phone === "1" },
     { key: "mine", label: "ჩემი", values: { assigned: userId }, active: filters.assigned === userId },
     { key: "hot", label: "დაინტერესდა", values: { status: "interested" }, active: filters.status === "interested" },
+    { key: "reposted", label: "გაზიარებული", values: { reposted: "1" }, active: filters.reposted === "1" },
   ];
   const quickHref = (values: Record<string, string>, active: boolean) => {
-    const base = { ...filters, days: "", status: "", phone: "", assigned: "" };
+    const base = { ...filters, days: "", status: "", phone: "", assigned: "", reposted: "" };
     return toQuery(active ? base : { ...base, ...values });
   };
 
@@ -94,6 +95,7 @@ export function FilterBar({ filters, options, userId, total }: Props) {
   };
 
   if (filters.key) activeChips.push({ key: "key", label: "იგივე ობიექტის ყველა განცხადება" });
+  if (filters.reposted === "1") activeChips.push({ key: "reposted", label: "აგენტის მიერ გაზიარებული" });
 
   return (
     <div className="space-y-3">

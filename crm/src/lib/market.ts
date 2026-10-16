@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "./db";
 import { daysAgo, median } from "./format";
 
@@ -57,8 +58,10 @@ export type AreaStats = {
   active: number;
 };
 
-/** Per-neighbourhood market table for the last 90 days (apartments). */
-export async function areaStats(level: "neighbourhood" | "district"): Promise<AreaStats[]> {
+/** Per-neighbourhood market table for the last 90 days (apartments); cached 10 minutes. */
+export const areaStats = unstable_cache(areaStatsUncached, ["area-stats"], { revalidate: 600 });
+
+async function areaStatsUncached(level: "neighbourhood" | "district"): Promise<AreaStats[]> {
   const since = daysAgo(90);
   const rows = await prisma.listing.findMany({
     where: { collectedAt: { gte: since }, propertyType: "ბინა", city: { contains: "თბილისი" } },

@@ -44,6 +44,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <StatCard label="ხელშეკრულება (თვე)" value={kpis.signedThisMonth} href={`/listings?${q}&status=signed`} accent="violet" />
         <StatCard label="დასარეკი დღეს / ვადაგადაც." value={`${kpis.todayFollowUps} / ${kpis.overdue}`} href="/followups" accent={kpis.overdue ? "rose" : "amber"} />
         <StatCard label="დაუმუშავებელი" value={stats.funnel[0]?.value ?? 0} href={`/listings?${q}&status=new`} accent="slate" />
+        <StatCard label="გაზიარებული აგენტების მიერ" value={kpis.reposted} hint="ჩვენი პროფილიდან დადებული ასლები" href={`/listings?${q}&reposted=1`} accent="violet" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
