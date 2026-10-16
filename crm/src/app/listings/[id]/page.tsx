@@ -47,23 +47,56 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   const settings = await getSettings();
   const defaultText = buildPublicationText(listing, settings.agency_phone, settings.agency_name);
   const PUB_STATUS: Record<string, string> = { queued: "რიგშია", posted: "გამოქვეყნდა", failed: "შეცდომა", manual: "ხელით", cancelled: "გაუქმდა" };
-  // Every other posting of the same property (other sites, other posters, other prices).
-  const sameProperty = listing.propertyKey
-    ? await prisma.listing.findMany({
-        where: { propertyKey: listing.propertyKey, NOT: { id: listing.id } },
-        select: {
-          id: true, site: true, siteName: true, title: true, posterKind: true, ownerType: true, ownerName: true, phone: true,
-          priceUsd: true, postedAt: true, collectedAt: true, archived: true, floor: true, areaM2: true, address: true,
-          lead: { select: { status: true } },
-        },
-        orderBy: { collectedAt: "desc" },
-        take: 20,
-      })
+  // Other postings of the same property.  "Confirmed" copies share the full
+  // property key (deal, area, rooms, place, floor, street).  "Possible" ones
+  // share deal, rooms, place and a similar area, plus at least one more
+  // signal (price within 10 %, same floor or same street), for the agent to judge.
+  const copySelect = {
+    id: true, site: true, siteName: true, title: true, posterKind: true, ownerType: true, ownerName: true, phone: true,
+    priceUsd: true, postedAt: true, collectedAt: true, archived: true, floor: true, totalFloors: true, areaM2: true, address: true,
+    propertyKey: true, lead: { select: { status: true } },
+  } as const;
+  const confirmed = listing.propertyKey
+    ? await prisma.listing.findMany({ where: { propertyKey: listing.propertyKey, NOT: { id: listing.id } }, select: copySelect, orderBy: { collectedAt: "desc" }, take: 20 })
     : [];
+  const streetToken = (address: string | null | undefined) => {
+    const noise = new Set(["ქ", "ქუჩა", "ქუჩაზე", "გამზ", "გამზირი", "გამზირზე", "ჩიხი", "შეს", "შესახვევი", "ხეივანი", "ხეივ", "მოედანი", "დასახლება", "დას", "კორპ", "ბინა"]);
+    const words = (address ?? "").toLowerCase().replace(/[\d.,;:/()\-–№#]+/g, " ").split(/\s+/);
+    const word = words.find((w) => w.length >= 4 && !noise.has(w));
+    return word ? word.slice(0, 5) : "";
+  };
+  const candidates =
+    listing.dealType && listing.rooms && listing.areaM2 && (listing.neighbourhood || listing.district)
+      ? await prisma.listing.findMany({
+          where: {
+            dealType: listing.dealType,
+            rooms: listing.rooms,
+            areaM2: { gte: listing.areaM2 - 2, lte: listing.areaM2 + 2 },
+            ...(listing.neighbourhood ? { neighbourhood: listing.neighbourhood } : { district: listing.district }),
+            NOT: { id: { in: [listing.id, ...confirmed.map((c) => c.id)] } },
+          },
+          select: copySelect,
+          orderBy: { collectedAt: "desc" },
+          take: 60,
+        })
+      : [];
+  const myStreet = streetToken(listing.address);
+  const possible = candidates
+    .map((c) => {
+      const reasons: string[] = [];
+      if (listing.priceUsd && c.priceUsd && Math.abs(c.priceUsd - listing.priceUsd) / listing.priceUsd <= 0.1) reasons.push("ფასი");
+      if (listing.floor != null && c.floor != null && listing.floor === c.floor) reasons.push("სართული");
+      if (myStreet && streetToken(c.address) === myStreet) reasons.push("ქუჩა");
+      return { ...c, reasons };
+    })
+    .filter((c) => c.reasons.length > 0)
+    .sort((a, b) => b.reasons.length - a.reasons.length)
+    .slice(0, 10);
+  const sameProperty = [...confirmed.map((c) => ({ ...c, reasons: ["ქუჩა", "სართული"] })), ...possible];
   const prices = listing.priceHistory.map((p) => p.priceUsd).filter((p): p is number => p != null);
   const priceChange = prices.length >= 2 ? prices[prices.length - 1] - prices[0] : 0;
-  const ownerCopies = sameProperty.filter((c) => c.posterKind === "owner").length;
-  const agentCopies = sameProperty.filter((c) => c.posterKind === "agent").length;
+  const ownerCopies = confirmed.filter((c) => c.posterKind === "owner").length;
+  const agentCopies = confirmed.filter((c) => c.posterKind === "agent").length;
   const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
   const firstPhone = (listing.phone ?? "").split(";")[0].trim();
   const samePhone = firstPhone
@@ -102,8 +135,10 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   <SiteBadge site={listing.site} name={listing.siteName} />
                   <PosterBadge kind={listing.posterKind} ownerType={listing.ownerType} />
                   <StatusBadge status={currentStatus} />
-                  {sameProperty.length ? (
-                    <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">განთავსებულია {sameProperty.length + 1}-ჯერ</span>
+                  {confirmed.length ? (
+                    <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">კიდევ {confirmed.length} განცხადება ამ ობიექტზე</span>
+                  ) : possible.length ? (
+                    <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600">{possible.length} შესაძლო დუბლი</span>
                   ) : null}
                   {priceChange < 0 ? <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800">ფასი ↓ {fmtMoney(Math.abs(priceChange))}</span> : null}
                   {priceChange > 0 ? <span className="rounded-md bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800">ფასი ↑ {fmtMoney(priceChange)}</span> : null}
@@ -138,9 +173,9 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           </Card>
 
           <Card
-            title={sameProperty.length ? `იგივე ობიექტი: ${sameProperty.length + 1} განცხადება` : "იგივე ობიექტი"}
+            title={confirmed.length ? `იგივე ობიექტი: კიდევ ${confirmed.length} განცხადება` : possible.length ? `შესაძლო დუბლები: ${possible.length}` : "იგივე ობიექტი"}
             action={
-              sameProperty.length ? (
+              confirmed.length ? (
                 <span className="text-xs text-gray-500">
                   {ownerCopies ? `${ownerCopies} მესაკუთრისგან` : ""}
                   {ownerCopies && agentCopies ? " · " : ""}
@@ -163,13 +198,14 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                       <th className="py-1 pr-2">ვინ</th>
                       <th className="py-1 pr-2">სახელი / ტელეფონი</th>
                       <th className="py-1 pr-2 text-right">ფასი</th>
+                      <th className="py-1 pr-2">სართ. / მისამართი</th>
                       <th className="py-1 pr-2">განთავსდა</th>
-                      <th className="py-1">სტატუსი</th>
+                      <th className="py-1">ემთხვევა</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sameProperty.map((copy) => (
-                      <tr key={copy.id} className={`border-t border-gray-100 ${copy.archived ? "opacity-50" : ""}`}>
+                    {sameProperty.map((copy, index) => (
+                      <tr key={copy.id} className={`border-t border-gray-100 ${copy.archived ? "opacity-50" : ""} ${index >= confirmed.length ? "bg-gray-50/60" : ""}`}>
                         <td className="py-1.5 pr-2">
                           <Link href={`/listings/${copy.id}`} className="hover:underline">
                             <SiteBadge site={copy.site} name={copy.siteName} />
@@ -185,15 +221,24 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                         <td className={`py-1.5 pr-2 text-right font-semibold tabular-nums ${copy.priceUsd && listing.priceUsd && copy.priceUsd < listing.priceUsd ? "text-emerald-700" : "text-gray-900"}`}>
                           {fmtMoney(copy.priceUsd)}
                         </td>
+                        <td className="py-1.5 pr-2 text-xs text-gray-600">
+                          {copy.floor != null ? `${copy.floor}${copy.totalFloors ? `/${copy.totalFloors}` : ""} სართ.` : "—"}
+                          <div className="truncate text-gray-500">{copy.address ?? ""}</div>
+                        </td>
                         <td className="py-1.5 pr-2 text-xs text-gray-500">{fmtDate(copy.postedAt ?? copy.collectedAt)}</td>
                         <td className="py-1.5">
-                          <StatusBadge status={copy.lead?.status} />
+                          {index < confirmed.length ? (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">დადასტურებული</span>
+                          ) : (
+                            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-700">შესაძლო: {copy.reasons.join(", ")}</span>
+                          )}
+                          <div className="mt-0.5"><StatusBadge status={copy.lead?.status} /></div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <p className="mt-2 text-xs text-gray-400">ემთხვევა გარიგება, ფართი (±1 მ²), ოთახები და უბანი. შეადარე სართული და მისამართი დარწმუნებისთვის.</p>
+                <p className="mt-2 text-xs text-gray-400">დადასტურებული = იგივე გარიგება, ფართი, ოთახები, უბანი, სართული და ქუჩა. შესაძლო = იგივე ფართი/ოთახები/უბანი და ერთი დამატებითი ნიშანი (ფასი ±10%, სართული ან ქუჩა) — შეამოწმე.</p>
               </div>
             )}
             {listing.priceHistory.length > 1 ? (

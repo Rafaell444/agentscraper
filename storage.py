@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 import sqlite3
 import tempfile
 import uuid
@@ -92,17 +93,38 @@ def poster_kind(row: dict[str, Any]) -> str:
     return "owner" if owner_type == OWNER_PHYSICAL else "agent"
 
 
+_STREET_NOISE = {"ქ", "ქუჩა", "ქუჩაზე", "გამზ", "გამზირი", "გამზირზე", "ჩიხი", "შეს", "შესახვევი", "ხეივანი", "ხეივ", "მოედანი", "დასახლება", "დას", "კორპ", "ბინა", "მ/რ", "მკრ"}
+
+
+def street_token(address: Any) -> str:
+    """First meaningful word of a street address, trimmed so declensions match
+    (``შარტავას ქ. 43`` and ``შარტავა 43`` both give ``შარტა``)."""
+    text = re.sub(r"[\d.,;:/()\-–№#]+", " ", str(address or "").lower())
+    for word in text.split():
+        if len(word) >= 4 and word not in _STREET_NOISE and not word.endswith("."):
+            return word[:5]
+    return ""
+
+
 def property_key(row: dict[str, Any]) -> str:
-    """Key shared by postings of the same property: deal, area bucket, rooms, place."""
+    """Key shared by postings of the same property.
+
+    Deal type, area (2 m² buckets), rooms and place are not enough: every
+    2-room 52 m² flat for sale in Saburtalo would match.  The key therefore
+    also needs the floor and the street.  Postings missing either only match
+    other postings that miss it too, which keeps false matches rare.
+    """
     area = number(row.get("Area m2"))
     rooms = number(row.get("Rooms"))
     place = str(row.get("Neighbourhood") or row.get("District") or "").strip()
     deal = str(row.get("Deal Type") or "").strip()
-    # Without rooms the key would lump every 56 m² flat in a district together.
     if area == "" or rooms == "" or not place or not deal:
         return ""
     bucket = int(round(float(area) / 2.0)) * 2
-    return f"{deal}|{bucket}|{int(rooms)}|{place}"
+    floor = number(row.get("Floor"))
+    floor_text = str(int(floor)) if floor != "" else "?"
+    street = street_token(row.get("Address")) or "?"
+    return f"{deal}|{bucket}|{int(rooms)}|{place}|{floor_text}|{street}"
 
 
 # --------------------------------------------------------------------------
