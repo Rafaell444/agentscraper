@@ -14,7 +14,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   no_show: { label: "არ მოვიდა", cls: "bg-rose-100 text-rose-800" },
 };
 
-export function conflicts<T extends { agentId: string; scheduledAt: Date; id: string; status: string }>(items: T[]): Set<string> {
+function conflicts<T extends { agentId: string; scheduledAt: Date; id: string; status: string }>(items: T[]): Set<string> {
   const flagged = new Set<string>();
   const active = items.filter((v) => v.status === "planned");
   for (const a of active) {
