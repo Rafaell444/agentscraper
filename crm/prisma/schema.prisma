@@ -106,6 +106,7 @@ model User {
   viewings      Viewing[]
   deals         Deal[]
   notifications Notification[]
+  sharedPosts   SharedPost[]
 
   @@map("users")
 }
@@ -237,6 +238,7 @@ model Client {
   shortlists Shortlist[]
   viewings   Viewing[]
   deals      Deal[]
+  sharedPosts SharedPost[]
 
   @@index([status])
   @@index([segment])
@@ -255,6 +257,62 @@ model Shortlist {
 
   @@unique([clientId, listingId])
   @@map("shortlists")
+}
+
+// Our own copy of an ad (imported from myhome.ge / binebi.ge / ... or typed by
+// hand) with the agent's contact, sent to a client as a private link.  The
+// public page is reachable only through the random token, never by id.
+model SharedPost {
+  id           String    @id @default(cuid())
+  token        String    @unique
+  status       String    @default("draft") // draft | published | archived
+  sourceUrl    String?   @map("source_url")
+  listingId    String?   @map("listing_id") // CRM listing it was copied from
+  clientId     String?   @map("client_id")
+  client       Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  lang         String    @default("ka") // page labels: ka | en | ru
+  title        String
+  dealType     String?   @map("deal_type")
+  propertyType String?   @map("property_type")
+  location     String?
+  price        Float?
+  currency     String    @default("USD") // USD | GEL
+  area         Float?
+  rooms        Int?
+  bedrooms     Int?
+  bathrooms    Int?
+  floor        Int?
+  totalFloors  Int?      @map("total_floors")
+  condition    String?
+  description  String?
+  contactName  String?   @map("contact_name")
+  contactPhone String?   @map("contact_phone")
+  views        Int       @default(0)
+  lastViewedAt DateTime? @map("last_viewed_at")
+  createdById  String    @map("created_by_id")
+  createdBy    User      @relation(fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  photos SharedPostPhoto[]
+
+  @@index([createdById, createdAt])
+  @@index([status])
+  @@map("shared_posts")
+}
+
+// Photos live in the database so the client never sees the source site's
+// image URLs (they carry the original listing id).
+model SharedPostPhoto {
+  id       String     @id @default(cuid())
+  postId   String     @map("post_id")
+  post     SharedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  position Int        @default(0)
+  mime     String
+  data     Bytes
+
+  @@index([postId, position])
+  @@map("shared_post_photos")
 }
 
 // Free-form settings edited in the CRM (agency phone, public page texts, channel ids).

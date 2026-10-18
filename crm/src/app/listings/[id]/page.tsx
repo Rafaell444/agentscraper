@@ -13,8 +13,12 @@ import { benchmark } from "@/lib/market";
 import { WaTemplates } from "@/components/WaTemplates";
 import { createViewing } from "@/app/viewings/actions";
 import { createDeal } from "@/app/deals/actions";
+import { createPostFromListing } from "@/app/shared/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
+// "Post for client" downloads the listing's photos.
+export const maxDuration = 60;
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === "") return null;
@@ -388,6 +392,11 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               ))}
             </div>
             <input readOnly value={publicCard} className="ui-field mt-2 text-xs" onFocus={undefined} />
+            <form action={createPostFromListing} className="mt-3 border-t border-gray-100 pt-3">
+              <input type="hidden" name="listingId" value={listing.id} />
+              <p className="mb-2 text-xs text-gray-500">ან შექმენი პირადი პოსტი: ტექსტს, ფოტოებს და ნომერს შეცვლი, კლიენტი სხვა განცხადებებს ვერ ნახავს.</p>
+              <SubmitButton pending="იქმნება… (ფოტოები)" className="ui-btn ui-btn-primary ui-btn-sm">პოსტი კლიენტისთვის →</SubmitButton>
+            </form>
           </Card>
 
           <Card title="დათვალიერების დაგეგმვა">

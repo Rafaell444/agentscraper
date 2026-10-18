@@ -23,7 +23,7 @@ export const viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   const pathname = (await headers()).get("x-pathname") ?? "";
-  const isPublic = pathname.startsWith("/p/");
+  const isPublic = pathname.startsWith("/p/") || pathname.startsWith("/s/");
   const unread = session && !isPublic ? await prisma.notification.count({ where: { userId: session.id, readAt: null } }).catch(() => 0) : 0;
   return (
     <html lang={isPublic ? "en" : "ka"}>
