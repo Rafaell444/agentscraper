@@ -1,0 +1,39 @@
+name: Fetch one listing for the CRM
+
+# Started by the CRM (POST /actions/workflows/fetch-listing.yml/dispatches)
+# when an agent imports a MyHome link the collector has not saved yet.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Listing URL (myhome.ge)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fetch-listing-${{ github.event.inputs.url }}
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Only what fetch_listing.py imports, so the job starts quickly.
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check requests==2.32.5 beautifulsoup4==4.13.5 "psycopg[binary]==3.2.9" PySocks==1.7.1
+
+      - name: Fetch and save the listing
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LISTING_URL: ${{ github.event.inputs.url }}
+        run: python fetch_listing.py "$LISTING_URL"

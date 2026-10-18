@@ -117,7 +117,8 @@ def parse_list(session: requests.Session, page: int) -> list[dict[str, Any]]:
 
 
 def needs_detail(row: dict[str, Any]) -> bool:
-    return row.get("Detail Status") != "done"
+    # Rows read before photos/map were stored are read once more.
+    return row.get("Detail Status") != "done" or not row.get("Images")
 
 
 def breadcrumbs(soup: Tag) -> list[str]:
@@ -172,6 +173,15 @@ def fetch_detail(session: requests.Session, row: dict[str, Any]) -> dict[str, An
         "Total Floors": total_floors,
         "Description": description,
     }
+    # Map point from the page script (var map_lat = '41.7'; var map_lon = '44.8';)
+    # and the gallery on the CDN (thumbnails skipped).
+    html = str(soup)
+    lat = re.search(r"map_lat\s*=\s*'(-?[\d.]+)'", html)
+    lng = re.search(r"map_lon\s*=\s*'(-?[\d.]+)'", html)
+    update["Lat"] = number(lat.group(1)) if lat else ""
+    update["Lng"] = number(lng.group(1)) if lng else ""
+    photos = re.findall(r"https://cdn\.binebi\.ge/uploads/homes/" + re.escape(str(row["Property ID"])) + r"/[^\"'\s)]+\.(?:jpe?g|png|webp)", html)
+    update["Images"] = json.dumps([url for url in dict.fromkeys(photos) if "/thumbnail/" not in url][:30])
     if len(crumbs) >= 4:
         update["Deal Type"] = crumbs[1]
         update["City"] = crumbs[3]

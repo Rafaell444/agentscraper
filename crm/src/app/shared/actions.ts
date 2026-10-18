@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
-import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, type PostDraft } from "@/lib/sharedPosts";
+import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, requestCollectorFetch, type PostDraft } from "@/lib/sharedPosts";
 
 function text(formData: FormData, key: string): string | null {
   return String(formData.get(key) ?? "").trim() || null;
@@ -59,13 +59,17 @@ export async function importPost(formData: FormData) {
   const user = await requireUser();
   const url = text(formData, "url");
   const clientId = text(formData, "clientId");
-  const result: { draft: PostDraft; found: boolean; sourceUrl: string | null } = url
+  const result: { draft: PostDraft; found: boolean; sourceUrl: string | null; needsCollector: boolean } = url
     ? await draftFromUrl(url)
-    : { draft: { title: "", imageUrls: [] }, found: false, sourceUrl: null };
+    : { draft: { title: "", imageUrls: [] }, found: false, sourceUrl: null, needsCollector: false };
   const post = await createFromDraft(user.id, result.draft, { sourceUrl: result.sourceUrl, clientId });
+  // MyHome pages are fetched by the collector (~1 minute); the editor fills
+  // the post in when the listing lands in the database.
+  const waiting = result.needsCollector && result.sourceUrl ? await requestCollectorFetch(result.sourceUrl) : false;
+  if (waiting) await prisma.sharedPost.update({ where: { id: post.id }, data: { importState: "waiting", importRequestedAt: new Date() } });
   await logActivity(user.id, "shared_post", result.draft.listingId ?? null, `პოსტი შეიქმნა: ${post.title}`);
   revalidatePath("/shared");
-  redirect(`/shared/${post.id}${url && !result.found ? "?notfound=1" : ""}`);
+  redirect(`/shared/${post.id}${url && !result.found && !waiting ? "?notfound=1" : ""}`);
 }
 
 export async function createPostFromListing(formData: FormData) {
@@ -124,6 +128,17 @@ export async function updatePost(formData: FormData) {
   revalidatePath(`/shared/${id}`);
   revalidatePath("/shared");
   redirect(`/shared/${id}?saved=${publish ? "published" : "1"}${mapBad ? "&map=bad" : ""}`);
+}
+
+/** Ask the collector again for a MyHome post whose fetch failed. */
+export async function retryCollectorFetch(formData: FormData) {
+  await requireUser();
+  const id = String(formData.get("id") ?? "");
+  const post = id ? await prisma.sharedPost.findUnique({ where: { id }, select: { sourceUrl: true } }) : null;
+  if (!post?.sourceUrl) return;
+  const ok = await requestCollectorFetch(post.sourceUrl);
+  await prisma.sharedPost.update({ where: { id }, data: ok ? { importState: "waiting", importRequestedAt: new Date() } : { importState: "failed" } });
+  revalidatePath(`/shared/${id}`);
 }
 
 /** "Save and publish" button: same form, then the post goes live. */

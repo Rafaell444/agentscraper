@@ -8,6 +8,7 @@ reveals them through the site's own show-number button for owner listings.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urljoin
@@ -187,21 +188,48 @@ def parse_list(session: requests.Session, page: int) -> list[dict[str, Any]]:
 
 
 def needs_detail(row: dict[str, Any]) -> bool:
-    # The list JSON carries everything, including the listing age (posting
-    # date) and poster type; the detail page only adds a masked phone.
-    return False
+    # The list JSON carries the card data but no map point (lat/lng are null)
+    # and only the first photo; the detail page is read once for those.
+    # "Images" is "[]" after a read that found none, so it is not retried.
+    return not row.get("Images")
 
 
-def fetch_detail(session: requests.Session, row: dict[str, Any]) -> dict[str, Any]:
-    polite_pause()
-    url = str(row["Link"])
-    detail = extract_detail_record(next_data(get_html(session, url), url))
+def detail_photos(detail: dict[str, Any]) -> list[str]:
+    urls = []
+    for image in detail.get("images") or []:
+        url = (image.get("large") or image.get("thumb")) if isinstance(image, dict) else image
+        if url:
+            urls.append(str(url))
+    return list(dict.fromkeys(urls))[:30]
+
+
+def detail_fields(detail: dict[str, Any]) -> dict[str, Any]:
     user_type = (detail.get("user_type") or {}).get("type") or ""
     return {
         "Condition": detail.get("condition") or "",
         "Posted": str(detail.get("created_at") or ""),
         "Owner Name": str(detail.get("owner_name") or "").strip(),
         "Owner Type": OWNER_TYPES.get(user_type, user_type),
+        "Rooms": integer(detail.get("room_type_id")),
+        "Bedrooms": integer(detail.get("bedroom_type_id")),
         "Bathrooms": integer(detail.get("bathroom_type_id")),
         "Yard Area m2": number(detail.get("yard_area")),
+        "Lat": number(detail.get("lat")),
+        "Lng": number(detail.get("lng")),
+        "Images": json.dumps(detail_photos(detail)),
     }
+
+
+def fetch_detail(session: requests.Session, row: dict[str, Any]) -> dict[str, Any]:
+    polite_pause()
+    url = str(row["Link"])
+    return detail_fields(extract_detail_record(next_data(get_html(session, url), url)))
+
+
+def fetch_one(session: requests.Session, url: str) -> dict[str, Any]:
+    """A full row for one listing from its detail page (CRM on-demand import)."""
+    detail = extract_detail_record(next_data(get_html(session, url), url))
+    row = row_from_record(detail)
+    row.update({key: value for key, value in detail_fields(detail).items() if value not in ("", None)})
+    row["Detail Status"] = "done"
+    return row

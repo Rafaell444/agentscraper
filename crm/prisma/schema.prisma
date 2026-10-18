@@ -34,6 +34,9 @@ model Listing {
   vip           String?
   description   String?
   image         String?
+  images        String? // JSON list of every photo URL (detail page)
+  lat           Float?
+  lng           Float?
   detailStatus  String?   @map("detail_status")
   posterKind    String?   @map("poster_kind") // owner | agent
   propertyKey   String?   @map("property_key") // deal|area bucket|rooms|place: links copies of one property
@@ -267,6 +270,10 @@ model SharedPost {
   token        String    @unique
   status       String    @default("draft") // draft | published | archived
   sourceUrl    String?   @map("source_url")
+  // "waiting": the source page is being fetched by the collector (MyHome);
+  // "failed": that fetch did not produce the listing in time.
+  importState       String?   @map("import_state")
+  importRequestedAt DateTime? @map("import_requested_at")
   listingId    String?   @map("listing_id") // CRM listing it was copied from
   clientId     String?   @map("client_id")
   client       Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)

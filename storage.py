@@ -46,6 +46,7 @@ COLUMN_MAP = {
     "VIP": "vip",
     "Description": "description",
     "Image": "image",
+    "Images": "images",
     "Detail Status": "detail_status",
 }
 FLOAT_MAP = {
@@ -54,6 +55,8 @@ FLOAT_MAP = {
     "Price USD": "price_usd",
     "Price GEL": "price_gel",
     "Price per m2 USD": "price_per_m2_usd",
+    "Lat": "lat",
+    "Lng": "lng",
 }
 INT_MAP = {
     "Rooms": "rooms",
@@ -229,6 +232,17 @@ class Database:
             self.dialect = "postgres"
             self.conn = psycopg.connect(url)
             self.placeholder = "%s"
+        # Columns the CRM schema adds later (lat, lng, images) are created by
+        # the CRM's deploy; until then they are simply not read or written.
+        existing = self.table_columns("listings")
+        self.listing_columns = [column for column in LISTING_COLUMNS if not existing or column in existing]
+
+    def table_columns(self, table: str) -> set[str]:
+        if self.dialect == "sqlite":
+            return {row[1] for row in self.conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s", (table,))
+        return {row[0] for row in cursor.fetchall()}
 
     # -- value conversion --------------------------------------------------
 
@@ -276,13 +290,13 @@ class Database:
     # -- listings ----------------------------------------------------------
 
     def load_site(self, site_key: str, include_archived: bool = False) -> dict[str, dict[str, Any]]:
-        columns = ", ".join(f'"{column}"' for column in LISTING_COLUMNS)
+        columns = ", ".join(f'"{column}"' for column in self.listing_columns)
         where = '"site" = ?' + ("" if include_archived else ' AND "archived" = ?')
         params: tuple = (site_key,) if include_archived else (site_key, self.bool_value(False))
         cursor = self.execute(f'SELECT {columns} FROM "listings" WHERE {where} ORDER BY "collected_at"', params)
         rows: dict[str, dict[str, Any]] = {}
         for values in cursor.fetchall():
-            record = dict(zip(LISTING_COLUMNS, values))
+            record = dict(zip(self.listing_columns, values))
             row = {column: "" for column in COLUMNS}
             row["Property ID"] = normalize_id(record["property_id"])
             for column, field in COLUMN_MAP.items():
@@ -297,7 +311,10 @@ class Database:
                 rows[row["Property ID"]] = row
         return rows
 
-    def save_site(self, site_key: str, site_name: str, rows: dict[str, dict[str, Any]]) -> None:
+    def save_site(self, site_key: str, site_name: str, rows: dict[str, dict[str, Any]], archive_missing: bool = True) -> None:
+        """Upsert ``rows``; with ``archive_missing`` every other listing of the
+        site is archived (a full collector run).  A single-listing fetch passes
+        False so it never touches other listings."""
         now = datetime.now()
         previous_prices = dict(
             self.execute('SELECT "property_id", "price_usd" FROM "listings" WHERE "site" = ?', (site_key,)).fetchall()
@@ -323,7 +340,7 @@ class Database:
             values["property_key"] = property_key(row) or None
             values["archived"] = self.bool_value(False)
             values["last_sync_at"] = self.date_value(now)
-            tuples.append(tuple(values[column] for column in LISTING_COLUMNS))
+            tuples.append(tuple(values[column] for column in self.listing_columns))
 
             price = values["price_usd"]
             known = row["Property ID"] in previous_prices
@@ -331,11 +348,11 @@ class Database:
             if price is not None and (not known or old_price is None or abs(float(old_price) - price) >= 1):
                 history.append((uuid.uuid4().hex, values["id"], price, self.date_value(now)))
 
-        columns = ", ".join(f'"{column}"' for column in LISTING_COLUMNS)
-        placeholders = ", ".join("?" for _ in LISTING_COLUMNS)
+        columns = ", ".join(f'"{column}"' for column in self.listing_columns)
+        placeholders = ", ".join("?" for _ in self.listing_columns)
         updates = ", ".join(
             f'"{column}" = excluded."{column}"'
-            for column in LISTING_COLUMNS
+            for column in self.listing_columns
             if column not in {"id", "site", "property_id"}
         )
         self.executemany(
@@ -349,6 +366,9 @@ class Database:
         )
         # Listings no longer present are archived, never deleted: agents' notes stay attached.
         ids = list(rows.keys())
+        if not archive_missing:
+            self.commit()
+            return
         if ids:
             marks = ", ".join("?" for _ in ids)
             self.execute(
@@ -393,6 +413,18 @@ def save_rows(site_key: str, rows: dict[str, dict[str, Any]]) -> bool:
     finally:
         db.close()
     return True
+
+
+def save_one(site_key: str, row: dict[str, Any]) -> None:
+    """Upsert one listing (on-demand fetch from the CRM) without archiving others."""
+    url = database_url()
+    if not url:
+        raise RuntimeError("DATABASE_URL is required to save a single listing")
+    db = Database(url)
+    try:
+        db.save_site(site_key, site_name(site_key), {row["Property ID"]: row}, archive_missing=False)
+    finally:
+        db.close()
 
 
 def merge_row(existing: dict[str, Any], update: dict[str, Any]) -> bool:

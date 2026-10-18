@@ -121,8 +121,22 @@ function fromListing(listing: Listing): PostDraft {
     condition: listing.condition || listing.status,
     description: listing.description,
     listingId: listing.id,
-    imageUrls: listing.image ? (listing.site === "myhome" ? myhomeImageCandidates(listing.image) : [listing.image]) : [],
+    lat: listing.lat,
+    lng: listing.lng,
+    imageUrls: storedImages(listing),
   };
+}
+
+/** Every photo the collector saved, else guesses from the first photo. */
+function storedImages(listing: Listing): string[] {
+  try {
+    const saved = JSON.parse(listing.images ?? "[]");
+    if (Array.isArray(saved) && saved.length) return saved.filter((u): u is string => typeof u === "string");
+  } catch {
+    // fall through
+  }
+  if (!listing.image) return [];
+  return listing.site === "myhome" ? myhomeImageCandidates(listing.image) : [listing.image];
 }
 
 export async function draftFromListing(listingId: string): Promise<PostDraft | null> {
@@ -316,20 +330,57 @@ export async function parseMapInput(raw: string): Promise<{ lat: number; lng: nu
   return coordsIn(url);
 }
 
-export async function draftFromUrl(raw: string): Promise<{ draft: PostDraft; found: boolean; sourceUrl: string }> {
-  let url: URL;
+export function parseSourceUrl(raw: string): URL | null {
   try {
-    url = new URL(raw.trim().startsWith("http") ? raw.trim() : `https://${raw.trim()}`);
+    return new URL(raw.trim().startsWith("http") ? raw.trim() : `https://${raw.trim()}`);
   } catch {
-    return { draft: { title: "", imageUrls: [] }, found: false, sourceUrl: raw.trim() };
+    return null;
   }
+}
+
+/** Sites whose pages only the collector can read; the CRM asks it to fetch them. */
+export function collectorFetches(url: URL): boolean {
+  return siteForHost(url.hostname) === "myhome";
+}
+
+/** The stored listing for a source link, if the collector has it. */
+export async function listingForUrl(raw: string): Promise<Listing | null> {
+  const url = parseSourceUrl(raw);
+  return url ? findListing(url, siteForHost(url.hostname)) : null;
+}
+
+export async function draftFromUrl(raw: string): Promise<{ draft: PostDraft; found: boolean; sourceUrl: string; needsCollector: boolean }> {
+  const url = parseSourceUrl(raw);
+  if (!url) return { draft: { title: "", imageUrls: [] }, found: false, sourceUrl: raw.trim(), needsCollector: false };
   const site = siteForHost(url.hostname);
   const listing = await findListing(url, site);
   const html = await fetchHtml(url.href);
   let live: Partial<PostDraft> | null = null;
   if (html) live = site === "binebi" ? parseBinebi(html, url) : site === "myhome" ? parseMyhome(html) : parseGeneric(html);
   const draft = merge(listing ? fromListing(listing) : null, live);
-  return { draft, found: Boolean(listing || live?.title), sourceUrl: url.href };
+  // MyHome without its page: missing, or stored before photos/map were kept.
+  const needsCollector = collectorFetches(url) && !live?.title && (!listing || !listing.images);
+  return { draft, found: Boolean(listing || live?.title), sourceUrl: url.href, needsCollector };
+}
+
+/** Ask the collector (GitHub workflow fetch-listing.yml) to fetch one listing.
+ * Needs GITHUB_DISPATCH_TOKEN (fine-grained token, Actions: read and write). */
+export async function requestCollectorFetch(sourceUrl: string): Promise<boolean> {
+  const token = process.env.GITHUB_DISPATCH_TOKEN;
+  if (!token) return false;
+  const repo = process.env.GITHUB_REPOSITORY || "Rafaell444/agentscraper";
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/fetch-listing.yml/dispatches`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "crm" },
+      body: JSON.stringify({ ref: "main", inputs: { url: sourceUrl } }),
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+    return response.status === 204;
+  } catch {
+    return false;
+  }
 }
 
 export async function downloadImage(url: string): Promise<{ mime: string; data: Uint8Array } | null> {
@@ -371,4 +422,41 @@ export async function downloadImages(urls: string[]): Promise<{ mime: string; da
 export async function defaultContact(userId: string, agencyPhone: string): Promise<{ name: string | null; phone: string | null }> {
   const last = await prisma.sharedPost.findFirst({ where: { createdById: userId, contactPhone: { not: null } }, orderBy: { createdAt: "desc" }, select: { contactName: true, contactPhone: true } });
   return { name: last?.contactName ?? null, phone: last?.contactPhone ?? (agencyPhone || null) };
+}
+
+const FILL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** For a post waiting on the collector: once the listing is in the database,
+ * fill the fields the agent left empty, the map, and the photos (when the
+ * post has at most the one thumbnail).  Returns the post's import state. */
+export async function fillFromCollector(postId: string): Promise<string | null> {
+  const post = await prisma.sharedPost.findUnique({ where: { id: postId }, include: { _count: { select: { photos: true } } } });
+  if (!post || post.importState !== "waiting" || !post.sourceUrl) return post?.importState ?? null;
+  const listing = await listingForUrl(post.sourceUrl);
+  const ready = listing && listing.images && (!post.importRequestedAt || !listing.lastSyncAt || listing.lastSyncAt >= new Date(post.importRequestedAt.getTime() - 60_000));
+  if (!listing || !ready) {
+    if (post.importRequestedAt && Date.now() - post.importRequestedAt.getTime() > FILL_TIMEOUT_MS) {
+      await prisma.sharedPost.update({ where: { id: postId }, data: { importState: "failed" } });
+      return "failed";
+    }
+    return "waiting";
+  }
+  const { imageUrls, ...draft } = fromListing(listing);
+  const data: Record<string, unknown> = { importState: null, listingId: listing.id };
+  const keys = ["dealType", "propertyType", "location", "price", "area", "rooms", "bedrooms", "bathrooms", "floor", "totalFloors", "condition", "lat", "lng"] as const;
+  for (const key of keys) if (post[key] == null || post[key] === "") data[key] = draft[key] ?? null;
+  if (post.price == null && draft.price != null) data.currency = draft.currency ?? "USD";
+  if (!post.title || post.title === "ახალი განცხადება") data.title = draft.title || post.title;
+  if (!post.description && draft.description) data.description = replacePhones(draft.description, post.contactPhone ?? "");
+  if (post._count.photos <= 1) {
+    const photos = await downloadImages(imageUrls);
+    if (photos.length > post._count.photos) {
+      await prisma.$transaction([
+        prisma.sharedPostPhoto.deleteMany({ where: { postId } }),
+        prisma.sharedPostPhoto.createMany({ data: photos.map((photo, position) => ({ postId, position, mime: photo.mime, data: Buffer.from(photo.data) })) }),
+      ]);
+    }
+  }
+  await prisma.sharedPost.update({ where: { id: postId }, data });
+  return null;
 }

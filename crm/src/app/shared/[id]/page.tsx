@@ -10,8 +10,9 @@ import { mapView } from "@/lib/map";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { deletePost, regenerateToken, savePostAndPublish, setPostStatus, updatePost } from "../actions";
+import { deletePost, regenerateToken, retryCollectorFetch, savePostAndPublish, setPostStatus, updatePost } from "../actions";
 import { PhotoManager } from "./PhotoManager";
+import { ImportWaiter } from "./ImportWaiter";
 
 export const dynamic = "force-dynamic";
 
@@ -85,9 +86,20 @@ export default async function SharedPostEditor({ params, searchParams }: { param
         </div>
       ) : null}
 
+      {post.importState === "waiting" ? <ImportWaiter postId={post.id} /> : null}
+      {post.importState === "failed" ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <span className="flex-1">MyHome-დან ჩატვირთვა ვერ მოხერხდა. სცადე თავიდან, ან შეავსე ველები ხელით და ატვირთე ფოტოები.</span>
+          <form action={retryCollectorFetch}>
+            <input type="hidden" name="id" value={post.id} />
+            <SubmitButton pending="იგზავნება…" className="ui-btn ui-btn-secondary ui-btn-sm">თავიდან ცდა</SubmitButton>
+          </form>
+        </div>
+      ) : null}
+
       {notfound ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          ამ ბმულიდან მონაცემები ვერ წამოვიღე (საიტმა დაბლოკა ან განცხადება ჩვენს ბაზაში ჯერ არ არის). შეავსე ველები ხელით და ატვირთე ფოტოები ტელეფონიდან.
+          ამ ბმულიდან მონაცემები ვერ წამოვიღე (საიტმა დაბლოკა ან განცხადება ჩვენს ბაზაში ჯერ არ არის). შეავსე ველები ხელით და ატვირთე ფოტოები ტელეფონიდან. MyHome-ის ავტომატური ჩატვირთვისთვის ადმინმა Vercel-ში უნდა დაამატოს GITHUB_DISPATCH_TOKEN.
         </div>
       ) : null}
 

@@ -55,7 +55,13 @@ COLUMNS = [
     "Image",
     "Timestamp Added",
     "Detail Status",
+    # Map point and every photo URL (JSON list) from the detail page; used by
+    # the CRM's client posts, not shown in the workbook.
+    "Lat",
+    "Lng",
+    "Images",
 ]
+INTERNAL_COLUMNS = {"Lat", "Lng", "Images"}
 NUMERIC_COLUMNS = {
     "Area m2", "Yard Area m2", "Rooms", "Bedrooms", "Bathrooms", "Floor",
     "Total Floors", "Price USD", "Price GEL", "Price per m2 USD",

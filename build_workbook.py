@@ -19,7 +19,9 @@ from openpyxl.utils import get_column_letter
 
 import storage
 from sites import SITE_KEYS, load_site
-from sites.common import COLUMNS, NUMERIC_COLUMNS, clean_phone, now_iso
+from sites.common import COLUMNS as ALL_COLUMNS, INTERNAL_COLUMNS, NUMERIC_COLUMNS, clean_phone, now_iso
+
+COLUMNS = [column for column in ALL_COLUMNS if column not in INTERNAL_COLUMNS]
 
 LOGGER = logging.getLogger("build-workbook")
 OVERVIEW_SHEET = "Overview"
