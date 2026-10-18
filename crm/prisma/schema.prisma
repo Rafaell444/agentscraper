@@ -275,6 +275,9 @@ model SharedPost {
   dealType     String?   @map("deal_type")
   propertyType String?   @map("property_type")
   location     String?
+  lat          Float?
+  lng          Float?
+  mapMode      String    @default("approx") @map("map_mode") // exact | approx (area only) | off
   price        Float?
   currency     String    @default("USD") // USD | GEL
   area         Float?

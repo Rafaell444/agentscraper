@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/settings";
 import { fmtDate } from "@/lib/format";
 import { POST_STATUS, intlPhone } from "@/lib/sharedPosts";
 import { shareBase, shareLink } from "@/lib/shareUrl";
+import { mapView } from "@/lib/map";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -32,10 +33,10 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
   );
 }
 
-export default async function SharedPostEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notfound?: string; saved?: string }> }) {
+export default async function SharedPostEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notfound?: string; saved?: string; map?: string }> }) {
   await requireUser();
   const { id } = await params;
-  const { notfound, saved } = await searchParams;
+  const { notfound, saved, map } = await searchParams;
   const [post, clients, settings] = await Promise.all([
     prisma.sharedPost.findUnique({
       where: { id },
@@ -56,6 +57,8 @@ export default async function SharedPostEditor({ params, searchParams }: { param
   const waUrl = `https://wa.me/${clientPhone}?text=${encodeURIComponent(message)}`;
   const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(GREETING[post.lang] ?? GREETING.ka)}`;
   const published = post.status === "published";
+  // The agent sees what the client will see (area only / exact).
+  const mapPreview = mapView(post.lat, post.lng, post.mapMode === "off" ? "exact" : post.mapMode);
 
   return (
     <div className="space-y-4">
@@ -190,6 +193,30 @@ export default async function SharedPostEditor({ params, searchParams }: { param
               </Select>
             </Field>
           </div>
+        </Card>
+
+        <Card title="რუკა">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Google Maps ბმული ან კოორდინატები">
+              <Input name="mapInput" defaultValue={post.lat != null && post.lng != null ? `${post.lat}, ${post.lng}` : ""} placeholder="https://maps.app.goo.gl/...  ან  41.7167, 44.7453" autoComplete="off" />
+            </Field>
+            <Field label="კლიენტს რუკაზე უჩვენე">
+              <Select name="mapMode" defaultValue={post.mapMode}>
+                <option value="approx">მხოლოდ უბანი (ზუსტი წერტილის გარეშე)</option>
+                <option value="exact">ზუსტი მდებარეობა</option>
+                <option value="off">რუკა არ აჩვენო</option>
+              </Select>
+            </Field>
+          </div>
+          {map === "bad" ? <p className="mt-2 text-xs font-medium text-rose-700">ეს ბმული ვერ წავიკითხე. Google Maps-ში დააჭირე წერტილს და დააკოპირე კოორდინატები (მაგ. 41.7167, 44.7453), ან გაზიარების ბმული.</p> : null}
+          {mapPreview ? (
+            <iframe title="map" src={mapPreview.embedUrl} className="mt-3 h-64 w-full rounded-lg border border-gray-200" loading="lazy" referrerPolicy="no-referrer" />
+          ) : (
+            <p className="mt-2 text-xs text-gray-500">
+              binebi.ge-დან რუკა თავად შემოდის. MyHome-ზე გახსენი ორიგინალი, რუკაზე დააჭირე „Google Maps“ / წერტილს, დააკოპირე ბმული ან კოორდინატები და ჩასვი აქ.
+              {post.sourceUrl ? <> <a href={post.sourceUrl} target="_blank" rel="noreferrer" className="text-emerald-700 underline">ორიგინალის გახსნა ↗</a></> : null}
+            </p>
+          )}
         </Card>
 
         <div className="flex flex-wrap gap-2">

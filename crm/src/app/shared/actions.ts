@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
-import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, replacePhones, type PostDraft } from "@/lib/sharedPosts";
+import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, type PostDraft } from "@/lib/sharedPosts";
 
 function text(formData: FormData, key: string): string | null {
   return String(formData.get(key) ?? "").trim() || null;
@@ -90,6 +90,11 @@ export async function updatePost(formData: FormData) {
   const publish = formData.get("publish") === "1";
   const clientId = text(formData, "clientId");
   const clientExists = clientId ? await prisma.client.count({ where: { id: clientId } }) : 0;
+  // Map: a Google Maps / OSM link or "lat, lng"; empty clears it; unreadable keeps the old point.
+  const mapInput = String(formData.get("mapInput") ?? "").trim();
+  const coords = mapInput ? await parseMapInput(mapInput) : null;
+  const mapBad = Boolean(mapInput && !coords);
+  const mapModeRaw = String(formData.get("mapMode") ?? "approx");
   await prisma.sharedPost.update({
     where: { id },
     data: {
@@ -112,11 +117,13 @@ export async function updatePost(formData: FormData) {
       contactPhone: text(formData, "contactPhone"),
       clientId: clientExists ? clientId : null,
       lang: ["ka", "en", "ru"].includes(lang) ? lang : "ka",
+      mapMode: ["exact", "approx", "off"].includes(mapModeRaw) ? mapModeRaw : "approx",
+      ...(mapBad ? {} : { lat: coords?.lat ?? null, lng: coords?.lng ?? null }),
     },
   });
   revalidatePath(`/shared/${id}`);
   revalidatePath("/shared");
-  redirect(`/shared/${id}?saved=${publish ? "published" : "1"}`);
+  redirect(`/shared/${id}?saved=${publish ? "published" : "1"}${mapBad ? "&map=bad" : ""}`);
 }
 
 /** "Save and publish" button: same form, then the post goes live. */

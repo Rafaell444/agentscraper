@@ -58,6 +58,8 @@ export type PostDraft = {
   totalFloors?: number | null;
   condition?: string | null;
   description?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   listingId?: string | null;
   imageUrls: string[];
 };
@@ -200,6 +202,9 @@ function parseBinebi(html: string, url: URL): Partial<PostDraft> {
     totalFloors: totalFloors ?? null,
     condition: facts["მდგომარეობა"] || null,
     description: body ? textOf(body) : null,
+    // The detail page's map script: var map_lon = '44.88'; var map_lat = '41.71';
+    lat: validCoord(Number(html.match(/map_lat\s*=\s*'(-?[\d.]+)'/)?.[1]), 90),
+    lng: validCoord(Number(html.match(/map_lon\s*=\s*'(-?[\d.]+)'/)?.[1]), 180),
     imageUrls: images,
   };
 }
@@ -231,6 +236,8 @@ function parseMyhome(html: string): Partial<PostDraft> | null {
       floor: int(String(s.floor ?? "")),
       totalFloors: int(String(s.total_floors ?? "")),
       description: s.comment ? String(s.comment) : null,
+      lat: validCoord(Number(s.lat), 90),
+      lng: validCoord(Number(s.lng), 180),
       imageUrls: images,
     };
   } catch {
@@ -261,6 +268,52 @@ function merge(base: PostDraft | null, live: Partial<PostDraft> | null): PostDra
     (result as Record<string, unknown>)[key] = value;
   }
   return result;
+}
+
+function validCoord(value: number, limit: number): number | null {
+  return Number.isFinite(value) && value !== 0 && Math.abs(value) <= limit ? value : null;
+}
+
+function coordsIn(text: string): { lat: number; lng: number } | null {
+  const decoded = decodeURIComponent(text);
+  const patterns = [
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, // Google place pin (most precise)
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/, // Google map centre
+    /[?&](?:q|query|ll|destination|center|daddr)=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/,
+    /[?&]mlat=(-?\d+\.\d+)&mlon=(-?\d+\.\d+)/, // OpenStreetMap
+    /^\s*(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)\s*$/, // "41.7167, 44.7453"
+  ];
+  for (const re of patterns) {
+    const m = decoded.match(re);
+    if (!m) continue;
+    const lat = validCoord(Number(m[1]), 90);
+    const lng = validCoord(Number(m[2]), 180);
+    if (lat != null && lng != null) return { lat, lng };
+  }
+  return null;
+}
+
+/** Coordinates from what an agent pastes: a Google Maps / OSM link (short
+ * maps.app.goo.gl links are followed) or plain "lat, lng". */
+export async function parseMapInput(raw: string): Promise<{ lat: number; lng: number } | null> {
+  const input = raw.trim();
+  if (!input) return null;
+  const direct = coordsIn(input);
+  if (direct) return direct;
+  let url = input;
+  for (let hop = 0; hop < 4 && /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl)\//.test(url); hop += 1) {
+    try {
+      const response = await fetch(url, { redirect: "manual", headers: { "User-Agent": UA }, signal: AbortSignal.timeout(6000), cache: "no-store" });
+      const next = response.headers.get("location");
+      if (!next) break;
+      url = new URL(next, url).href;
+      const found = coordsIn(url);
+      if (found) return found;
+    } catch {
+      break;
+    }
+  }
+  return coordsIn(url);
 }
 
 export async function draftFromUrl(raw: string): Promise<{ draft: PostDraft; found: boolean; sourceUrl: string }> {

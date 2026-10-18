@@ -5,6 +5,8 @@ import { getSession } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import { intlPhone } from "@/lib/sharedPosts";
+import { mapView } from "@/lib/map";
+import { Gallery } from "./Gallery";
 import { EN_CONDITION, EN_DEAL, EN_TYPE, RU_CONDITION, RU_DEAL, RU_TYPE, en } from "@/lib/segments";
 
 export const dynamic = "force-dynamic";
@@ -13,9 +15,9 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false, nocache: true }, referrer: "no-referrer", title: "Apartment" };
 
 const LABELS = {
-  ka: { area: "ფართი", rooms: "ოთახი", bedrooms: "საძინებელი", bathrooms: "სველი წერტილი", floor: "სართული", condition: "მდგომარეობა", month: "/ თვე", day: "/ დღე", call: "დარეკვა", whatsapp: "WhatsApp", contact: "საკონტაქტო პირი", description: "აღწერა", draft: "მონახაზი — კლიენტი ამ გვერდს ჯერ ვერ ხედავს", hello: "გამარჯობა! მაინტერესებს ეს ბინა:" },
-  en: { area: "Area", rooms: "Rooms", bedrooms: "Bedrooms", bathrooms: "Bathrooms", floor: "Floor", condition: "Condition", month: "/ month", day: "/ day", call: "Call", whatsapp: "WhatsApp", contact: "Contact", description: "Description", draft: "Draft — the client cannot see this page yet", hello: "Hello! I'm interested in this apartment:" },
-  ru: { area: "Площадь", rooms: "Комнат", bedrooms: "Спален", bathrooms: "Санузлов", floor: "Этаж", condition: "Состояние", month: "/ мес.", day: "/ сутки", call: "Позвонить", whatsapp: "WhatsApp", contact: "Контакт", description: "Описание", draft: "Черновик — клиент пока не видит эту страницу", hello: "Здравствуйте! Меня интересует эта квартира:" },
+  ka: { area: "ფართი", rooms: "ოთახი", bedrooms: "საძინებელი", bathrooms: "სველი წერტილი", floor: "სართული", condition: "მდგომარეობა", month: "/ თვე", day: "/ დღე", call: "დარეკვა", whatsapp: "WhatsApp", contact: "საკონტაქტო პირი", description: "აღწერა", map: "მდებარეობა", mapArea: "ნაჩვენებია მიახლოებითი ადგილი — ზუსტ მისამართს აგენტი გეტყვით.", openMap: "Google Maps-ში გახსნა", draft: "მონახაზი — კლიენტი ამ გვერდს ჯერ ვერ ხედავს", hello: "გამარჯობა! მაინტერესებს ეს ბინა:" },
+  en: { area: "Area", rooms: "Rooms", bedrooms: "Bedrooms", bathrooms: "Bathrooms", floor: "Floor", condition: "Condition", month: "/ month", day: "/ day", call: "Call", whatsapp: "WhatsApp", contact: "Contact", description: "Description", map: "Location", mapArea: "Approximate area shown — your agent will share the exact address.", openMap: "Open in Google Maps", draft: "Draft — the client cannot see this page yet", hello: "Hello! I'm interested in this apartment:" },
+  ru: { area: "Площадь", rooms: "Комнат", bedrooms: "Спален", bathrooms: "Санузлов", floor: "Этаж", condition: "Состояние", month: "/ мес.", day: "/ сутки", call: "Позвонить", whatsapp: "WhatsApp", contact: "Контакт", description: "Описание", map: "Расположение", mapArea: "Показан примерный район — точный адрес сообщит агент.", openMap: "Открыть в Google Maps", draft: "Черновик — клиент пока не видит эту страницу", hello: "Здравствуйте! Меня интересует эта квартира:" },
 } as const;
 
 /** The page a client opens from a private link: one listing, our agent's contact, nothing else. */
@@ -47,6 +49,7 @@ export default async function SharedPostPage({ params }: { params: Promise<{ tok
     [t.floor, post.floor != null ? `${post.floor}${post.totalFloors ? ` / ${post.totalFloors}` : ""}` : ""],
     [t.condition, en(maps.cond, post.condition)],
   ];
+  const map = mapView(post.lat, post.lng, post.mapMode);
   const kind = [en(maps.deal, post.dealType), en(maps.type, post.propertyType)].filter(Boolean).join(" · ");
 
   return (
@@ -56,19 +59,7 @@ export default async function SharedPostPage({ params }: { params: Promise<{ tok
       ) : null}
       {settings.agency_name ? <div className="mb-3 text-xs font-medium text-gray-500">{settings.agency_name}</div> : null}
       <div className="ui-card overflow-hidden">
-        {post.photos.length ? (
-          <div className="flex snap-x snap-mandatory overflow-x-auto bg-gray-900">
-            {post.photos.map((photo, index) => (
-              <div key={photo.id} className="relative w-full shrink-0 snap-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/s/${post.token}/photo/${photo.id}`} alt="" className="h-[300px] w-full object-contain sm:h-[460px]" loading={index < 2 ? "eager" : "lazy"} />
-                {post.photos.length > 1 ? (
-                  <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] text-white">{index + 1} / {post.photos.length}</span>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        ) : null}
+        <Gallery urls={post.photos.map((photo) => `/s/${post.token}/photo/${photo.id}`)} />
         <div className="p-5">
           {post.price != null ? (
             <div className="text-3xl font-bold text-emerald-700">
@@ -95,6 +86,17 @@ export default async function SharedPostPage({ params }: { params: Promise<{ tok
           ) : null}
         </div>
       </div>
+
+      {map ? (
+        <div className="ui-card mt-4 overflow-hidden">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t.map}</h2>
+            <a href={map.openUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-emerald-700 hover:underline">{t.openMap} ↗</a>
+          </div>
+          {!map.exact ? <p className="px-5 pt-1 text-xs text-gray-500">{t.mapArea}</p> : null}
+          <iframe title={t.map} src={map.embedUrl} className="mt-3 h-72 w-full border-0" loading="lazy" referrerPolicy="no-referrer" />
+        </div>
+      ) : null}
 
       {post.contactPhone ? (
         <div className="ui-card mt-4 p-5">
