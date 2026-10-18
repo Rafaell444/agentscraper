@@ -9,7 +9,7 @@ import { shareBase, shareLink } from "@/lib/shareUrl";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { deletePost, regenerateToken, setPostStatus, updatePost } from "../actions";
+import { deletePost, regenerateToken, savePostAndPublish, setPostStatus, updatePost } from "../actions";
 import { PhotoManager } from "./PhotoManager";
 
 export const dynamic = "force-dynamic";
@@ -32,10 +32,10 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
   );
 }
 
-export default async function SharedPostEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notfound?: string }> }) {
+export default async function SharedPostEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notfound?: string; saved?: string }> }) {
   await requireUser();
   const { id } = await params;
-  const { notfound } = await searchParams;
+  const { notfound, saved } = await searchParams;
   const [post, clients, settings] = await Promise.all([
     prisma.sharedPost.findUnique({
       where: { id },
@@ -76,6 +76,12 @@ export default async function SharedPostEditor({ params, searchParams }: { param
         }
       />
 
+      {saved ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900">
+          {saved === "published" ? "✅ შენახულია და გამოქვეყნებულია — ბმული ქვემოთაა, დააკოპირე და გაუგზავნე კლიენტს." : "✅ შენახულია."}
+        </div>
+      ) : null}
+
       {notfound ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           ამ ბმულიდან მონაცემები ვერ წამოვიღე (საიტმა დაბლოკა ან განცხადება ჩვენს ბაზაში ჯერ არ არის). შეავსე ველები ხელით და ატვირთე ფოტოები ტელეფონიდან.
@@ -107,12 +113,12 @@ export default async function SharedPostEditor({ params, searchParams }: { param
         )}
       </Card>
 
-      <form action={updatePost} className="space-y-4">
+      <form action={updatePost} noValidate className="space-y-4">
         <input type="hidden" name="id" value={post.id} />
         <Card title="ტექსტი და პარამეტრები">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="სათაური" wide>
-              <Input name="title" defaultValue={post.title} required />
+              <Input name="title" defaultValue={post.title} />
             </Field>
             <Field label="გარიგება">
               <Input name="dealType" defaultValue={post.dealType ?? ""} list="deal-types" />
@@ -166,7 +172,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
               <Input name="contactName" defaultValue={post.contactName ?? ""} placeholder="მაგ. ნინო — აგენტი" />
             </Field>
             <Field label="შენი ნომერი (ჩანს პოსტზე)">
-              <Input name="contactPhone" defaultValue={post.contactPhone ?? ""} inputMode="tel" placeholder="599 12 34 56" required />
+              <Input name="contactPhone" defaultValue={post.contactPhone ?? ""} inputMode="tel" placeholder="599 12 34 56" />
             </Field>
             <Field label="კლიენტი">
               <Select name="clientId" defaultValue={post.clientId ?? ""}>
@@ -188,7 +194,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
 
         <div className="flex flex-wrap gap-2">
           <SubmitButton pending="ინახება…" className="ui-btn ui-btn-secondary">შენახვა</SubmitButton>
-          <SubmitButton pending="ინახება…" name="publish" value="1">{published ? "შენახვა (გამოქვეყნებულზე)" : "შენახვა და გამოქვეყნება"}</SubmitButton>
+          <SubmitButton pending="ქვეყნდება…" formAction={savePostAndPublish}>{published ? "შენახვა (გამოქვეყნებულზე)" : "შენახვა და გამოქვეყნება"}</SubmitButton>
         </div>
       </form>
 

@@ -12,16 +12,18 @@ function text(formData: FormData, key: string): string | null {
   return String(formData.get(key) ?? "").trim() || null;
 }
 
+/** Lenient number: "1 200", "1,200", "50.5 მ²", "$450" all work; junk becomes empty. */
 function num(formData: FormData, key: string): number | null {
-  const raw = String(formData.get(key) ?? "").replace(/\s/g, "").replace(",", ".");
-  if (!raw) return null;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : null;
+  const raw = String(formData.get(key) ?? "").replace(/\s/g, "");
+  const match = raw.replace(/,(?=\d{3}\b)/g, "").replace(",", ".").match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const value = Number(match[0]);
+  return Number.isFinite(value) && Math.abs(value) < 1e12 ? value : null;
 }
 
 function int(formData: FormData, key: string): number | null {
   const value = num(formData, key);
-  return value == null ? null : Math.round(value);
+  return value == null || Math.abs(value) > 2_000_000_000 ? null : Math.round(value);
 }
 
 async function createFromDraft(userId: string, draft: PostDraft, extra: { sourceUrl?: string | null; clientId?: string | null }) {
@@ -83,9 +85,15 @@ export async function updatePost(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const lang = String(formData.get("lang") ?? "ka");
+  // Set by savePostAndPublish (the submit button's own name/value does not
+  // reach form actions reliably).
+  const publish = formData.get("publish") === "1";
+  const clientId = text(formData, "clientId");
+  const clientExists = clientId ? await prisma.client.count({ where: { id: clientId } }) : 0;
   await prisma.sharedPost.update({
     where: { id },
     data: {
+      ...(publish ? { status: "published" } : {}),
       title: text(formData, "title") ?? "განცხადება",
       dealType: text(formData, "dealType"),
       propertyType: text(formData, "propertyType"),
@@ -102,14 +110,19 @@ export async function updatePost(formData: FormData) {
       description: text(formData, "description"),
       contactName: text(formData, "contactName"),
       contactPhone: text(formData, "contactPhone"),
-      clientId: text(formData, "clientId"),
+      clientId: clientExists ? clientId : null,
       lang: ["ka", "en", "ru"].includes(lang) ? lang : "ka",
     },
   });
-  // "Save and publish" submits the same form with publish=1.
-  if (formData.get("publish") === "1") await prisma.sharedPost.update({ where: { id }, data: { status: "published" } });
   revalidatePath(`/shared/${id}`);
   revalidatePath("/shared");
+  redirect(`/shared/${id}?saved=${publish ? "published" : "1"}`);
+}
+
+/** "Save and publish" button: same form, then the post goes live. */
+export async function savePostAndPublish(formData: FormData) {
+  formData.set("publish", "1");
+  await updatePost(formData);
 }
 
 export async function setPostStatus(formData: FormData) {

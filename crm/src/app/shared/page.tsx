@@ -44,8 +44,8 @@ export default async function SharedPostsPage({ searchParams }: { searchParams: 
       <PageHeader title="პოსტები კლიენტისთვის" subtitle="ჩასვი myhome.ge / binebi.ge / ss.ge განცხადების ბმული, შეცვალე ტექსტი და ნომერი და გაუგზავნე კლიენტს პირადი ბმული." />
 
       <Card title="ახალი პოსტი ბმულიდან">
-        <form action={importPost} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Input name="url" type="url" inputMode="url" placeholder="https://www.myhome.ge/udzravi-qoneba/... ან https://binebi.ge/gancxadebebi/..." className="flex-1" />
+        <form action={importPost} noValidate className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input name="url" type="text" inputMode="url" autoComplete="off" placeholder="https://www.myhome.ge/udzravi-qoneba/... ან https://binebi.ge/gancxadebebi/..." className="flex-1" />
           <Select name="clientId" defaultValue="" className="sm:w-56">
             <option value="">კლიენტი (არასავალდებულო)</option>
             {clients.map((c) => (
