@@ -309,7 +309,7 @@ model SharedPost {
 
   // Public catalog: the Telegram channel and the mini app (/catalog).
   catalog           Boolean   @default(false)
-  refNo             Int?      @unique @map("ref_no") // public number, e.g. 1023
+  refNo             Int?      @map("ref_no") // public number, e.g. 1023 (kept unique by lib/channel ensureRefNo)
   availability      String    @default("available") // available | reserved | rented | sold
   district          String?
   features          String    @default("") // comma-separated keys from lib/catalog FEATURES
@@ -326,6 +326,7 @@ model SharedPost {
   catalogLeads CatalogLead[]
 
   @@index([catalog, availability])
+  @@index([refNo])
   @@index([createdById, createdAt])
   @@index([status])
   @@map("shared_posts")

@@ -34,13 +34,11 @@ export async function ensureRefNo(postId: string): Promise<number> {
   if (post.refNo) return post.refNo;
   for (let attempt = 0; attempt < 5; attempt++) {
     const top = await prisma.sharedPost.aggregate({ _max: { refNo: true } });
-    const next = Math.max(1000, top._max.refNo ?? 1000) + 1;
-    try {
-      await prisma.sharedPost.update({ where: { id: postId }, data: { refNo: next } });
-      return next;
-    } catch {
-      // Another post took this number at the same moment; try the next one.
-    }
+    const next = Math.max(1000, top._max.refNo ?? 1000) + 1 + attempt;
+    await prisma.sharedPost.update({ where: { id: postId }, data: { refNo: next } });
+    // Two posts numbered at the same moment: the later one takes another number.
+    const clash = await prisma.sharedPost.findFirst({ where: { refNo: next, id: { not: postId } }, select: { id: true } });
+    if (!clash) return next;
   }
   throw new Error("could not assign a number");
 }
