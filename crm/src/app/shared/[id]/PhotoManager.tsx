@@ -2,22 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { resizeImage } from "@/lib/resizeImage";
 import { deletePhoto, movePhoto } from "../actions";
-
-const MAX_SIDE = 1600;
-
-/** Shrink a phone photo to at most 1600 px (JPEG) before upload. */
-async function resize(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) return file;
-  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob ?? file), "image/jpeg", 0.82));
-}
 
 export function PhotoManager({ postId, token, photoIds }: { postId: string; token: string; photoIds: string[] }) {
   const router = useRouter();
@@ -32,7 +18,7 @@ export function PhotoManager({ postId, token, photoIds }: { postId: string; toke
     for (const file of list) {
       setProgress(`იტვირთება ${done + 1} / ${list.length}…`);
       const form = new FormData();
-      form.append("file", new File([await resize(file)], "photo.jpg", { type: "image/jpeg" }));
+      form.append("file", new File([await resizeImage(file)], "photo.jpg", { type: "image/jpeg" }));
       const response = await fetch(`/api/shared-posts/${postId}/photos`, { method: "POST", body: form });
       const result = await response.json().catch(() => ({}));
       done += 1;

@@ -110,6 +110,8 @@ model User {
   deals         Deal[]
   notifications Notification[]
   sharedPosts   SharedPost[]
+  alertRules    AlertRule[]
+  banners       StreetBanner[]
 
   @@map("users")
 }
@@ -323,6 +325,112 @@ model SharedPostPhoto {
 
   @@index([postId, position])
   @@map("shared_post_photos")
+}
+
+// A Telegram chat that receives listing alerts.  Telegram cannot message a
+// phone number, so each phone connects once through the bot (/start <code>).
+model TelegramRecipient {
+  id          String   @id @default(cuid())
+  name        String // e.g. "ნინო (599 ...)"
+  chatId      String?  @map("chat_id")
+  connectCode String   @unique @map("connect_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("telegram_recipients")
+}
+
+// Saved search: when the collector saves a matching new listing, notify.py
+// sends it to the rule's Telegram recipients.
+model AlertRule {
+  id            String    @id @default(cuid())
+  name          String
+  active        Boolean   @default(true)
+  recipientIds  String    @default("") @map("recipient_ids") // comma-separated TelegramRecipient ids
+  dealTypes     String    @default("") @map("deal_types") // comma-separated; empty = any
+  propertyTypes String    @default("") @map("property_types")
+  areas         String    @default("") // districts and neighbourhoods, comma-separated
+  sites         String    @default("")
+  posterKind    String    @default("") @map("poster_kind") // owner | agent | "" (any)
+  priceMin      Float?    @map("price_min") // USD
+  priceMax      Float?    @map("price_max")
+  areaMin       Float?    @map("area_min")
+  areaMax       Float?    @map("area_max")
+  roomsMin      Int?      @map("rooms_min")
+  roomsMax      Int?      @map("rooms_max")
+  keywords      String    @default("") // any of these words in title/description
+  sentCount     Int       @default(0) @map("sent_count")
+  lastSentAt    DateTime? @map("last_sent_at")
+  createdById   String    @map("created_by_id")
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  deliveries AlertDelivery[]
+
+  @@map("alert_rules")
+}
+
+// One row per listing sent for a rule, so a listing is never sent twice.
+model AlertDelivery {
+  id        String    @id @default(cuid())
+  ruleId    String    @map("rule_id")
+  rule      AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  listingId String    @map("listing_id")
+  sentAt    DateTime  @default(now()) @map("sent_at")
+
+  @@unique([ruleId, listingId])
+  @@map("alert_deliveries")
+}
+
+// A "for sale / for rent" banner an agent saw on the street (owners hang them).
+model StreetBanner {
+  id            String    @id @default(cuid())
+  address       String
+  district      String?
+  dealType      String?   @map("deal_type")
+  propertyType  String?   @map("property_type")
+  phone         String?
+  phoneDigits   String?   @map("phone_digits") // last 9 digits, for matching
+  ownerName     String?   @map("owner_name")
+  price         Float?
+  comment       String?
+  status        String    @default("new") // new | called | interested | listed | rejected
+  lat           Float?
+  lng           Float?
+  createdById   String    @map("created_by_id")
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  photos BannerPhoto[]
+
+  @@index([phoneDigits])
+  @@index([createdAt])
+  @@map("street_banners")
+}
+
+model BannerPhoto {
+  id       String       @id @default(cuid())
+  bannerId String       @map("banner_id")
+  banner   StreetBanner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  mime     String
+  data     Bytes
+
+  @@index([bannerId])
+  @@map("banner_photos")
+}
+
+// Cadastral code (საკადასტრო კოდი) of an address.  Keyed by street + house
+// number, so every listing or banner at that address shows the same code.
+model CadastralCode {
+  id         String   @id @default(cuid())
+  addressKey String   @unique @map("address_key")
+  address    String // the address it was entered on, for reference
+  code       String
+  updatedBy  String?  @map("updated_by")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("cadastral_codes")
 }
 
 // Free-form settings edited in the CRM (agency phone, public page texts, channel ids).

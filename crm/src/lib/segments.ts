@@ -29,6 +29,18 @@ export const SEGMENTS: Segment[] = [
     maxPriceUsd: 1200,
   },
   {
+    slug: "expats",
+    title: "ექსპატები",
+    titleEn: "Apartments for rent in Tbilisi — for expats",
+    descriptionEn: "Long-term rentals in Vake, Vera, Mtatsminda, Sololaki, Saburtalo and the Old Town. Modern renovation, verified owners; we arrange viewings and an English contract.",
+    lang: "en",
+    dealTypes: ["ქირავდება"],
+    districts: ["ძველი თბილისი"],
+    neighbourhoods: ["ვაკე", "ვერა", "მთაწმინდა", "სოლოლაკი", "საბურთალო", "ვაკე-საბურთალო", "ავლაბარი", "ჩუღურეთი", "ლისი", "წყნეთი", "ბაგები"],
+    minPriceUsd: 500,
+    maxPriceUsd: 3000,
+  },
+  {
     slug: "students",
     title: "სტუდენტები",
     titleEn: "Student rentals near the universities",
@@ -131,6 +143,53 @@ export function segmentWhere(segment: Segment): Prisma.ListingWhereInput {
   };
   if (segment.maxPriceUsd || segment.minPriceUsd) where.priceUsd = { lte: segment.maxPriceUsd, gte: segment.minPriceUsd };
   return where;
+}
+
+/** Filters an agent can change on a segment's CRM page (defaults = the segment). */
+export type SegmentFilters = {
+  deal: string;
+  areas: string[];
+  priceMin?: number;
+  priceMax?: number;
+  roomsMin?: number;
+  areaMin?: number;
+  days?: number;
+  owner: boolean;
+  type: string;
+};
+
+const numParam = (value: string | string[] | undefined): number | undefined => {
+  const n = Number(Array.isArray(value) ? value[0] : value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+};
+
+export function segmentFilters(segment: Segment, params: Record<string, string | string[] | undefined>): SegmentFilters {
+  const changed = params.f === "1"; // the filter form was submitted
+  const areas = params.areas ? (Array.isArray(params.areas) ? params.areas : [params.areas]) : [];
+  return {
+    deal: typeof params.deal === "string" ? params.deal : segment.dealTypes[0] ?? "",
+    areas: changed ? areas : [...segment.districts, ...segment.neighbourhoods],
+    priceMin: changed ? numParam(params.priceMin) : segment.minPriceUsd,
+    priceMax: changed ? numParam(params.priceMax) : segment.maxPriceUsd,
+    roomsMin: numParam(params.roomsMin),
+    areaMin: numParam(params.areaMin),
+    days: numParam(params.days),
+    owner: params.owner === "1",
+    type: typeof params.type === "string" ? params.type : "ბინა",
+  };
+}
+
+export function segmentFiltersWhere(filters: SegmentFilters): Prisma.ListingWhereInput {
+  const and: Prisma.ListingWhereInput[] = [{ archived: false }, { OR: [{ lead: null }, { lead: { hidden: false } }] }];
+  if (filters.deal) and.push({ dealType: filters.deal });
+  if (filters.type) and.push({ propertyType: filters.type });
+  if (filters.areas.length) and.push({ OR: [{ district: { in: filters.areas } }, { neighbourhood: { in: filters.areas } }] });
+  if (filters.priceMin || filters.priceMax) and.push({ priceUsd: { gte: filters.priceMin, lte: filters.priceMax } });
+  if (filters.roomsMin) and.push({ rooms: { gte: filters.roomsMin } });
+  if (filters.areaMin) and.push({ areaM2: { gte: filters.areaMin } });
+  if (filters.days) and.push({ collectedAt: { gte: new Date(Date.now() - filters.days * 86_400_000) } });
+  if (filters.owner) and.push({ posterKind: "owner" });
+  return { AND: and };
 }
 
 export const EN_DEAL: Record<string, string> = {

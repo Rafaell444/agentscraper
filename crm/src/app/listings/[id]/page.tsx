@@ -15,6 +15,10 @@ import { createViewing } from "@/app/viewings/actions";
 import { createDeal } from "@/app/deals/actions";
 import { createPostFromListing } from "@/app/shared/actions";
 import { SubmitButton } from "@/components/SubmitButton";
+import { CadastralBox } from "@/components/CadastralBox";
+import { PhoneMatchesButton } from "@/components/PhoneMatches";
+import { codeFor } from "@/lib/cadastre";
+import { findPhoneMatches } from "@/lib/phones";
 
 export const dynamic = "force-dynamic";
 // "Post for client" downloads the listing's photos.
@@ -52,11 +56,14 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     },
   });
   if (!listing) notFound();
-  const [settings, bench, clients, viewings] = await Promise.all([
+  const [settings, bench, clients, viewings, cadastral, phoneMatches] = await Promise.all([
     getSettings(),
     benchmark(listing),
     prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] } }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 200 }),
     prisma.viewing.findMany({ where: { listingId: listing.id }, include: { client: { select: { name: true } }, agent: { select: { name: true } } }, orderBy: { scheduledAt: "desc" }, take: 5 }),
+    codeFor(listing.address),
+    // Other listings and street banners with this number.
+    findPhoneMatches(listing.phone || listing.lead?.manualPhone).then((all) => all.filter((m) => m.id !== listing.id)),
   ]);
   const defaultText = buildPublicationText(listing, settings.agency_phone, settings.agency_name);
   const publicBase = settings.public_base_url.replace(/\/$/, "");
@@ -398,6 +405,16 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               <SubmitButton pending="იქმნება… (ფოტოები)" className="ui-btn ui-btn-primary ui-btn-sm">პოსტი კლიენტისთვის →</SubmitButton>
             </form>
           </Card>
+
+          <Card title="საკადასტრო კოდი">
+            <CadastralBox address={listing.address} code={cadastral} back={`/listings/${encodeURIComponent(listing.id)}`} />
+          </Card>
+
+          {phoneMatches.length ? (
+            <Card title="იგივე ნომერი CRM-ში">
+              <PhoneMatchesButton matches={phoneMatches} phone={(listing.phone || listing.lead?.manualPhone || "").split(";")[0]} />
+            </Card>
+          ) : null}
 
           <Card title="დათვალიერების დაგეგმვა">
             <form action={createViewing} className="space-y-2 text-sm">

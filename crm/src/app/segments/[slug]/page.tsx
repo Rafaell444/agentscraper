@@ -2,27 +2,33 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { SEGMENTS, segmentBySlug, segmentWhere } from "@/lib/segments";
+import { SEGMENTS, segmentBySlug, segmentFilters, segmentFiltersWhere } from "@/lib/segments";
+import { filterOptions } from "@/lib/queries";
 import { fmtDate, fmtMoney, fmtNum } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
+import { SegmentFilterForm } from "./SegmentFilterForm";
 import { Card, Chip, EmptyState, LinkButton, PageHeader, PhoneButton, PosterBadge, SiteBadge, StatusBadge } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function SegmentPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function SegmentPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireUser();
   const { slug } = await params;
   const segment = segmentBySlug(slug);
   if (!segment) notFound();
-  const [listings, settings] = await Promise.all([
+  const filters = segmentFilters(segment, await searchParams);
+  const [listings, settings, options] = await Promise.all([
     prisma.listing.findMany({
-      where: segmentWhere(segment),
+      where: segmentFiltersWhere(filters),
       include: { lead: { select: { status: true, manualPhone: true, hidden: true } } },
       orderBy: { collectedAt: "desc" },
       take: 200,
     }),
     getSettings(),
+    filterOptions(""),
   ]);
+  const segmentAreas = [...segment.districts, ...segment.neighbourhoods];
+  const otherAreas = options.neighbourhoods.filter((n) => !segmentAreas.includes(n));
   const base = settings.public_base_url.replace(/\/$/, "");
 
   return (
@@ -43,7 +49,9 @@ export default async function SegmentPage({ params }: { params: Promise<{ slug: 
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
         საჯარო გვერდი ინგლისურადაა, მესაკუთრის ნომრის გარეშე, ჩვენი კონტაქტით ({settings.agency_phone || "დააყენეთ პარამეტრებში"}). მისამართი: <code className="rounded bg-gray-100 px-1">{base || "(public_base_url პარამეტრებში)"}/p/{slug}</code>. განცხადება გვერდიდან იმალება მისი გვერდის „დამალე საჯარო გვერდიდან“ ღილაკით.
       </div>
-      <Card title={`განცხადებები (${listings.length})`}>
+      <SegmentFilterForm slug={slug} filters={filters} segmentAreas={segmentAreas} otherAreas={otherAreas} deals={options.deals} types={options.types} />
+
+      <Card title={`განცხადებები (${listings.length}${listings.length === 200 ? "+" : ""})`}>
         {listings.length === 0 ? (
           <EmptyState title="ამ სეგმენტში განცხადებები ჯერ არ არის" />
         ) : (
