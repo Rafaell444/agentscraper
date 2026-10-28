@@ -100,8 +100,8 @@ model User {
 
   telegramChatId String? @map("telegram_chat_id") // for personal alerts
 
-  leads         Lead[]   @relation("LeadAssignee")
-  reposts       Lead[]   @relation("LeadReposter")
+  leads         Lead[]         @relation("LeadAssignee")
+  reposts       Lead[]         @relation("LeadReposter")
   notes         Note[]
   activities    Activity[]
   publications  Publication[]
@@ -136,19 +136,19 @@ model Viewing {
 }
 
 model Deal {
-  id           String    @id @default(cuid())
-  listingId    String?   @map("listing_id")
-  listing      Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
-  clientId     String?   @map("client_id")
-  client       Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  agentId      String    @map("agent_id")
-  agent        User      @relation(fields: [agentId], references: [id])
-  kind         String // sale | rent | daily
-  amount       Float? // deal amount (sale price or monthly rent), USD
-  commission   Float? // our commission, USD
-  closedAt     DateTime  @map("closed_at")
-  note         String?
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  listingId  String?  @map("listing_id")
+  listing    Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  clientId   String?  @map("client_id")
+  client     Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  agentId    String   @map("agent_id")
+  agent      User     @relation(fields: [agentId], references: [id])
+  kind       String // sale | rent | daily
+  amount     Float? // deal amount (sale price or monthly rent), USD
+  commission Float? // our commission, USD
+  closedAt   DateTime @map("closed_at")
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([closedAt])
   @@index([agentId])
@@ -219,31 +219,32 @@ model Publication {
 
 // Tenants/buyers we represent (tourists, expats, Indian community, ...).
 model Client {
-  id            String    @id @default(cuid())
-  name          String
-  phone         String?
-  messenger     String? // whatsapp / telegram handle
-  nationality   String?
-  language      String?
-  segment       String? // expat | tourist | indian | local | other
-  dealType      String?   @map("deal_type") // ქირავდება | იყიდება | ქირავდება დღიურად
-  budgetMin     Float?    @map("budget_min")
-  budgetMax     Float?    @map("budget_max")
-  roomsMin      Int?      @map("rooms_min")
-  areas         String? // comma-separated neighbourhoods/districts
-  moveIn        DateTime? @map("move_in")
-  durationMonths Int?     @map("duration_months")
-  notes         String?
-  status        String    @default("new") // new | searching | viewing | closed_won | closed_lost
-  assignedToId  String?   @map("assigned_to_id")
-  assignedTo    User?     @relation(fields: [assignedToId], references: [id])
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(cuid())
+  name           String
+  phone          String?
+  messenger      String? // whatsapp / telegram handle
+  nationality    String?
+  language       String?
+  segment        String? // expat | tourist | indian | local | other
+  dealType       String?   @map("deal_type") // ქირავდება | იყიდება | ქირავდება დღიურად
+  budgetMin      Float?    @map("budget_min")
+  budgetMax      Float?    @map("budget_max")
+  roomsMin       Int?      @map("rooms_min")
+  areas          String? // comma-separated neighbourhoods/districts
+  moveIn         DateTime? @map("move_in")
+  durationMonths Int?      @map("duration_months")
+  notes          String?
+  status         String    @default("new") // new | searching | viewing | closed_won | closed_lost
+  assignedToId   String?   @map("assigned_to_id")
+  assignedTo     User?     @relation(fields: [assignedToId], references: [id])
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  shortlists Shortlist[]
-  viewings   Viewing[]
-  deals      Deal[]
-  sharedPosts SharedPost[]
+  shortlists   Shortlist[]
+  viewings     Viewing[]
+  deals        Deal[]
+  sharedPosts  SharedPost[]
+  catalogLeads CatalogLead[]
 
   @@index([status])
   @@index([segment])
@@ -268,46 +269,63 @@ model Shortlist {
 // hand) with the agent's contact, sent to a client as a private link.  The
 // public page is reachable only through the random token, never by id.
 model SharedPost {
-  id           String    @id @default(cuid())
-  token        String    @unique
-  status       String    @default("draft") // draft | published | archived
-  sourceUrl    String?   @map("source_url")
+  id                String    @id @default(cuid())
+  token             String    @unique
+  status            String    @default("draft") // draft | published | archived
+  sourceUrl         String?   @map("source_url")
   // "waiting": the source page is being fetched by the collector (MyHome);
   // "failed": that fetch did not produce the listing in time.
   importState       String?   @map("import_state")
   importRequestedAt DateTime? @map("import_requested_at")
-  listingId    String?   @map("listing_id") // CRM listing it was copied from
-  clientId     String?   @map("client_id")
-  client       Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  lang         String    @default("ka") // page labels: ka | en | ru
-  title        String
-  dealType     String?   @map("deal_type")
-  propertyType String?   @map("property_type")
-  location     String?
-  lat          Float?
-  lng          Float?
-  mapMode      String    @default("approx") @map("map_mode") // exact | approx (area only) | off
-  price        Float?
-  currency     String    @default("USD") // USD | GEL
-  area         Float?
-  rooms        Int?
-  bedrooms     Int?
-  bathrooms    Int?
-  floor        Int?
-  totalFloors  Int?      @map("total_floors")
-  condition    String?
-  description  String?
-  contactName  String?   @map("contact_name")
-  contactPhone String?   @map("contact_phone")
-  views        Int       @default(0)
-  lastViewedAt DateTime? @map("last_viewed_at")
-  createdById  String    @map("created_by_id")
-  createdBy    User      @relation(fields: [createdById], references: [id])
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  listingId         String?   @map("listing_id") // CRM listing it was copied from
+  clientId          String?   @map("client_id")
+  client            Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  lang              String    @default("ka") // page labels: ka | en | ru
+  title             String
+  dealType          String?   @map("deal_type")
+  propertyType      String?   @map("property_type")
+  location          String?
+  lat               Float?
+  lng               Float?
+  mapMode           String    @default("approx") @map("map_mode") // exact | approx (area only) | off
+  price             Float?
+  currency          String    @default("USD") // USD | GEL
+  area              Float?
+  rooms             Int?
+  bedrooms          Int?
+  bathrooms         Int?
+  floor             Int?
+  totalFloors       Int?      @map("total_floors")
+  condition         String?
+  description       String?
+  contactName       String?   @map("contact_name")
+  contactPhone      String?   @map("contact_phone")
+  views             Int       @default(0)
+  lastViewedAt      DateTime? @map("last_viewed_at")
+  createdById       String    @map("created_by_id")
+  createdBy         User      @relation(fields: [createdById], references: [id])
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  photos SharedPostPhoto[]
+  // Public catalog: the Telegram channel and the mini app (/catalog).
+  catalog           Boolean   @default(false)
+  refNo             Int?      @unique @map("ref_no") // public number, e.g. 1023
+  availability      String    @default("available") // available | reserved | rented | sold
+  district          String?
+  features          String    @default("") // comma-separated keys from lib/catalog FEATURES
+  pets              String? // yes | no | ask
+  leaseTerm         String?   @map("lease_term")
+  descriptionEn     String?   @map("description_en")
+  descriptionRu     String?   @map("description_ru")
+  channelMessageIds String?   @map("channel_message_ids") // comma-separated; first one carries the caption
+  channelIsText     Boolean   @default(false) @map("channel_is_text")
+  channelPostedAt   DateTime? @map("channel_posted_at")
+  catalogViews      Int       @default(0) @map("catalog_views")
 
+  photos       SharedPostPhoto[]
+  catalogLeads CatalogLead[]
+
+  @@index([catalog, availability])
   @@index([createdById, createdAt])
   @@index([status])
   @@map("shared_posts")
@@ -384,23 +402,23 @@ model AlertDelivery {
 
 // A "for sale / for rent" banner an agent saw on the street (owners hang them).
 model StreetBanner {
-  id            String    @id @default(cuid())
-  address       String
-  district      String?
-  dealType      String?   @map("deal_type")
-  propertyType  String?   @map("property_type")
-  phone         String?
-  phoneDigits   String?   @map("phone_digits") // last 9 digits, for matching
-  ownerName     String?   @map("owner_name")
-  price         Float?
-  comment       String?
-  status        String    @default("new") // new | called | interested | listed | rejected
-  lat           Float?
-  lng           Float?
-  createdById   String    @map("created_by_id")
-  createdBy     User      @relation(fields: [createdById], references: [id])
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  address      String
+  district     String?
+  dealType     String?  @map("deal_type")
+  propertyType String?  @map("property_type")
+  phone        String?
+  phoneDigits  String?  @map("phone_digits") // last 9 digits, for matching
+  ownerName    String?  @map("owner_name")
+  price        Float?
+  comment      String?
+  status       String   @default("new") // new | called | interested | listed | rejected
+  lat          Float?
+  lng          Float?
+  createdById  String   @map("created_by_id")
+  createdBy    User     @relation(fields: [createdById], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   photos BannerPhoto[]
 
@@ -468,4 +486,26 @@ model Activity {
   @@index([createdAt])
   @@index([userId])
   @@map("activities")
+}
+
+// A request sent from the mini app: a viewing, a question or "find me a flat".
+model CatalogLead {
+  id         String      @id @default(cuid())
+  kind       String // viewing | question | search
+  postId     String?     @map("post_id")
+  post       SharedPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
+  clientId   String?     @map("client_id")
+  client     Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  name       String?
+  phone      String?
+  tgUserId   String?     @map("tg_user_id")
+  tgUsername String?     @map("tg_username")
+  lang       String?
+  message    String?
+  status     String      @default("new") // new | done
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@index([tgUserId])
+  @@map("catalog_leads")
 }

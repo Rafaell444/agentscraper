@@ -23,8 +23,18 @@ export const viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   const pathname = (await headers()).get("x-pathname") ?? "";
-  const isPublic = pathname.startsWith("/p/") || pathname.startsWith("/s/");
+  // The mini app draws its own full-screen layout.
+  const isApp = pathname.startsWith("/catalog");
+  const isPublic = pathname.startsWith("/p/") || pathname.startsWith("/s/") || isApp;
   const unread = session && !isPublic ? await prisma.notification.count({ where: { userId: session.id, readAt: null } }).catch(() => 0) : 0;
+  if (isApp) {
+    return (
+      // telegram-web-app.js writes its viewport variables onto <html> before React loads.
+      <html lang="en" suppressHydrationWarning>
+        <body className="antialiased">{children}</body>
+      </html>
+    );
+  }
   return (
     <html lang={isPublic ? "en" : "ka"}>
       <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">

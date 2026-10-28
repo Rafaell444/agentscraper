@@ -3,7 +3,8 @@ import { jwtVerify } from "jose";
 
 // /p/* are public listing pages reached through QR codes (no login).
 // /s/<token> is a private post sent to one client; the page itself checks the token.
-const PUBLIC_PATHS = ["/login", "/api/health", "/p/", "/s/"];
+// /catalog is the public Telegram mini app; /api/telegram/webhook checks its own secret.
+const PUBLIC_PATHS = ["/login", "/api/health", "/p/", "/s/", "/catalog", "/api/catalog/", "/api/telegram/webhook"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

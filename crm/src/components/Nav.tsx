@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/shared", label: "პოსტები", icon: "M4 4h16v12H5.2L4 17.2V4zM8 9h8M8 12h5" },
   { href: "/viewings", label: "ჩვენებები", icon: "M3 4h18v16H3zM3 10h18M8 2v4M16 2v4" },
   { href: "/banners", label: "ბანერები", icon: "M4 4h16v10H4zM8 14v6M16 14v6M7 8h10" },
+  { href: "/channel", label: "არხი და აპი", icon: "M22 3L2 11l7 2 2 7 4-5 5 4 2-16zM9 13l9-7" },
   { href: "/alerts", label: "Telegram", icon: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" },
   { href: "/segments/expats", label: "ექსპატები", icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" },
   { href: "/segments/students", label: "სტუდენტები", icon: "M22 10L12 5 2 10l10 5 10-5zM6 12v5c3 2 9 2 12 0v-5" },

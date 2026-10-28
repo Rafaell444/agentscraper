@@ -12,6 +12,10 @@ import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { deletePost, regenerateToken, retryCollectorFetch, savePostAndPublish, setPostStatus, updatePost } from "../actions";
 import { PhotoManager } from "./PhotoManager";
+import { filterOptions } from "@/lib/queries";
+import { AVAILABILITY, FEATURES, LEASE_TERMS, featureList, termText } from "@/lib/catalog";
+import { catalogLink } from "@/lib/channel";
+import { postToChannel, setAvailability, takeOffChannel } from "@/app/channel/actions";
 import { ImportWaiter } from "./ImportWaiter";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +38,11 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
   );
 }
 
-export default async function SharedPostEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notfound?: string; saved?: string; map?: string }> }) {
+export default async function SharedPostEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notfound?: string; saved?: string; map?: string; channel?: string }> }) {
   await requireUser();
   const { id } = await params;
-  const { notfound, saved, map } = await searchParams;
-  const [post, clients, settings] = await Promise.all([
+  const { notfound, saved, map, channel } = await searchParams;
+  const [post, clients, settings, options] = await Promise.all([
     prisma.sharedPost.findUnique({
       where: { id },
       include: {
@@ -49,6 +53,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
     }),
     prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] } }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 300 }),
     getSettings(),
+    filterOptions(""),
   ]);
   if (!post) notFound();
   const link = shareLink(await shareBase(settings.public_base_url), post.token);
@@ -59,6 +64,10 @@ export default async function SharedPostEditor({ params, searchParams }: { param
   const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(GREETING[post.lang] ?? GREETING.ka)}`;
   const published = post.status === "published";
   // The agent sees what the client will see (area only / exact).
+  const base = await shareBase(settings.public_base_url);
+  const catalogUrl = post.refNo ? catalogLink(settings, base, post.refNo) : null;
+  const postFeatures = new Set(featureList(post.features));
+  const channelMsg = channel ? { ok: channel.startsWith("ok:"), text: channel.replace(/^(ok|err):/, "") } : null;
   const mapPreview = mapView(post.lat, post.lng, post.mapMode === "off" ? "exact" : post.mapMode);
 
   return (
@@ -83,6 +92,13 @@ export default async function SharedPostEditor({ params, searchParams }: { param
       {saved ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900">
           {saved === "published" ? "✅ შენახულია და გამოქვეყნებულია — ბმული ქვემოთაა, დააკოპირე და გაუგზავნე კლიენტს." : "✅ შენახულია."}
+        </div>
+      ) : null}
+
+      {channelMsg ? (
+        <div className={`rounded-lg border p-3 text-sm font-medium ${channelMsg.ok ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}>
+          {channelMsg.ok ? "✅ " : "⚠️ "}
+          {channelMsg.text}
         </div>
       ) : null}
 
@@ -231,11 +247,97 @@ export default async function SharedPostEditor({ params, searchParams }: { param
           )}
         </Card>
 
+
+        <div id="catalog" className="scroll-mt-20">
+          <Card title="კატალოგი (Telegram აპი და არხი)">
+            <label className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" name="catalog" value="1" defaultChecked={post.catalog} className="h-4 w-4 accent-emerald-600" />
+              აჩვენე კატალოგში — ყველა ხედავს Telegram აპში {post.refNo ? <span className="font-mono text-gray-500">#{post.refNo}</span> : null}
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="უბანი (ფილტრისთვის)">
+                <Input name="district" defaultValue={post.district ?? ""} list="catalog-districts" placeholder="მაგ. ვაკე" />
+              </Field>
+              <Field label="შინაური ცხოველები">
+                <Select name="pets" defaultValue={post.pets ?? ""}>
+                  <option value="">— არ ვუთითებთ —</option>
+                  <option value="yes">შეიძლება</option>
+                  <option value="ask">შეთანხმებით</option>
+                  <option value="no">არა</option>
+                </Select>
+              </Field>
+              <Field label="ქირის ვადა">
+                <Select name="leaseTerm" defaultValue={post.leaseTerm ?? ""}>
+                  <option value="">— არ ვუთითებთ —</option>
+                  {LEASE_TERMS.map((term) => <option key={term} value={term}>{termText(term, "ka")}</option>)}
+                  {post.leaseTerm && !LEASE_TERMS.includes(post.leaseTerm) ? <option value={post.leaseTerm}>{post.leaseTerm}</option> : null}
+                </Select>
+              </Field>
+            </div>
+            <div className="mt-3">
+              <span className="mb-1 block text-xs font-medium text-gray-600">რა აქვს</span>
+              <div className="flex flex-wrap gap-1.5">
+                {FEATURES.map((f) => (
+                  <label key={f.key} className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-sm has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 has-[:checked]:text-emerald-800">
+                    <input type="checkbox" name="features" value={f.key} defaultChecked={postFeatures.has(f.key)} className="accent-emerald-600" />
+                    {f.emoji} {f.ka}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <Field label="აღწერა ინგლისურად (უცხოელებისთვის)">
+                <textarea name="descriptionEn" defaultValue={post.descriptionEn ?? ""} rows={5} className="ui-field" />
+              </Field>
+              <Field label="აღწერა რუსულად">
+                <textarea name="descriptionRu" defaultValue={post.descriptionRu ?? ""} rows={5} className="ui-field" />
+              </Field>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">აპი კლიენტს აჩვენებს მის ენაზე: ინგლისური/რუსული აღწერა თუ ცარიელია, ქართული გამოჩნდება. სათაური ავტომატურად იწერება სამივე ენაზე (ტიპი, ოთახები, უბანი). მისამართი („მდებარეობა“) და რუკა კატალოგშიც ზემოთ არჩეული წესით ჩანს.</p>
+          </Card>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           <SubmitButton pending="ინახება…" className="ui-btn ui-btn-secondary">შენახვა</SubmitButton>
           <SubmitButton pending="ქვეყნდება…" formAction={savePostAndPublish}>{published ? "შენახვა (გამოქვეყნებულზე)" : "შენახვა და გამოქვეყნება"}</SubmitButton>
         </div>
       </form>
+
+
+      {post.catalog ? (
+        <Card title="Telegram არხი">
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-gray-600">სტატუსი:</span>
+              {Object.entries(AVAILABILITY).map(([value, a]) => (
+                <form key={value} action={setAvailability}>
+                  <input type="hidden" name="id" value={post.id} />
+                  <input type="hidden" name="availability" value={value} />
+                  <button type="submit" className={`rounded-full px-2.5 py-1 text-xs font-semibold ${post.availability === value ? `${a.cls} ring-2 ring-offset-1 ring-emerald-500` : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>{a.label}</button>
+                </form>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500">„გაქირავდა“ / „გაიყიდა“ — ბინა აპიდან ქრება, არხის პოსტზე კი თავში ეწერება 🔴 სტატუსი.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <form action={postToChannel}>
+                <input type="hidden" name="id" value={post.id} />
+                <SubmitButton pending="იგზავნება…">{post.channelMessageIds ? "არხის პოსტის განახლება" : "📣 არხში გამოქვეყნება"}</SubmitButton>
+              </form>
+              {post.channelMessageIds ? (
+                <form action={takeOffChannel}>
+                  <input type="hidden" name="id" value={post.id} />
+                  <SubmitButton pending="იშლება…" className="ui-btn ui-btn-secondary" confirm="წავშალო ეს პოსტი არხიდან?">არხიდან წაშლა</SubmitButton>
+                </form>
+              ) : null}
+              {catalogUrl ? <a href={catalogUrl} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm">აპში ნახვა ↗</a> : null}
+              {catalogUrl ? <CopyButton value={catalogUrl} className="ui-btn ui-btn-ghost ui-btn-sm" /> : null}
+            </div>
+            <p className="text-xs text-gray-500">
+              {post.channelPostedAt ? `არხში გამოქვეყნდა: ${fmtDate(post.channelPostedAt, true)} · ` : ""}აპში ნახვები: {post.catalogViews}. ჯერ შეინახე ცვლილებები, მერე გამოაქვეყნე — არხში მიდის პირველი 10 ფოტო და ტექსტი არხის ენაზე.
+            </p>
+          </div>
+        </Card>
+      ) : null}
 
       <Card title={`ფოტოები (${post.photos.length})`}>
         <PhotoManager postId={post.id} token={post.token} photoIds={post.photos.map((p) => p.id)} />
@@ -265,6 +367,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
 
       <datalist id="deal-types">{DEALS.map((v) => <option key={v} value={v} />)}</datalist>
       <datalist id="property-types">{TYPES.map((v) => <option key={v} value={v} />)}</datalist>
+      <datalist id="catalog-districts">{options.districts.map((d) => <option key={d.name} value={d.name} />)}</datalist>
       <datalist id="conditions">{CONDITIONS.map((v) => <option key={v} value={v} />)}</datalist>
     </div>
   );

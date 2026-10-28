@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
+import { ensureRefNo, refreshChannelPost } from "@/lib/channel";
 import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, requestCollectorFetch, type PostDraft } from "@/lib/sharedPosts";
 
 function text(formData: FormData, key: string): string | null {
@@ -123,8 +124,18 @@ export async function updatePost(formData: FormData) {
       lang: ["ka", "en", "ru"].includes(lang) ? lang : "ka",
       mapMode: ["exact", "approx", "off"].includes(mapModeRaw) ? mapModeRaw : "approx",
       ...(mapBad ? {} : { lat: coords?.lat ?? null, lng: coords?.lng ?? null }),
+      // Catalog (mini app + channel)
+      catalog: formData.get("catalog") === "1",
+      district: text(formData, "district"),
+      features: formData.getAll("features").map(String).filter(Boolean).join(","),
+      pets: ["yes", "no", "ask"].includes(String(formData.get("pets"))) ? String(formData.get("pets")) : null,
+      leaseTerm: text(formData, "leaseTerm"),
+      descriptionEn: text(formData, "descriptionEn"),
+      descriptionRu: text(formData, "descriptionRu"),
     },
   });
+  if (formData.get("catalog") === "1") await ensureRefNo(id);
+  await refreshChannelPost(id);
   revalidatePath(`/shared/${id}`);
   revalidatePath("/shared");
   redirect(`/shared/${id}?saved=${publish ? "published" : "1"}${mapBad ? "&map=bad" : ""}`);
