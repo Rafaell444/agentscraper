@@ -106,7 +106,16 @@ function useFavorites() {
   return { favs, toggle };
 }
 
+/** Language a channel link asks for: start param "p1001_ru" / "home_en", or ?lang= on the web. */
+function linkLang(): Lang | null {
+  const start = tg()?.initDataUnsafe?.start_param ?? new URLSearchParams(location.search).get("tgWebAppStartParam") ?? "";
+  const value = start.match(/_(ka|en|ru)$/)?.[1] ?? new URLSearchParams(location.search).get("lang");
+  return value === "ka" || value === "en" || value === "ru" ? value : null;
+}
+
 function detectLang(): Lang {
+  const fromLink = linkLang();
+  if (fromLink) return fromLink;
   try {
     const saved = localStorage.getItem("catalog_lang");
     if (saved === "ka" || saved === "en" || saved === "ru") return saved;
@@ -152,8 +161,8 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     }
     const start = app?.initDataUnsafe?.start_param ?? new URLSearchParams(location.search).get("tgWebAppStartParam") ?? "";
     const fromUrl = new URLSearchParams(location.search).get("p");
-    if (start === "map" || new URLSearchParams(location.search).get("tab") === "map") setTab("map");
-    const ref = Number(fromUrl ?? start.match(/^p(\d+)$/)?.[1] ?? 0);
+    if (/^map(_|$)/.test(start) || new URLSearchParams(location.search).get("tab") === "map") setTab("map");
+    const ref = Number(fromUrl ?? start.match(/^p(\d+)(_|$)/)?.[1] ?? 0);
     if (ref) {
       setOpenRef(ref);
       history.replaceState({ p: ref }, "", `?p=${ref}`);

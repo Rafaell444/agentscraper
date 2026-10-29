@@ -13,26 +13,33 @@ export function managerLink(value: string): string | null {
 }
 
 /** Link that opens one listing (ref) or the whole catalog: the Telegram mini
- * app when mini_app_link is set, else the web page. */
-export function catalogLink(settings: { mini_app_link: string }, base: string, ref?: number | null): string {
-  const app = settings.mini_app_link.trim();
-  if (app) {
-    const param = ref ? `p${ref}` : "home";
-    return `${app}${app.includes("?") ? "&" : "?"}startapp=${param}`;
-  }
-  return ref ? `${base}/catalog?p=${ref}` : `${base}/catalog`;
+ * app when mini_app_link is set, else the web page.  With lang the app opens
+ * in that language (channel posts link to their own language). */
+export function catalogLink(settings: { mini_app_link: string }, base: string, ref?: number | null, lang?: Lang): string {
+  return appLink(settings, base, ref ? `p${ref}` : "home", lang);
 }
 
 /** Link that opens the catalog straight on the map tab. */
-export function mapLink(settings: { mini_app_link: string }, base: string): string {
-  const app = settings.mini_app_link.trim();
-  return app ? `${app}${app.includes("?") ? "&" : "?"}startapp=map` : `${base}/catalog?tab=map`;
+export function mapLink(settings: { mini_app_link: string }, base: string, lang?: Lang): string {
+  return appLink(settings, base, "map", lang);
 }
 
-export async function captionLinks(ref: number | null): Promise<CaptionLinks> {
+// The mini app reads start params like "p1001_ru", "home_en", "map_ru";
+// the web page reads ?p=, ?tab=map and ?lang=.
+function appLink(settings: { mini_app_link: string }, base: string, start: string, lang?: Lang): string {
+  const app = settings.mini_app_link.trim();
+  if (app) return `${app}${app.includes("?") ? "&" : "?"}startapp=${start}${lang ? `_${lang}` : ""}`;
+  const query = new URLSearchParams();
+  if (start.startsWith("p")) query.set("p", start.slice(1));
+  if (start === "map") query.set("tab", "map");
+  if (lang) query.set("lang", lang);
+  return `${base}/catalog${query.size ? `?${query}` : ""}`;
+}
+
+export async function captionLinks(ref: number | null, lang?: Lang): Promise<CaptionLinks> {
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
-  return { details: catalogLink(settings, base, ref), catalog: catalogLink(settings, base), manager: managerLink(settings.catalog_manager) };
+  return { details: catalogLink(settings, base, ref, lang), catalog: catalogLink(settings, base, null, lang), manager: managerLink(settings.catalog_manager) };
 }
 
 export async function ensureRefNo(postId: string): Promise<number> {
@@ -89,7 +96,6 @@ export async function publishToChannel(postId: string, onlyExisting = false): Pr
   if (!targets.length) return { ok: false, error: "პარამეტრებში Telegram არხი არ არის მითითებული." };
   const ref = await ensureRefNo(postId);
   const post = await prisma.sharedPost.findUniqueOrThrow({ where: { id: postId } });
-  const links = await captionLinks(ref);
   const posted = parseChannelIds(post.channelMessageIds);
   let photos: { mime: string; data: Uint8Array }[] | null = null;
   let isText = post.channelIsText;
@@ -97,7 +103,7 @@ export async function publishToChannel(postId: string, onlyExisting = false): Pr
   const errors: string[] = [];
 
   for (const target of targets) {
-    const caption = channelCaption(post, target.lang, links);
+    const caption = channelCaption(post, target.lang, await captionLinks(ref, target.lang));
     const ids = posted[target.lang];
     if (ids?.length) {
       const edited = await editPostCaption(target.chat, ids[0], caption, post.channelIsText);
@@ -188,7 +194,7 @@ export async function publishWelcome(input: { lang: Lang; text: string; button: 
   if (!text) return { ok: false, error: "ტექსტი ცარიელია." };
   const base = await shareBase(settings.public_base_url);
   const button = input.button.trim() || WELCOME_DEFAULTS[input.lang === "ru" ? "ru" : "en"].button;
-  const reply_markup = { inline_keyboard: [[{ text: button, url: catalogLink(settings, base) }]] };
+  const reply_markup = { inline_keyboard: [[{ text: button, url: catalogLink(settings, base, null, input.lang) }]] };
   const html = welcomeHtml(text);
   const visible = text.split("**").join("").length; // Telegram counts the caption without markup
   const photo = input.photo && input.photo.size > 0 ? input.photo : null;
