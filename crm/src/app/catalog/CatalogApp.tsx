@@ -13,7 +13,25 @@ type Filters = { deal: DealKind; type: string; districts: string[]; priceMin: st
 type Sort = "new" | "priceAsc" | "priceDesc" | "area";
 type Tab = "home" | "list" | "map" | "saved" | "request";
 type SavedSearch = { id: string; filters: Filters; query: string; seen: number; notify?: boolean };
-type Sheet = null | "filters" | { kind: "viewing" | "question"; ref: number };
+type Facet = "deal" | "price" | "rooms" | "district" | "metro";
+type Sheet = null | "filters" | { facet: Facet } | { kind: "viewing" | "question"; ref: number };
+
+// One-tap price ranges per deal type, in USD.
+const PRICE_PRESETS: Record<DealKind, [string, string][]> = {
+  rent: [["", "500"], ["500", "800"], ["800", "1200"], ["1200", ""]],
+  sale: [["", "80000"], ["80000", "150000"], ["150000", "300000"], ["300000", ""]],
+  daily: [["", "50"], ["50", "100"], ["100", ""]],
+};
+
+function usd(value: string): string {
+  return shortPrice({ price: Number(value), currency: "USD" });
+}
+
+function priceRangeLabel(min: string, max: string): string {
+  if (min && max) return `${usd(min)}–${usd(max).slice(1)}`;
+  if (max) return `≤ ${usd(max)}`;
+  return `${usd(min)}+`;
+}
 
 const FAV_KEY = "catalog_fav";
 const PAGE = 24;
@@ -201,6 +219,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
   const [mapSelected, setMapSelected] = useState<number | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const [toast, setToast] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
   // Hidden until the viewer's language is known, so it does not flash English first.
   const [ready, setReady] = useState(false);
   const { favs, toggle } = useFavorites();
@@ -303,7 +322,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     for (const i of items) if (i.kind === filters.deal && i.district) counts.set(i.district, (counts.get(i.district) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   }, [items, filters.deal]);
-  const activeCount = [filters.type, filters.districts.length, filters.priceMin, filters.priceMax, filters.rooms.length, filters.areaMin, filters.pets, filters.features.length, filters.nearMetro, filters.metro.length].filter(Boolean).length;
+  const activeCount = [filters.type, filters.districts.length, filters.priceMin || filters.priceMax, filters.rooms.length, filters.areaMin, filters.pets, filters.features.length, filters.nearMetro, filters.metro.length].filter(Boolean).length;
 
   const share = (item: CatalogItem) => {
     const link = linkTemplate.replace("{ref}", String(item.ref));
@@ -422,49 +441,61 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10" /></svg>
               </span>
               <span className="flex-1 truncate text-base font-bold">{agency}</span>
+              {tab === "list" || tab === "map" ? (
+                <button type="button" aria-label={t.search} onClick={() => { haptic("tap"); setSearching(true); }} className={`flex h-8 w-8 items-center justify-center rounded-lg ${query ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--text)]"}`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+                </button>
+              ) : null}
               <div className="flex rounded-lg bg-[var(--bg)] p-0.5 text-xs font-semibold">
                 {(["ka", "en", "ru"] as Lang[]).map((l) => (
                   <button key={l} type="button" onClick={() => changeLang(l)} className={`rounded-md px-2 py-1 ${lang === l ? "bg-[var(--accent)] text-white" : "text-[var(--hint)]"}`}>{l.toUpperCase()}</button>
                 ))}
               </div>
             </div>
+            {searching && (tab === "list" || tab === "map") ? (
+              <div className="flex items-center gap-2">
+                <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-[var(--bg)] px-3">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-[var(--hint)]"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+                  <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setSearching(false)} enterKeyHint="search" placeholder={t.homeSearch} className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-[var(--hint)]" />
+                  {query ? <button type="button" onClick={() => setQuery("")} className="text-[var(--hint)]" aria-label="clear">✕</button> : null}
+                </label>
+                <button type="button" onClick={() => setSearching(false)} className="shrink-0 text-sm font-semibold text-[var(--accent)]">{t.done}</button>
+              </div>
+            ) : null}
             {tab === "list" || tab === "map" ? (
-              <>
-                <div className="flex gap-2">
-                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-[var(--bg)] px-3">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-[var(--hint)]"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.search} className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none placeholder:text-[var(--hint)]" />
-                    {query ? <button type="button" onClick={() => setQuery("")} className="text-[var(--hint)]" aria-label="clear">✕</button> : null}
-                  </label>
-                  <button type="button" onClick={() => { haptic("tap"); setSheet("filters"); }} className="relative flex items-center gap-1.5 rounded-xl bg-[var(--bg)] px-3 text-sm font-medium">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
-                    {activeCount ? <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[11px] font-bold text-white">{activeCount}</span> : null}
-                  </button>
-                </div>
-                <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {deals.length > 1 ? (
-                    <div className="flex shrink-0 rounded-full bg-[var(--bg)] p-0.5">
-                      {deals.map((d) => (
-                        <button key={d} type="button" onClick={() => { haptic("select"); setFilters({ ...emptyFilters(d) }); }} className={`rounded-full px-3 py-1 text-sm font-semibold ${filters.deal === d ? "bg-[var(--accent)] text-white" : "text-[var(--hint)]"}`}>
-                          {t[d]}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {[1, 2, 3, 4].map((r) => (
-                    <QuickChip key={r} active={filters.rooms.includes(r)} onClick={() => setFilters((f) => ({ ...f, rooms: f.rooms.includes(r) ? f.rooms.filter((x) => x !== r) : [...f.rooms, r] }))}>
-                      {t.roomsChip(r)}
-                    </QuickChip>
-                  ))}
-                  {items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.minutes <= 10)) ? <QuickChip active={filters.nearMetro} onClick={() => setFilters((f) => ({ ...f, nearMetro: !f.nearMetro }))}>{t.nearMetro}</QuickChip> : null}
-                  {filters.deal !== "sale" ? <QuickChip active={filters.pets} onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))}>{t.petsOk}</QuickChip> : null}
-                  {districts.slice(0, 8).map((d) => (
-                    <QuickChip key={d} active={filters.districts.includes(d)} onClick={() => setFilters((f) => ({ ...f, districts: f.districts.includes(d) ? f.districts.filter((x) => x !== d) : [...f.districts, d] }))}>
-                      {placeName(d, lang)}
-                    </QuickChip>
-                  ))}
-                </div>
-              </>
+              <div className="-mx-3 flex items-center gap-1.5 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {deals.length > 1 ? <Pill active label={`${DEAL_EMOJI[filters.deal]} ${t[filters.deal]}`} onClick={() => setSheet({ facet: "deal" })} /> : null}
+                <button type="button" aria-label={t.filters} onClick={() => { haptic("tap"); setSheet("filters"); }} className={`relative flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-sm font-medium ${activeCount ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] bg-[var(--bg)]"}`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+                  {activeCount ? <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[11px] font-bold text-white">{activeCount}</span> : null}
+                </button>
+                {query && !searching ? <Pill active onClick={() => setQuery("")} label={`“${query}” ✕`} plain /> : null}
+                <Pill
+                  active={Boolean(filters.priceMin || filters.priceMax)}
+                  label={filters.priceMin || filters.priceMax ? priceRangeLabel(filters.priceMin, filters.priceMax) : t.pillPrice}
+                  onClick={() => setSheet({ facet: "price" })}
+                />
+                <Pill
+                  active={filters.rooms.length > 0}
+                  label={filters.rooms.length ? t.roomsPill([...filters.rooms].sort().map((r) => (r === 4 ? "4+" : String(r))).join(", ")) : t.pillRooms}
+                  onClick={() => setSheet({ facet: "rooms" })}
+                />
+                {districts.length > 1 ? (
+                  <Pill
+                    active={filters.districts.length > 0}
+                    label={filters.districts.length ? `${placeName(filters.districts[0], lang)}${filters.districts.length > 1 ? ` +${filters.districts.length - 1}` : ""}` : t.pillDistrict}
+                    onClick={() => setSheet({ facet: "district" })}
+                  />
+                ) : null}
+                {items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.minutes <= 15)) ? (
+                  <Pill
+                    active={filters.nearMetro || filters.metro.length > 0}
+                    label={filters.metro.length ? `Ⓜ ${metroName(filters.metro[0], lang)}${filters.metro.length > 1 ? ` +${filters.metro.length - 1}` : ""}` : filters.nearMetro ? t.nearMetro : t.pillMetro}
+                    onClick={() => setSheet({ facet: "metro" })}
+                  />
+                ) : null}
+                {filters.deal !== "sale" ? <Pill active={filters.pets} label={t.petsOk} onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))} plain /> : null}
+              </div>
             ) : null}
           </header>
 
@@ -573,12 +604,17 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
         </div>
       )}
 
+      {sheet && typeof sheet === "object" && "facet" in sheet ? (
+        <BottomSheet onClose={() => setSheet(null)}>
+          <FilterPanel only={sheet.facet} deals={deals} onDeal={(d) => { setFilters(emptyFilters(d)); setSheet(null); }} filters={filters} setFilters={setFilters} districts={districts} lang={lang} t={t} items={items} count={results.length} onReset={() => setFilters(emptyFilters(filters.deal))} onApply={() => { haptic("tap"); setSheet(null); }} />
+        </BottomSheet>
+      ) : null}
       {sheet === "filters" ? (
         <BottomSheet onClose={() => setSheet(null)}>
           <FilterPanel filters={filters} setFilters={setFilters} districts={districts} lang={lang} t={t} items={items} count={results.length} onReset={() => setFilters(emptyFilters(filters.deal))} onApply={() => { haptic("tap"); setSheet(null); }} />
         </BottomSheet>
       ) : null}
-      {sheet && typeof sheet === "object" ? (
+      {sheet && typeof sheet === "object" && "kind" in sheet ? (
         <BottomSheet onClose={() => setSheet(null)}>
           {(() => {
             const item = items.find((i) => i.ref === sheet.ref);
@@ -775,6 +811,20 @@ function Home({ items, deals, lang, t, recent, searchProps, onOpen, onBrowse, on
         <span className="text-[var(--accent)]">›</span>
       </button>
     </main>
+  );
+}
+
+/** A filter button in the top bar: shows its value when set; plain ones toggle instead of opening a sheet. */
+function Pill({ active, label, onClick, plain = false }: { active: boolean; label: string; onClick: () => void; plain?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => { haptic("select"); onClick(); }}
+      className={`flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-sm font-medium ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] bg-[var(--bg)] text-[var(--text)]"}`}
+    >
+      {label}
+      {plain ? null : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-70"><path d="m6 9 6 6 6-6" /></svg>}
+    </button>
   );
 }
 
@@ -1113,9 +1163,37 @@ function ChipToggle({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-function FilterPanel({ filters, setFilters, districts, lang, t, items, count, onReset, onApply }: {
-  filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>; districts: string[]; lang: Lang; t: Dict; items: CatalogItem[]; count: number; onReset: () => void; onApply: () => void;
+/** The full filter sheet, or with "only" a small sheet for one filter from the top bar. */
+function FilterPanel({ only, deals = [], onDeal, filters, setFilters, districts, lang, t, items, count, onReset, onApply }: {
+  only?: Facet; deals?: DealKind[]; onDeal?: (deal: DealKind) => void; filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>; districts: string[]; lang: Lang; t: Dict; items: CatalogItem[]; count: number; onReset: () => void; onApply: () => void;
 }) {
+  const show = (facet: Facet) => !only || only === facet;
+  const heading = only ? { deal: t.pillDeal, price: t.pillPrice, rooms: t.pillRooms, district: t.pillDistrict, metro: t.pillMetro }[only] : t.filters;
+  if (only === "deal") {
+    return (
+      <div className="space-y-2">
+        <h2 className="mb-3 text-lg font-bold">{heading}</h2>
+        {deals.map((d) => (
+          <button key={d} type="button" onClick={() => { haptic("select"); onDeal?.(d); }} className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left ${filters.deal === d ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]" : "border-[var(--line)]"}`}>
+            <span className="text-2xl">{DEAL_EMOJI[d]}</span>
+            <span className="flex-1 text-base font-semibold">{t[d]}</span>
+            <span className="text-sm text-[var(--hint)]">{items.filter((i) => i.kind === d).length}</span>
+            {filters.deal === d ? <span className="text-[var(--accent)]">✓</span> : null}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  const resetThis = () => {
+    if (!only) return onReset();
+    setFilters((f) => ({
+      ...f,
+      ...(only === "price" ? { priceMin: "", priceMax: "" } : {}),
+      ...(only === "rooms" ? { rooms: [] } : {}),
+      ...(only === "district" ? { districts: [] } : {}),
+      ...(only === "metro" ? { nearMetro: false, metro: [] } : {}),
+    }));
+  };
   const types = [...new Set(items.filter((i) => i.kind === filters.deal).map((i) => i.type ?? "ბინა"))];
   // Only stations that have a listing of this deal type within 15 minutes.
   const stations = METRO.filter((st) => items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.id === st.id && m.minutes <= 15)));
@@ -1125,10 +1203,10 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">{t.filters}</h2>
-        <button type="button" onClick={onReset} className="text-sm text-[var(--accent)]">{t.reset}</button>
+        <h2 className="text-lg font-bold">{heading}</h2>
+        <button type="button" onClick={resetThis} className="text-sm text-[var(--accent)]">{t.reset}</button>
       </div>
-      {types.length > 1 ? (
+      {!only && types.length > 1 ? (
         <div>
           <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.type}</div>
           <div className="flex flex-wrap gap-1.5">
@@ -1137,6 +1215,15 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
           </div>
         </div>
       ) : null}
+      {show("price") ? (
+      <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {PRICE_PRESETS[filters.deal].map(([min, max]) => (
+          <ChipToggle key={`${min}-${max}`} active={filters.priceMin === min && filters.priceMax === max} onClick={() => setFilters((f) => (f.priceMin === min && f.priceMax === max ? { ...f, priceMin: "", priceMax: "" } : { ...f, priceMin: min, priceMax: max }))}>
+            {priceRangeLabel(min, max)}
+          </ChipToggle>
+        ))}
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <label>
           <span className="mb-1 block text-xs font-medium text-[var(--hint)]">{t.priceFrom}</span>
@@ -1147,19 +1234,28 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
           <input inputMode="numeric" value={filters.priceMax} onChange={(e) => setFilters((f) => ({ ...f, priceMax: e.target.value }))} className={box} />
         </label>
       </div>
+      </div>
+      ) : null}
+      {show("rooms") ? (
       <div>
-        <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.rooms}</div>
-        <div className="flex gap-1.5">
+        {only ? null : <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.rooms}</div>}
+        <div className="grid grid-cols-4 gap-1.5">
           {[1, 2, 3, 4].map((r) => (
-            <ChipToggle key={r} active={filters.rooms.includes(r)} onClick={() => setFilters((f) => ({ ...f, rooms: f.rooms.includes(r) ? f.rooms.filter((x) => x !== r) : [...f.rooms, r] }))}>{r === 4 ? "4+" : r}</ChipToggle>
+            <button key={r} type="button" onClick={() => { haptic("select"); setFilters((f) => ({ ...f, rooms: f.rooms.includes(r) ? f.rooms.filter((x) => x !== r) : [...f.rooms, r] })); }} className={`rounded-xl border py-3 text-center ${filters.rooms.includes(r) ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>
+              <span className="block text-lg font-bold">{r === 4 ? "4+" : r}</span>
+              <span className="block text-[11px] opacity-80">{t.rooms}</span>
+            </button>
           ))}
         </div>
       </div>
+      ) : null}
+      {!only ? (
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-[var(--hint)]">{t.areaMin}</span>
         <input inputMode="numeric" value={filters.areaMin} onChange={(e) => setFilters((f) => ({ ...f, areaMin: e.target.value }))} className={box} />
       </label>
-      {districts.length ? (
+      ) : null}
+      {show("district") && districts.length ? (
         <div>
           <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.districts}</div>
           <div className="flex flex-wrap gap-1.5">
@@ -1167,7 +1263,7 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
           </div>
         </div>
       ) : null}
-      {stations.length ? (
+      {show("metro") && stations.length ? (
         <div>
           <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.metroFilter}</div>
           <div className="flex flex-wrap gap-1.5">
@@ -1181,6 +1277,7 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
           </div>
         </div>
       ) : null}
+      {!only ? (
       <div>
         <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.features}</div>
         <div className="flex flex-wrap gap-1.5">
@@ -1190,6 +1287,7 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
           ))}
         </div>
       </div>
+      ) : null}
       <button type="button" onClick={onApply} className="sticky bottom-0 w-full rounded-xl bg-[var(--accent)] py-3.5 text-sm font-semibold text-white shadow-lg">{t.show(count)}</button>
     </div>
   );
