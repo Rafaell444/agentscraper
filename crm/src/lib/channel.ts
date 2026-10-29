@@ -36,10 +36,10 @@ function appLink(settings: { mini_app_link: string }, base: string, start: strin
   return `${base}/catalog${query.size ? `?${query}` : ""}`;
 }
 
-export async function captionLinks(ref: number | null, lang?: Lang): Promise<CaptionLinks> {
+export async function captionLinks(ref: number | null, lang?: Lang, inCatalog = true): Promise<CaptionLinks> {
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
-  return { details: catalogLink(settings, base, ref, lang), catalog: catalogLink(settings, base, null, lang), manager: managerLink(settings.catalog_manager) };
+  return { details: inCatalog ? catalogLink(settings, base, ref, lang) : null, catalog: catalogLink(settings, base, null, lang), manager: managerLink(settings.catalog_manager) };
 }
 
 export async function ensureRefNo(postId: string): Promise<number> {
@@ -103,7 +103,7 @@ export async function publishToChannel(postId: string, onlyExisting = false): Pr
   const errors: string[] = [];
 
   for (const target of targets) {
-    const caption = channelCaption(post, target.lang, await captionLinks(ref, target.lang));
+    const caption = channelCaption(post, target.lang, await captionLinks(ref, target.lang, post.catalog));
     const ids = posted[target.lang];
     if (ids?.length) {
       const edited = await editPostCaption(target.chat, ids[0], caption, post.channelIsText);
@@ -126,7 +126,7 @@ export async function publishToChannel(postId: string, onlyExisting = false): Pr
   if (!onlyExisting) {
     await prisma.sharedPost.update({
       where: { id: postId },
-      data: { channelMessageIds: formatChannelIds(posted), channelIsText: isText, channelPostedAt: post.channelPostedAt ?? (done.length ? new Date() : null), catalog: true },
+      data: { channelMessageIds: formatChannelIds(posted), channelIsText: isText, channelPostedAt: post.channelPostedAt ?? (done.length ? new Date() : null) },
     });
   }
   if (errors.length && !done.length) return { ok: false, error: `Telegram — ${errors.join("; ")}` };

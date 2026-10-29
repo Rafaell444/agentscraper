@@ -353,8 +353,13 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
 
           {tab === "map" ? (
             <div className="relative h-[calc(100vh-11.5rem-env(safe-area-inset-bottom))] min-h-[320px] overflow-hidden">
-              <MapView items={results} selected={mapSelected} onSelect={setMapSelected} />
-              {!results.some((i) => i.point) ? <div className="pointer-events-none absolute inset-x-3 top-3 z-[500] rounded-xl bg-[var(--bg)] p-3 text-center text-sm text-[var(--hint)] shadow">{t.mapEmpty}</div> : null}
+              <MapView items={results} selected={mapSelected} onSelect={setMapSelected} labels={t.mapLabels} dark={tg()?.colorScheme === "dark"} />
+              {!results.some((i) => i.point) ? <div className="pointer-events-none absolute left-3 right-16 top-3 z-[500] rounded-xl bg-[var(--bg)] p-3 text-center text-sm text-[var(--hint)] shadow">{t.mapEmpty}</div> : null}
+              {!mapSelected && results.some((i) => !i.point) ? (
+                <button type="button" onClick={() => setTab("list")} className="absolute bottom-3 left-1/2 z-[500] -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--bg)] px-3 py-1.5 text-xs font-medium text-[var(--hint)] shadow-md">
+                  📍 {t.notOnMap(results.filter((i) => !i.point).length)}
+                </button>
+              ) : null}
               {mapSelected ? (
                 <div className="absolute inset-x-3 bottom-3 z-[500]">
                   {(() => {

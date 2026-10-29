@@ -196,7 +196,8 @@ function priceTag(usd: number | null, kind: DealKind, lang: Lang): string | null
   return lang === "ka" ? `#${top}${over}` : `#${over}${top}`;
 }
 
-export type CaptionLinks = { details: string; catalog: string; manager?: string | null };
+/** details is null when the flat is only in the channel, not in the mini app. */
+export type CaptionLinks = { details: string | null; catalog: string; manager?: string | null };
 
 /** HTML caption for the channel post (Telegram caps captions at 1024 chars). */
 export function channelCaption(post: SharedPost, lang: Lang, links: CaptionLinks): string {
@@ -220,7 +221,7 @@ export function channelCaption(post: SharedPost, lang: Lang, links: CaptionLinks
     post.pets === "yes" ? L("#ცხოველებით", "#petfriendly", "#сживотными") : "",
   ].filter(Boolean).join(" ");
   const linksBlock = [
-    `👉 <a href="${links.details}">${L("დეტალები და ყველა ფოტო", "Details and all photos", "Подробнее и все фото")}</a>`,
+    links.details ? `👉 <a href="${links.details}">${L("დეტალები და ყველა ფოტო", "Details and all photos", "Подробнее и все фото")}</a>` : "",
     links.manager ? `💬 <a href="${links.manager}">${L("მიწერე მენეჯერს", "Message the manager", "Написать менеджеру")}</a>` : "",
     `🔎 <a href="${links.catalog}">${L("ყველა ბინა — ფილტრები და რუკა", "All listings — filters and map", "Все объекты — фильтры и карта")}</a>`,
   ].filter(Boolean).join("\n");

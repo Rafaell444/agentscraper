@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
-import { ensureRefNo, refreshChannelPost } from "@/lib/channel";
+import { ensureRefNo, publishToChannel, refreshChannelPost } from "@/lib/channel";
 import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, requestCollectorFetch, type PostDraft } from "@/lib/sharedPosts";
 
 function text(formData: FormData, key: string): string | null {
@@ -93,6 +93,8 @@ export async function updatePost(formData: FormData) {
   // Set by savePostAndPublish (the submit button's own name/value does not
   // reach form actions reliably).
   const publish = formData.get("publish") === "1";
+  // Set by the "mini app" / "Telegram" / "both" buttons; plain save publishes nowhere.
+  const target = String(formData.get("target") ?? "");
   const clientId = text(formData, "clientId");
   const clientExists = clientId ? await prisma.client.count({ where: { id: clientId } }) : 0;
   // Map: a Google Maps / OSM link or "lat, lng"; empty clears it; unreadable keeps the old point.
@@ -124,8 +126,7 @@ export async function updatePost(formData: FormData) {
       lang: ["ka", "en", "ru"].includes(lang) ? lang : "ka",
       mapMode: ["exact", "approx", "off"].includes(mapModeRaw) ? mapModeRaw : "approx",
       ...(mapBad ? {} : { lat: coords?.lat ?? null, lng: coords?.lng ?? null }),
-      // Catalog (mini app + channel)
-      catalog: formData.get("catalog") === "1",
+      // Catalog details (mini app + channel)
       district: text(formData, "district"),
       features: formData.getAll("features").map(String).filter(Boolean).join(","),
       pets: ["yes", "no", "ask"].includes(String(formData.get("pets"))) ? String(formData.get("pets")) : null,
@@ -134,11 +135,25 @@ export async function updatePost(formData: FormData) {
       descriptionRu: text(formData, "descriptionRu"),
     },
   });
-  if (formData.get("catalog") === "1") await ensureRefNo(id);
-  await refreshChannelPost(id);
+  const notes: string[] = [];
+  let failed = false;
+  if (target === "app" || target === "both") {
+    await prisma.sharedPost.update({ where: { id }, data: { catalog: true } });
+    await ensureRefNo(id);
+    notes.push("📱 მინი აპში დაემატა");
+  }
+  if (target === "tg" || target === "both") {
+    const result = await publishToChannel(id);
+    notes.push(result.ok ? result.message : result.error);
+    failed = !result.ok;
+  } else {
+    await refreshChannelPost(id);
+  }
   revalidatePath(`/shared/${id}`);
   revalidatePath("/shared");
-  redirect(`/shared/${id}?saved=${publish ? "published" : "1"}${mapBad ? "&map=bad" : ""}`);
+  revalidatePath("/channel");
+  const channel = notes.length ? `&channel=${encodeURIComponent(`${failed ? "err" : "ok"}:${notes.join(". ")}`)}#catalog` : "";
+  redirect(`/shared/${id}?saved=${publish ? "published" : "1"}${mapBad ? "&map=bad" : ""}${channel}`);
 }
 
 /** Ask the collector again for a MyHome post whose fetch failed. */
@@ -150,6 +165,22 @@ export async function retryCollectorFetch(formData: FormData) {
   const ok = await requestCollectorFetch(post.sourceUrl);
   await prisma.sharedPost.update({ where: { id }, data: ok ? { importState: "waiting", importRequestedAt: new Date() } : { importState: "failed" } });
   revalidatePath(`/shared/${id}`);
+}
+
+/** Save, then show the flat in the mini app, post it to the Telegram channels, or both. */
+export async function saveToApp(formData: FormData) {
+  formData.set("target", "app");
+  await updatePost(formData);
+}
+
+export async function saveToTelegram(formData: FormData) {
+  formData.set("target", "tg");
+  await updatePost(formData);
+}
+
+export async function saveToBoth(formData: FormData) {
+  formData.set("target", "both");
+  await updatePost(formData);
 }
 
 /** "Save and publish" button: same form, then the post goes live. */

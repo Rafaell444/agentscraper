@@ -43,10 +43,10 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
       include: { post: { select: { id: true, refNo: true, propertyType: true, rooms: true, district: true, location: true } }, client: { select: { id: true, name: true } } },
     }),
     prisma.sharedPost.findMany({
-      where: { catalog: true },
+      where: { OR: [{ catalog: true }, { channelMessageIds: { not: null } }] },
       orderBy: [{ availability: "asc" }, { updatedAt: "desc" }],
       take: 300,
-      select: { id: true, refNo: true, propertyType: true, rooms: true, district: true, location: true, price: true, currency: true, dealType: true, availability: true, channelPostedAt: true, catalogViews: true, _count: { select: { catalogLeads: true, photos: true } } },
+      select: { id: true, refNo: true, catalog: true, propertyType: true, rooms: true, district: true, location: true, price: true, currency: true, dealType: true, availability: true, channelPostedAt: true, catalogViews: true, _count: { select: { catalogLeads: true, photos: true } } },
     }),
     prisma.catalogLead.count({ where: { status: "new" } }),
   ]);
@@ -154,7 +154,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
       {tab === "listings" ? (
         <Card title="კატალოგის ბინები">
           {posts.length === 0 ? (
-            <EmptyState title="კატალოგი ცარიელია" hint="პოსტების ტაბში გახსენი პოსტი → „აჩვენე კატალოგში“ → შენახვა → „არხში გამოქვეყნება“" />
+            <EmptyState title="კატალოგი ცარიელია" hint="პოსტების ტაბში გახსენი პოსტი → „სად გამოვაქვეყნოთ“ → 📱 მინი აპი / 📣 Telegram / ორივეგან" />
           ) : (
             <ul className="divide-y divide-gray-100">
               {posts.map((p) => {
@@ -165,7 +165,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
                     <Link href={`/shared/${p.id}#catalog`} className="min-w-0 flex-1 font-medium text-gray-900 hover:text-emerald-700">{headline(p, "ka")}</Link>
                     <span className="text-gray-700">{priceText(p.price, p.currency, dealKind(p.dealType), "ka")}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${a.cls}`}>{a.label}</span>
-                    <span className="text-xs text-gray-500">{p.channelPostedAt ? "📣 არხშია" : "არხში არაა"} · 👁 {p.catalogViews} · ✉️ {p._count.catalogLeads} · 📷 {p._count.photos}</span>
+                    <span className="text-xs text-gray-500">{p.catalog ? "📱 აპშია" : "📱 —"} · {p.channelPostedAt ? "📣 არხშია" : "📣 —"} · 👁 {p.catalogViews} · ✉️ {p._count.catalogLeads} · 📷 {p._count.photos}</span>
                   </li>
                 );
               })}

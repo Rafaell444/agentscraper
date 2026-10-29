@@ -31,6 +31,16 @@ export async function takeOffChannel(formData: FormData) {
   back(id, await removeFromChannel(id));
 }
 
+/** Hide the flat from the mini app; channel posts stay but lose the app link. */
+export async function takeOffApp(formData: FormData) {
+  await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.sharedPost.update({ where: { id }, data: { catalog: false } });
+  await refreshChannelPost(id);
+  back(id, { ok: true, message: "მინი აპიდან მოიხსნა" });
+}
+
 export async function setAvailability(formData: FormData) {
   await requireUser();
   const id = String(formData.get("id") ?? "");

@@ -10,12 +10,12 @@ import { mapView } from "@/lib/map";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { deletePost, regenerateToken, retryCollectorFetch, savePostAndPublish, setPostStatus, updatePost } from "../actions";
+import { deletePost, regenerateToken, retryCollectorFetch, saveToApp, saveToBoth, savePostAndPublish, saveToTelegram, setPostStatus, updatePost } from "../actions";
 import { PhotoManager } from "./PhotoManager";
 import { filterOptions } from "@/lib/queries";
 import { AVAILABILITY, FEATURES, LEASE_TERMS, featureList, termText } from "@/lib/catalog";
 import { CHANNEL_FLAG, catalogLink, channelTargets, parseChannelIds } from "@/lib/channel";
-import { postToChannel, setAvailability, takeOffChannel } from "@/app/channel/actions";
+import { setAvailability, takeOffApp, takeOffChannel } from "@/app/channel/actions";
 import { ImportWaiter } from "./ImportWaiter";
 
 export const dynamic = "force-dynamic";
@@ -253,10 +253,9 @@ export default async function SharedPostEditor({ params, searchParams }: { param
 
         <div id="catalog" className="scroll-mt-20">
           <Card title="კატალოგი (Telegram აპი და არხი)">
-            <label className="mb-3 flex items-center gap-2 text-sm font-medium">
-              <input type="checkbox" name="catalog" value="1" defaultChecked={post.catalog} className="h-4 w-4 accent-emerald-600" />
-              აჩვენე კატალოგში — ყველა ხედავს Telegram აპში {post.refNo ? <span className="font-mono text-gray-500">#{post.refNo}</span> : null}
-            </label>
+            <p className="mb-3 text-xs text-gray-600">
+              ეს ველები მინი აპისა და Telegram არხისთვისაა. „შენახვა“ მხოლოდ ინახავს — აპში ან არხში ქვემოთ, „სად გამოვაქვეყნოთ“ ღილაკებით დადე. {post.refNo ? <span className="font-mono text-gray-500">#{post.refNo}</span> : null}
+            </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="უბანი (ფილტრისთვის)">
                 <Input name="district" defaultValue={post.district ?? ""} list="catalog-districts" placeholder="მაგ. ვაკე" />
@@ -300,6 +299,20 @@ export default async function SharedPostEditor({ params, searchParams }: { param
           </Card>
         </div>
 
+        <Card title="სად გამოვაქვეყნოთ">
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className={`rounded-full px-2.5 py-1 ${post.catalog ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"}`}>📱 მინი აპი: {post.catalog ? "ჩანს" : "არ ჩანს"}</span>
+            <span className={`rounded-full px-2.5 py-1 ${post.channelMessageIds ? "bg-sky-100 text-sky-800" : "bg-gray-100 text-gray-500"}`}>📣 Telegram: {post.channelMessageIds ? (Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ") : "არ არის"}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <SubmitButton pending="ინახება…" formAction={saveToApp} className="ui-btn ui-btn-secondary">{post.catalog ? "📱 შენახვა (აპშია)" : "📱 მინი აპში დამატება"}</SubmitButton>
+            <SubmitButton pending="იგზავნება…" formAction={saveToTelegram} className="ui-btn ui-btn-secondary">{!post.channelMessageIds ? `📣 Telegram-ში: ${channels.map((c) => CHANNEL_FLAG[c.lang]).join(" + ") || "არხი"}` : missing.length ? `📣 დამატება: ${missing.map((c) => CHANNEL_FLAG[c.lang]).join(" + ")}` : "📣 არხის პოსტის განახლება"}</SubmitButton>
+            {!post.catalog || missing.length ? <SubmitButton pending="ქვეყნდება…" formAction={saveToBoth}>📱 + 📣 ორივეგან</SubmitButton> : null}
+          </div>
+          <p className="mt-2 text-[11px] text-gray-500">ღილაკი ჯერ ინახავს ცვლილებებს. თითო არხში მიდის პირველი 10 ფოტო და ტექსტი იმ არხის ენაზე. მხოლოდ არხში დადებულ პოსტს „დეტალები აპში“ ბმული არ ექნება.</p>
+          {post.lat == null || post.mapMode === "off" ? <p className="mt-2 text-xs font-medium text-amber-700">⚠️ რუკის წერტილი არ არის — აპის რუკაზე ეს ბინა არ გამოჩნდება. ზემოთ „რუკა“ ველში ჩასვი Google Maps ბმული ან კოორდინატები.</p> : null}
+        </Card>
+
         <div className="flex flex-wrap gap-2">
           <SubmitButton pending="ინახება…" className="ui-btn ui-btn-secondary">შენახვა</SubmitButton>
           <SubmitButton pending="ქვეყნდება…" formAction={savePostAndPublish}>{published ? "შენახვა (გამოქვეყნებულზე)" : "შენახვა და გამოქვეყნება"}</SubmitButton>
@@ -307,8 +320,8 @@ export default async function SharedPostEditor({ params, searchParams }: { param
       </form>
 
 
-      {post.catalog ? (
-        <Card title="Telegram არხი">
+      {post.catalog || post.channelMessageIds ? (
+        <Card title="აპი და Telegram — მართვა">
           <div className="space-y-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-gray-600">სტატუსი:</span>
@@ -322,21 +335,23 @@ export default async function SharedPostEditor({ params, searchParams }: { param
             </div>
             <p className="text-xs text-gray-500">„გაქირავდა“ / „გაიყიდა“ — ბინა აპიდან ქრება, არხის პოსტზე კი თავში ეწერება 🔴 სტატუსი.</p>
             <div className="flex flex-wrap items-center gap-2">
-              <form action={postToChannel}>
-                <input type="hidden" name="id" value={post.id} />
-                <SubmitButton pending="იგზავნება…">{!post.channelMessageIds ? `📣 გამოქვეყნება: ${channels.map((c) => CHANNEL_FLAG[c.lang]).join(" + ") || "არხი"}` : missing.length ? `📣 დამატება: ${missing.map((c) => CHANNEL_FLAG[c.lang]).join(" + ")} (და განახლება)` : "არხების პოსტის განახლება"}</SubmitButton>
-              </form>
+              {post.catalog ? (
+                <form action={takeOffApp}>
+                  <input type="hidden" name="id" value={post.id} />
+                  <SubmitButton pending="…" className="ui-btn ui-btn-secondary" confirm="მოვხსნა ეს ბინა მინი აპიდან?">აპიდან მოხსნა</SubmitButton>
+                </form>
+              ) : null}
               {post.channelMessageIds ? (
                 <form action={takeOffChannel}>
                   <input type="hidden" name="id" value={post.id} />
                   <SubmitButton pending="იშლება…" className="ui-btn ui-btn-secondary" confirm="წავშალო ეს პოსტი არხიდან?">არხიდან წაშლა</SubmitButton>
                 </form>
               ) : null}
-              {catalogUrl ? <a href={catalogUrl} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm">აპში ნახვა ↗</a> : null}
-              {catalogUrl ? <CopyButton value={catalogUrl} className="ui-btn ui-btn-ghost ui-btn-sm" /> : null}
+              {catalogUrl && post.catalog ? <a href={catalogUrl} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm">აპში ნახვა ↗</a> : null}
+              {catalogUrl && post.catalog ? <CopyButton value={catalogUrl} className="ui-btn ui-btn-ghost ui-btn-sm" /> : null}
             </div>
             <p className="text-xs text-gray-500">
-              {post.channelPostedAt ? `არხებშია: ${(Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ")} · ${fmtDate(post.channelPostedAt, true)} · ` : ""}აპში ნახვები: {post.catalogViews}. ჯერ შეინახე ცვლილებები, მერე გამოაქვეყნე — თითო არხში მიდის პირველი 10 ფოტო და ტექსტი იმ არხის ენაზე (რუსულ არხში რუსული აღწერა, ინგლისურში — ინგლისური).
+              {post.channelPostedAt ? `არხებშია: ${(Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ")} · ${fmtDate(post.channelPostedAt, true)} · ` : ""}აპში ნახვები: {post.catalogViews}. სტატუსის შეცვლა არხის პოსტსაც ანახლებს.
             </p>
           </div>
         </Card>
