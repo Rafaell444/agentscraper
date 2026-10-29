@@ -14,7 +14,7 @@ import { deletePost, regenerateToken, retryCollectorFetch, savePostAndPublish, s
 import { PhotoManager } from "./PhotoManager";
 import { filterOptions } from "@/lib/queries";
 import { AVAILABILITY, FEATURES, LEASE_TERMS, featureList, termText } from "@/lib/catalog";
-import { catalogLink } from "@/lib/channel";
+import { CHANNEL_FLAG, catalogLink, channelTargets, parseChannelIds } from "@/lib/channel";
 import { postToChannel, setAvailability, takeOffChannel } from "@/app/channel/actions";
 import { ImportWaiter } from "./ImportWaiter";
 
@@ -66,6 +66,9 @@ export default async function SharedPostEditor({ params, searchParams }: { param
   // The agent sees what the client will see (area only / exact).
   const base = await shareBase(settings.public_base_url);
   const catalogUrl = post.refNo ? catalogLink(settings, base, post.refNo) : null;
+  const channels = channelTargets(settings);
+  const postedIn = parseChannelIds(post.channelMessageIds);
+  const missing = channels.filter((c) => !postedIn[c.lang]);
   const postFeatures = new Set(featureList(post.features));
   const channelMsg = channel ? { ok: channel.startsWith("ok:"), text: channel.replace(/^(ok|err):/, "") } : null;
   const mapPreview = mapView(post.lat, post.lng, post.mapMode === "off" ? "exact" : post.mapMode);
@@ -321,7 +324,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
             <div className="flex flex-wrap items-center gap-2">
               <form action={postToChannel}>
                 <input type="hidden" name="id" value={post.id} />
-                <SubmitButton pending="იგზავნება…">{post.channelMessageIds ? "არხის პოსტის განახლება" : "📣 არხში გამოქვეყნება"}</SubmitButton>
+                <SubmitButton pending="იგზავნება…">{!post.channelMessageIds ? `📣 გამოქვეყნება: ${channels.map((c) => CHANNEL_FLAG[c.lang]).join(" + ") || "არხი"}` : missing.length ? `📣 დამატება: ${missing.map((c) => CHANNEL_FLAG[c.lang]).join(" + ")} (და განახლება)` : "არხების პოსტის განახლება"}</SubmitButton>
               </form>
               {post.channelMessageIds ? (
                 <form action={takeOffChannel}>
@@ -333,7 +336,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
               {catalogUrl ? <CopyButton value={catalogUrl} className="ui-btn ui-btn-ghost ui-btn-sm" /> : null}
             </div>
             <p className="text-xs text-gray-500">
-              {post.channelPostedAt ? `არხში გამოქვეყნდა: ${fmtDate(post.channelPostedAt, true)} · ` : ""}აპში ნახვები: {post.catalogViews}. ჯერ შეინახე ცვლილებები, მერე გამოაქვეყნე — არხში მიდის პირველი 10 ფოტო და ტექსტი არხის ენაზე.
+              {post.channelPostedAt ? `არხებშია: ${(Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ")} · ${fmtDate(post.channelPostedAt, true)} · ` : ""}აპში ნახვები: {post.catalogViews}. ჯერ შეინახე ცვლილებები, მერე გამოაქვეყნე — თითო არხში მიდის პირველი 10 ფოტო და ტექსტი იმ არხის ენაზე (რუსულ არხში რუსული აღწერა, ინგლისურში — ინგლისური).
             </p>
           </div>
         </Card>

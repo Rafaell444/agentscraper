@@ -32,7 +32,7 @@ export default async function PublishPage({ searchParams }: { searchParams: Prom
   ]);
   const count = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
   const configured = {
-    telegram: Boolean(settings.telegram_channel),
+    telegram: Boolean(settings.telegram_channel || settings.telegram_channel_en),
     facebook: Boolean(settings.facebook_page_id),
   };
 

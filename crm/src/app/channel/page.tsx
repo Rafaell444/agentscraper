@@ -5,7 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
 import { fmtDate } from "@/lib/format";
 import { AVAILABILITY, dealKind, headline, priceText } from "@/lib/catalog";
-import { catalogLink, managerLink } from "@/lib/channel";
+import { CHANNEL_FLAG, catalogLink, channelTargets, managerLink } from "@/lib/channel";
 import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
@@ -50,6 +50,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
     }),
     prisma.catalogLead.count({ where: { status: "new" } }),
   ]);
+  const channels = channelTargets(settings);
   const hookOk = hook.ok && hook.result.url === `${base}/api/telegram/webhook`;
   const appUrl = catalogLink(settings, base);
   const botMsg = bot ? { ok: bot === "ok", text: bot === "ok" ? "ბოტი დაკავშირდა: /start და მენიუს ღილაკი ახლა აპს ხსნის." : bot.slice(4) } : null;
@@ -71,8 +72,8 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
           <Step done={Boolean(username)} title={username ? `ბოტი: @${username}` : "ბოტი არ არის"}>
             {username ? "იგივე ბოტი, რომელიც შეტყობინებებს გზავნის." : "Vercel-ში დაამატე TELEGRAM_BOT_TOKEN (იხ. Telegram ტაბი)."}
           </Step>
-          <Step done={Boolean(settings.telegram_channel)} title={settings.telegram_channel ? `არხი: ${settings.telegram_channel}` : "შექმენი არხი"}>
-            Telegram → New Channel → Public, მაგ. @tbilisi_homes. არხის პარამეტრებში Administrators → Add Admin → @{username ?? "შენი_ბოტი"} („Post messages“, „Edit“, „Delete“ ჩართული). მერე <Link href="/settings" className="text-emerald-700 underline">პარამეტრებში</Link> „Telegram არხი“ = @არხის_სახელი, „Telegram არხის ენა“ = ru / en / ka.
+          <Step done={channels.length > 0} title={channels.length ? `არხები: ${channels.map((c) => `${CHANNEL_FLAG[c.lang]} ${c.chat}`).join(" · ")}` : "შექმენი არხები (რუსული და ინგლისური)"}>
+            თითო ენისთვის ცალკე: Telegram → New Channel → Public, მაგ. @tbilisi_rent_ru და @tbilisi_rent_en. თითოეულში არხის პარამეტრებში Administrators → Add Admin → @{username ?? "შენი_ბოტი"} („Post messages“, „Edit“, „Delete“ ჩართული). მერე <Link href="/settings" className="text-emerald-700 underline">პარამეტრებში</Link> შეავსე „🇷🇺 Telegram არხი“ და „🇬🇧 Telegram არხი“. ერთი ღილაკი ორივე არხში აქვეყნებს, თითოეულში თავის ენაზე.
           </Step>
           <Step done={hookOk} title="ბოტის დაკავშირება CRM-თან">
             {hook.ok && hook.result.last_error_message ? <span className="text-rose-700">ბოლო შეცდომა: {hook.result.last_error_message}. </span> : null}
