@@ -7,7 +7,7 @@ import { requireAdmin, requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
 import { AVAILABILITY } from "@/lib/catalog";
-import { publishToChannel, refreshChannelPost, removeFromChannel } from "@/lib/channel";
+import { publishToChannel, publishWelcome, refreshChannelPost, removeFromChannel } from "@/lib/channel";
 import { callVerbose, webhookSecret } from "@/lib/telegram";
 
 function back(id: string, result: { ok: boolean; message?: string; error?: string }): never {
@@ -65,4 +65,23 @@ export async function setLeadStatus(formData: FormData) {
   const status = formData.get("status") === "done" ? "done" : "new";
   if (id) await prisma.catalogLead.update({ where: { id }, data: { status } });
   revalidatePath("/channel");
+}
+
+/** Bot-sent welcome post with "Open App" buttons, optionally pinned. */
+export async function postWelcome(formData: FormData) {
+  await requireAdmin();
+  const lang = formData.get("lang") === "ru" ? "ru" : "en";
+  const photo = formData.get("photo");
+  const result = await publishWelcome({
+    lang,
+    text: String(formData.get("text") ?? ""),
+    button: String(formData.get("button") ?? ""),
+    mapButton: String(formData.get("mapButton") ?? ""),
+    pin: formData.get("pin") === "1",
+    fresh: formData.get("fresh") === "1",
+    photo: photo instanceof File ? photo : null,
+  });
+  revalidatePath("/channel");
+  const text = result.ok ? `ok:${result.message}` : `err:${result.error}`;
+  redirect(`/channel?welcome=${encodeURIComponent(text)}#welcome`);
 }

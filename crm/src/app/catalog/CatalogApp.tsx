@@ -152,6 +152,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     }
     const start = app?.initDataUnsafe?.start_param ?? new URLSearchParams(location.search).get("tgWebAppStartParam") ?? "";
     const fromUrl = new URLSearchParams(location.search).get("p");
+    if (start === "map" || new URLSearchParams(location.search).get("tab") === "map") setTab("map");
     const ref = Number(fromUrl ?? start.match(/^p(\d+)$/)?.[1] ?? 0);
     if (ref) {
       setOpenRef(ref);

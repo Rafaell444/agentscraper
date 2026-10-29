@@ -2,7 +2,7 @@ import { prisma } from "./db";
 import { getSettings } from "./settings";
 import { shareBase } from "./shareUrl";
 import { asLang, channelCaption, type CaptionLinks, type Lang } from "./catalog";
-import { deleteMessages, editPostCaption, postAlbum } from "./telegram";
+import { callVerbose, deleteMessages, editPostCaption, postAlbum } from "./telegram";
 
 // Posting catalog listings to the agency's Telegram channel.  The bot must be
 // an admin of the channel (telegram_channel setting).
@@ -21,6 +21,12 @@ export function catalogLink(settings: { mini_app_link: string }, base: string, r
     return `${app}${app.includes("?") ? "&" : "?"}startapp=${param}`;
   }
   return ref ? `${base}/catalog?p=${ref}` : `${base}/catalog`;
+}
+
+/** Link that opens the catalog straight on the map tab. */
+export function mapLink(settings: { mini_app_link: string }, base: string): string {
+  const app = settings.mini_app_link.trim();
+  return app ? `${app}${app.includes("?") ? "&" : "?"}startapp=map` : `${base}/catalog?tab=map`;
 }
 
 export async function captionLinks(ref: number | null): Promise<CaptionLinks> {
@@ -51,7 +57,6 @@ export function channelTargets(settings: Record<string, string>): ChannelTarget[
   const list: ChannelTarget[] = [
     { lang: "ru", chat: (settings.telegram_channel ?? "").trim() },
     { lang: "en", chat: (settings.telegram_channel_en ?? "").trim() },
-    { lang: "ka", chat: (settings.telegram_channel_ka ?? "").trim() },
   ];
   return list.filter((t) => t.chat);
 }
@@ -141,4 +146,94 @@ export async function removeFromChannel(postId: string): Promise<ChannelResult> 
   await prisma.sharedPost.update({ where: { id: postId }, data: { channelMessageIds: null, channelPostedAt: null, channelIsText: false } });
   const warning = failed.length ? ` (ვერ წაიშალა — ${failed.join("; ")}; წაშალე არხში ხელით)` : "";
   return { ok: true, message: `არხებიდან მოიხსნა.${warning}` };
+}
+
+// Welcome post: a message the bot sends itself, so it can carry "Open App"
+// buttons (posts written by hand in Telegram cannot).  Pinned, its first
+// button shows on the pinned bar.  Stored per language in the settings table.
+
+export type WelcomePost = { chat: string; id: number; photo: boolean; text: string; button: string; mapButton: string };
+
+export const WELCOME_DEFAULTS: Record<"ru" | "en", Omit<WelcomePost, "chat" | "id" | "photo">> = {
+  ru: {
+    text: "👋 Добро пожаловать в **Тбилиси Home**!\n\nПомогаем снять или купить квартиру в Тбилиси.\n\n✅ **Только проверенные объявления**: реальные фото, честные цены в $ и ₾.\n\n🔎 **Быстрый поиск в приложении**: фильтры по цене, районам и комнатам, карта, избранное.\n\n📩 **Понравилась квартира?** Отправьте её ID менеджеру или нажмите «Запросить просмотр» в приложении.\n\n🔔 Включите уведомления, чтобы не пропустить новые квартиры.",
+    button: "🏠 Открыть приложение",
+    mapButton: "🗺 Квартиры на карте",
+  },
+  en: {
+    text: "👋 Welcome to **Tbilisi Home**!\n\nWe help you rent or buy an apartment in Tbilisi.\n\n✅ **Verified listings only**: real photos, honest prices in $ and ₾.\n\n🔎 **Find faster in our app**: filters by price, district and rooms, a map, and saved favourites.\n\n📩 **Found one you like?** Send the listing ID to our manager or tap “Request a viewing” in the app.\n\n🔔 Turn on notifications so you never miss a new listing.",
+    button: "🏠 Open App",
+    mapButton: "🗺 Listings on the map",
+  },
+};
+
+export async function getWelcome(lang: Lang): Promise<WelcomePost | null> {
+  const row = await prisma.setting.findUnique({ where: { key: `welcome_${lang}` } });
+  try {
+    return row ? (JSON.parse(row.value) as WelcomePost) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Escape for Telegram HTML and turn **bold** into <b>bold</b>. */
+function welcomeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+}
+
+export async function publishWelcome(input: { lang: Lang; text: string; button: string; mapButton: string; pin: boolean; fresh: boolean; photo: File | null }): Promise<ChannelResult> {
+  const settings = await getSettings();
+  const target = channelTargets(settings).find((t) => t.lang === input.lang);
+  if (!target) return { ok: false, error: "ამ ენის არხი პარამეტრებში არ არის." };
+  const text = input.text.trim();
+  if (!text) return { ok: false, error: "ტექსტი ცარიელია." };
+  const base = await shareBase(settings.public_base_url);
+  const keyboard = [[{ text: input.button.trim() || WELCOME_DEFAULTS.en.button, url: catalogLink(settings, base) }]];
+  if (input.mapButton.trim()) keyboard.push([{ text: input.mapButton.trim(), url: mapLink(settings, base) }]);
+  const reply_markup = { inline_keyboard: keyboard };
+  const html = welcomeHtml(text);
+  const visible = text.split("**").join("").length; // Telegram counts the caption without markup
+  const photo = input.photo && input.photo.size > 0 ? input.photo : null;
+
+  const old = await getWelcome(input.lang);
+  const canEdit = old && old.chat === target.chat && !input.fresh && !photo;
+  let id: number;
+  let hasPhoto: boolean;
+  if (canEdit) {
+    if (old.photo && visible > 1024) return { ok: false, error: `ფოტოიან პოსტში ტექსტი მაქს. 1024 სიმბოლოა (ახლა ${visible}). შეამოკლე.` };
+    const edited = old.photo
+      ? await callVerbose("editMessageCaption", { chat_id: target.chat, message_id: old.id, caption: html, parse_mode: "HTML", reply_markup })
+      : await callVerbose("editMessageText", { chat_id: target.chat, message_id: old.id, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
+    if (!edited.ok && !/not modified/i.test(edited.error)) return { ok: false, error: `Telegram — ${edited.error}` };
+    id = old.id;
+    hasPhoto = old.photo;
+  } else if (photo) {
+    if (visible > 1024) return { ok: false, error: `ფოტოიან პოსტში ტექსტი მაქს. 1024 სიმბოლოა (ახლა ${visible}). შეამოკლე ან ფოტოს გარეშე გამოაქვეყნე.` };
+    const form = new FormData();
+    form.set("chat_id", target.chat);
+    form.set("photo", photo, photo.name || "welcome.jpg");
+    form.set("caption", html);
+    form.set("parse_mode", "HTML");
+    form.set("reply_markup", JSON.stringify(reply_markup));
+    const sent = await callVerbose<{ message_id: number }>("sendPhoto", form);
+    if (!sent.ok) return { ok: false, error: `Telegram — ${sent.error}` };
+    id = sent.result.message_id;
+    hasPhoto = true;
+  } else {
+    const sent = await callVerbose<{ message_id: number }>("sendMessage", { chat_id: target.chat, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
+    if (!sent.ok) return { ok: false, error: `Telegram — ${sent.error}` };
+    id = sent.result.message_id;
+    hasPhoto = false;
+  }
+
+  // A new post replaces the previous welcome in the same channel.
+  if (!canEdit && old && old.chat === target.chat && old.id !== id) await deleteMessages(old.chat, [old.id]);
+  let pinNote = "";
+  if (input.pin) {
+    const pinned = await callVerbose("pinChatMessage", { chat_id: target.chat, message_id: id, disable_notification: true });
+    pinNote = pinned.ok ? " და მიმაგრდა 📌" : ` (ვერ მიმაგრდა: ${pinned.error} — ბოტს „Edit messages“ უფლება სჭირდება)`;
+  }
+  const saved: WelcomePost = { chat: target.chat, id, photo: hasPhoto, text, button: input.button, mapButton: input.mapButton };
+  await prisma.setting.upsert({ where: { key: `welcome_${input.lang}` }, create: { key: `welcome_${input.lang}`, value: JSON.stringify(saved) }, update: { value: JSON.stringify(saved) } });
+  return { ok: true, message: `${CHANNEL_FLAG[input.lang]}: ${canEdit ? "განახლდა" : "გამოქვეყნდა"}${pinNote}` };
 }

@@ -5,12 +5,12 @@ import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
 import { fmtDate } from "@/lib/format";
 import { AVAILABILITY, dealKind, headline, priceText } from "@/lib/catalog";
-import { CHANNEL_FLAG, catalogLink, channelTargets, managerLink } from "@/lib/channel";
+import { CHANNEL_FLAG, WELCOME_DEFAULTS, catalogLink, channelTargets, getWelcome, managerLink } from "@/lib/channel";
 import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { connectBot, setLeadStatus } from "./actions";
+import { connectBot, postWelcome, setLeadStatus } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +28,9 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
   );
 }
 
-export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string }> }) {
+export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string }> }) {
   const user = await requireUser();
-  const { bot, tab = "leads" } = await searchParams;
+  const { bot, tab = "leads", welcome } = await searchParams;
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
   const [username, hook, leads, posts, newLeads] = await Promise.all([
@@ -51,6 +51,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
     prisma.catalogLead.count({ where: { status: "new" } }),
   ]);
   const channels = channelTargets(settings);
+  const welcomes = await Promise.all(channels.map(async (c) => ({ ...c, post: await getWelcome(c.lang) })));
   const hookOk = hook.ok && hook.result.url === `${base}/api/telegram/webhook`;
   const appUrl = catalogLink(settings, base);
   const botMsg = bot ? { ok: bot === "ok", text: bot === "ok" ? "ბოტი დაკავშირდა: /start და მენიუს ღილაკი ახლა აპს ხსნის." : bot.slice(4) } : null;
@@ -97,6 +98,46 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
           <CopyButton value={appUrl} className="ui-btn ui-btn-ghost ui-btn-sm" />
         </div>
       </Card>
+
+      {user.role === "admin" && welcomes.length ? (
+        <Card title="მისასალმებელი პოსტი „Open App“ ღილაკით">
+          <div id="welcome" className="space-y-4">
+            <p className="text-xs text-gray-600">
+              Telegram-ში ხელით დაწერილ პოსტს ღილაკი ვერ ექნება — ღილაკიან პოსტს მხოლოდ ბოტი აქვეყნებს. აქედან ბოტი გამოაქვეყნებს პოსტს „🏠 Open App“ და „🗺 Map“ ღილაკებით და მიამაგრებს; მიმაგრებულ ზოლზეც გამოჩნდება „Open App“. ხელით დაწერილი ძველი პოსტი არხში წაშალე. **ტექსტი** = მუქი. შემდეგ ჯერზე იგივე პოსტი განახლდება (ახლის ნაცვლად), თუ „ახალი პოსტი“ არ მონიშნე.
+            </p>
+            {welcome ? (
+              <div className={`rounded-lg border p-3 text-sm font-medium ${welcome.startsWith("ok:") ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}>
+                {welcome.startsWith("ok:") ? "✅ " : "⚠️ "}{welcome.replace(/^(ok|err):/, "")}
+              </div>
+            ) : null}
+            <div className="grid gap-4 lg:grid-cols-2">
+              {welcomes.map((c) => {
+                const defaults = WELCOME_DEFAULTS[c.lang === "ru" ? "ru" : "en"];
+                return (
+                  <form key={c.lang} action={postWelcome} className="space-y-2 rounded-lg border border-gray-200 p-3">
+                    <input type="hidden" name="lang" value={c.lang} />
+                    <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
+                      <span>{CHANNEL_FLAG[c.lang]} · {c.chat}</span>
+                      <span className="text-xs font-normal text-gray-500">{c.post ? `გამოქვეყნებულია (#${c.post.id}${c.post.photo ? ", ფოტოთი" : ""})` : "ჯერ არ არის"}</span>
+                    </div>
+                    <textarea name="text" rows={12} defaultValue={c.post?.text ?? defaults.text} className="ui-field h-auto py-2 text-sm" />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block text-xs text-gray-600">ღილაკი 1 (აპი)<input name="button" defaultValue={c.post?.button ?? defaults.button} className="ui-field mt-1" /></label>
+                      <label className="block text-xs text-gray-600">ღილაკი 2 (რუკა, ცარიელი = არა)<input name="mapButton" defaultValue={c.post?.mapButton ?? defaults.mapButton} className="ui-field mt-1" /></label>
+                    </div>
+                    <label className="block text-xs text-gray-600">ფოტო (ლოგო, არასავალდებულო; ტექსტი მაშინ ≤1024 სიმბოლო)<input type="file" name="photo" accept="image/jpeg,image/png" className="mt-1 block w-full text-xs" /></label>
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-gray-700">
+                      <label className="flex items-center gap-1.5"><input type="checkbox" name="pin" value="1" defaultChecked /> მიმაგრება 📌</label>
+                      {c.post ? <label className="flex items-center gap-1.5"><input type="checkbox" name="fresh" value="1" /> ახალი პოსტი (ძველის განახლების ნაცვლად)</label> : null}
+                    </div>
+                    <SubmitButton pending="იგზავნება…" className="ui-btn ui-btn-primary ui-btn-sm">{c.post ? "განახლება" : "გამოქვეყნება"} {CHANNEL_FLAG[c.lang]}</SubmitButton>
+                  </form>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <Tabs
