@@ -11,7 +11,8 @@ import { haptic, openTelegram, tg } from "./tg";
 
 type Filters = { deal: DealKind; type: string; districts: string[]; priceMin: string; priceMax: string; rooms: number[]; areaMin: string; pets: boolean; features: string[]; nearMetro: boolean; metro: string[] };
 type Sort = "new" | "priceAsc" | "priceDesc" | "area";
-type Tab = "list" | "map" | "saved" | "request";
+type Tab = "home" | "list" | "map" | "saved" | "request";
+type SavedSearch = { id: string; filters: Filters; query: string; seen: number; notify?: boolean };
 type Sheet = null | "filters" | { kind: "viewing" | "question"; ref: number };
 
 const FAV_KEY = "catalog_fav";
@@ -109,6 +110,63 @@ function useFavorites() {
   return { favs, toggle };
 }
 
+/** A small value kept in localStorage and Telegram CloudStorage (follows the user across devices). */
+function useStored<T>(key: string, fallback: T): [T, (update: (current: T) => T) => void] {
+  const [value, setValue] = useState<T>(fallback);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) setValue(JSON.parse(raw));
+    } catch {
+      // storage blocked
+    }
+    tg()?.CloudStorage?.getItem(key, (err, raw) => {
+      if (err || !raw) return;
+      try {
+        setValue(JSON.parse(raw));
+      } catch {
+        // ignore
+      }
+    });
+  }, [key]);
+  const update = useCallback(
+    (fn: (current: T) => T) =>
+      setValue((current) => {
+        const next = fn(current);
+        const json = JSON.stringify(next);
+        try {
+          localStorage.setItem(key, json);
+        } catch {
+          // storage blocked
+        }
+        try {
+          tg()?.CloudStorage?.setItem(key, json);
+        } catch {
+          // older clients
+        }
+        return next;
+      }),
+    [key],
+  );
+  return [value, update];
+}
+
+/** One line describing a saved search: "Rent · 2-комн. · ≤ $800 · Vake". */
+function describeSearch(search: SavedSearch, lang: Lang, t: Dict): string {
+  const f = search.filters;
+  const places = f.districts.map((d) => placeName(d, lang));
+  return [
+    t[f.deal],
+    f.rooms.length ? [...f.rooms].sort().map((r) => t.roomsChip(r)).join(", ") : "",
+    f.priceMin ? `≥ $${f.priceMin}` : "",
+    f.priceMax ? `≤ $${f.priceMax}` : "",
+    places.length > 2 ? `${places.slice(0, 2).join(", ")} +${places.length - 2}` : places.join(", "),
+    f.metro.length ? `Ⓜ ${f.metro.map((id) => metroName(id, lang)).join(", ")}` : f.nearMetro ? t.nearMetro : "",
+    f.pets ? t.petsOk : "",
+    search.query ? `“${search.query}”` : "",
+  ].filter(Boolean).join(" · ");
+}
+
 /** Language a channel link asks for: start param "p1001_ru" / "home_en", or ?lang= on the web. */
 function linkLang(): Lang | null {
   const start = tg()?.initDataUnsafe?.start_param ?? new URLSearchParams(location.search).get("tgWebAppStartParam") ?? "";
@@ -137,7 +195,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
   const [filters, setFilters] = useState<Filters>(() => emptyFilters(deals[0] ?? "rent"));
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("new");
-  const [tab, setTab] = useState<Tab>("list");
+  const [tab, setTab] = useState<Tab>("home");
   const [openRef, setOpenRef] = useState<number | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [mapSelected, setMapSelected] = useState<number | null>(null);
@@ -146,6 +204,20 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
   // Hidden until the viewer's language is known, so it does not flash English first.
   const [ready, setReady] = useState(false);
   const { favs, toggle } = useFavorites();
+  const [recent, setRecent] = useStored<number[]>("catalog_recent", []);
+  const [searches, setSearches] = useStored<SavedSearch[]>("catalog_searches", []);
+  // The map fills exactly the space between the header and the tab bar.
+  const headerRef = useRef<HTMLElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const [chrome, setChrome] = useState({ top: 176, bottom: 64 });
+  useEffect(() => {
+    const measure = () => setChrome({ top: headerRef.current?.offsetHeight ?? 176, bottom: navRef.current?.offsetHeight ?? 64 });
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (headerRef.current) observer.observe(headerRef.current);
+    if (navRef.current) observer.observe(navRef.current);
+    return () => observer.disconnect();
+  }, [tab, openRef]);
 
   // Telegram setup, language and the listing to open (?p=1023 or startapp=p1023).
   useEffect(() => {
@@ -193,8 +265,9 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     setOpenRef(ref);
     history.pushState({ p: ref }, "", `?p=${ref}`);
     window.scrollTo({ top: 0 });
+    setRecent((list) => [ref, ...list.filter((r) => r !== ref)].slice(0, 20));
     fetch("/api/catalog/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ref }) }).catch(() => undefined);
-  }, []);
+  }, [setRecent]);
 
   const closeTop = useCallback(() => {
     if (sheet) setSheet(null);
@@ -245,6 +318,70 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     openTelegram(text ? `${manager}?text=${encodeURIComponent(text)}` : manager);
   };
 
+  const browse = (patch: Partial<Filters> & { deal: DealKind }) => {
+    haptic("tap");
+    setFilters({ ...emptyFilters(patch.deal), ...patch });
+    setQuery("");
+    setTab("list");
+    window.scrollTo({ top: 0 });
+  };
+  const saveCurrentSearch = () => {
+    const q = query.trim();
+    if (searches.some((x) => x.query === q && JSON.stringify(x.filters) === JSON.stringify(filters))) {
+      setToast(t.searchExists);
+      return;
+    }
+    haptic("success");
+    setSearches((list) => [{ id: Date.now().toString(36), filters, query: q, seen: Date.now() }, ...list].slice(0, 8));
+    setToast(t.searchSaved);
+  };
+  const openSearch = (search: SavedSearch) => {
+    haptic("tap");
+    setFilters(search.filters);
+    setQuery(search.query);
+    setTab("list");
+    setSearches((list) => list.map((x) => (x.id === search.id ? { ...x, seen: Date.now() } : x)));
+    window.scrollTo({ top: 0 });
+  };
+  const removeSearch = (id: string) => setSearches((list) => list.filter((x) => x.id !== id));
+  /** Turn a saved search into a bot alert (a "find me" request with the same criteria). */
+  const notifySearch = async (search: SavedSearch) => {
+    const app = tg();
+    if (!app?.requestWriteAccess) return;
+    const allowed = await new Promise<boolean>((resolve) => app.requestWriteAccess!((ok) => resolve(ok)));
+    if (!allowed) return;
+    const f = search.filters;
+    const response = await fetch("/api/catalog/lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "search",
+        lang,
+        initData: app.initData,
+        message: describeSearch(search, lang, t),
+        prefs: { deal: f.deal, budgetMax: num(f.priceMax) ?? undefined, roomsMin: f.rooms.length ? Math.min(...f.rooms) : undefined, areas: f.districts, pets: f.pets || undefined },
+        alerts: true,
+      }),
+    }).catch(() => null);
+    if (response?.ok) {
+      haptic("success");
+      setSearches((list) => list.map((x) => (x.id === search.id ? { ...x, notify: true } : x)));
+      setToast(t.notifyDone);
+    } else setToast(t.errGeneric);
+  };
+  const searchProps: SearchProps = {
+    searches,
+    lang,
+    t,
+    describe: (x) => describeSearch(x, lang, t),
+    countOf: (x) => items.filter((i) => matches(i, x.filters, x.query, lang)).length,
+    freshOf: (x) => items.filter((i) => Date.parse(i.createdAt) > x.seen && matches(i, x.filters, x.query, lang)).length,
+    onOpen: openSearch,
+    onRemove: removeSearch,
+    onNotify: notifySearch,
+  };
+  const recentItems = recent.map((ref) => items.find((i) => i.ref === ref)).filter(Boolean) as CatalogItem[];
+
   const openItemData = openRef ? items.find((i) => i.ref === openRef) ?? null : null;
   const savedItems = items.filter((i) => favs.includes(i.ref));
 
@@ -279,7 +416,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
         />
       ) : (
         <div className="pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
-          <header className="sticky top-0 z-20 space-y-2 bg-[var(--bg2)]/95 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
+          <header ref={headerRef} className="sticky top-0 z-20 space-y-2 bg-[var(--bg2)]/95 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
             <div className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent)] text-white">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10" /></svg>
@@ -316,7 +453,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
                   ) : null}
                   {[1, 2, 3, 4].map((r) => (
                     <QuickChip key={r} active={filters.rooms.includes(r)} onClick={() => setFilters((f) => ({ ...f, rooms: f.rooms.includes(r) ? f.rooms.filter((x) => x !== r) : [...f.rooms, r] }))}>
-                      {r === 4 ? "4+" : r} {lang === "ka" ? "ოთ." : lang === "ru" ? "к." : "rm"}
+                      {t.roomsChip(r)}
                     </QuickChip>
                   ))}
                   {items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.minutes <= 10)) ? <QuickChip active={filters.nearMetro} onClick={() => setFilters((f) => ({ ...f, nearMetro: !f.nearMetro }))}>{t.nearMetro}</QuickChip> : null}
@@ -331,10 +468,29 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
             ) : null}
           </header>
 
+          {tab === "home" ? (
+            <Home
+              items={items}
+              deals={deals}
+              lang={lang}
+              t={t}
+              recent={recentItems}
+              searchProps={searchProps}
+              onOpen={openItem}
+              onBrowse={browse}
+              onQuery={(q) => { setFilters(emptyFilters(deals[0] ?? "rent")); setQuery(q); setTab("list"); }}
+              onMap={() => { haptic("select"); setTab("map"); }}
+              onRequest={() => { haptic("select"); setTab("request"); }}
+            />
+          ) : null}
+
           {tab === "list" ? (
             <main className="space-y-3 px-3">
               <div className="flex items-center justify-between text-xs text-[var(--hint)]">
-                <span>{t.found(results.length)}</span>
+                <span className="flex items-center gap-2">
+                  {t.found(results.length)}
+                  {activeCount || query.trim() ? <button type="button" onClick={saveCurrentSearch} className="rounded-full bg-[var(--bg)] px-2.5 py-1 font-semibold text-[var(--accent)]">{t.saveSearch}</button> : null}
+                </span>
                 <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="rounded-lg bg-transparent py-1 text-right font-medium text-[var(--text)] outline-none">
                   <option value="new">{t.sortNew}</option>
                   <option value="priceAsc">{t.sortPriceAsc}</option>
@@ -356,7 +512,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
           ) : null}
 
           {tab === "map" ? (
-            <div className="relative h-[calc(100vh-11.5rem-env(safe-area-inset-bottom))] min-h-[320px] overflow-hidden">
+            <div className="fixed inset-x-0 z-10 overflow-hidden" style={{ top: chrome.top, bottom: chrome.bottom }}>
               <MapView items={results} selected={mapSelected} onSelect={setMapSelected} labels={{ ...t.mapLabels, metro: t.metroLayer }} dark={tg()?.colorScheme === "dark"} lang={lang} />
               {!results.some((i) => i.point) ? <div className="pointer-events-none absolute left-3 right-16 top-3 z-[500] rounded-xl bg-[var(--bg)] p-3 text-center text-sm text-[var(--hint)] shadow">{t.mapEmpty}</div> : null}
               {!mapSelected && results.some((i) => !i.point) ? (
@@ -377,6 +533,8 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
 
           {tab === "saved" ? (
             <main className="space-y-3 px-3 pt-1">
+              {searches.length ? <SearchList {...searchProps} /> : null}
+              {recentItems.length ? <Row title={t.recentRow} items={recentItems} lang={lang} onOpen={openItem} /> : null}
               {savedItems.length === 0 ? (
                 <div className="rounded-2xl bg-[var(--bg)] p-8 text-center text-sm text-[var(--hint)]">♡<br />{t.savedEmpty}</div>
               ) : (
@@ -395,8 +553,9 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
             </main>
           ) : null}
 
-          <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-[var(--line)] bg-[var(--bg)] pb-[env(safe-area-inset-bottom)]">
+          <nav ref={navRef} className="fixed inset-x-0 bottom-0 z-30 flex border-t border-[var(--line)] bg-[var(--bg)] pb-[env(safe-area-inset-bottom)]">
             {([
+              ["home", t.tabHome, "M3 11l9-8 9 8M5 10v10h14V10"],
               ["list", t.tabList, "M4 6h16M4 12h16M4 18h10"],
               ["map", t.tabMap, "M12 21s-7-6.5-7-11a7 7 0 1 1 14 0c0 4.5-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"],
               ["saved", t.tabSaved, "M12 20s-7-4.4-9-8.6C1.6 8.3 3.5 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.3 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"],
@@ -436,6 +595,186 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
 
       {toast ? <div className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit rounded-full bg-black/80 px-4 py-2 text-sm text-white">{toast}</div> : null}
     </div>
+  );
+}
+
+function MiniCard({ item, lang, onOpen }: { item: CatalogItem; lang: Lang; onOpen: (ref: number) => void }) {
+  return (
+    <button type="button" onClick={() => onOpen(item.ref)} className="w-40 shrink-0 snap-start overflow-hidden rounded-2xl bg-[var(--bg)] text-left shadow-sm">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {item.photos[0] ? <img src={item.photos[0]} alt="" loading="lazy" className="h-28 w-full object-cover" /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
+      <div className="p-2">
+        <div className="text-sm font-bold">{shortPrice(item)}{item.kind === "rent" ? (lang === "ru" ? "/мес" : lang === "ka" ? "/თვე" : "/mo") : ""}</div>
+        <div className="truncate text-xs text-[var(--hint)]">{title(item, lang)}{item.district ? ` · ${placeName(item.district, lang)}` : ""}</div>
+      </div>
+    </button>
+  );
+}
+
+function Row({ title: heading, items, lang, onOpen, onMore, more }: { title: string; items: CatalogItem[]; lang: Lang; onOpen: (ref: number) => void; onMore?: () => void; more?: string }) {
+  if (!items.length) return null;
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between px-1">
+        <h2 className="text-sm font-bold">{heading}</h2>
+        {onMore ? <button type="button" onClick={onMore} className="text-xs font-semibold text-[var(--accent)]">{more} ›</button> : null}
+      </div>
+      <div className="-mx-3 flex snap-x gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {items.map((item) => <MiniCard key={item.ref} item={item} lang={lang} onOpen={onOpen} />)}
+      </div>
+    </section>
+  );
+}
+
+type SearchProps = {
+  searches: SavedSearch[];
+  lang: Lang;
+  t: Dict;
+  describe: (s: SavedSearch) => string;
+  countOf: (s: SavedSearch) => number;
+  freshOf: (s: SavedSearch) => number;
+  onOpen: (s: SavedSearch) => void;
+  onRemove: (id: string) => void;
+  onNotify: (s: SavedSearch) => void;
+};
+
+function SearchList({ searches, t, describe, countOf, freshOf, onOpen, onRemove, onNotify }: SearchProps) {
+  const canNotify = Boolean(tg()?.requestWriteAccess);
+  return (
+    <section>
+      <h2 className="mb-2 px-1 text-sm font-bold">{t.mySearches}</h2>
+      <div className="space-y-2">
+        {searches.map((search) => {
+          const fresh = freshOf(search);
+          return (
+            <div key={search.id} className="flex items-center gap-2 rounded-2xl bg-[var(--bg)] p-3">
+              <button type="button" onClick={() => onOpen(search)} className="min-w-0 flex-1 text-left">
+                <div className="truncate text-sm font-semibold">{describe(search)}</div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--hint)]">
+                  {t.found(countOf(search))}
+                  {fresh ? <span className="rounded-full bg-[var(--accent)] px-1.5 py-px text-[10px] font-bold text-white">{t.newCount(fresh)}</span> : null}
+                </div>
+              </button>
+              {canNotify ? (
+                <button type="button" disabled={search.notify} onClick={() => onNotify(search)} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${search.notify ? "bg-emerald-100 text-emerald-800" : "bg-[var(--bg2)] text-[var(--text)]"}`}>
+                  {search.notify ? t.notifyOn : t.notifySearch}
+                </button>
+              ) : null}
+              <button type="button" onClick={() => onRemove(search.id)} aria-label="remove" className="shrink-0 px-1 text-[var(--hint)]">✕</button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+const DEAL_EMOJI: Record<DealKind, string> = { rent: "🏠", sale: "🔑", daily: "📅" };
+
+function Home({ items, deals, lang, t, recent, searchProps, onOpen, onBrowse, onQuery, onMap, onRequest }: {
+  items: CatalogItem[]; deals: DealKind[]; lang: Lang; t: Dict; recent: CatalogItem[]; searchProps: SearchProps;
+  onOpen: (ref: number) => void; onBrowse: (patch: Partial<Filters> & { deal: DealKind }) => void; onQuery: (q: string) => void; onMap: () => void; onRequest: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const name = tg()?.initDataUnsafe?.user?.first_name ?? "";
+  const main = deals[0] ?? "rent";
+  const nearMetro = items.filter((i) => i.kind === main && i.metro.some((m) => m.minutes <= 10)).length;
+  const pets = items.filter((i) => i.kind === "rent" && (i.pets === "yes" || i.pets === "ask")).length;
+  const newest = [...items].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 10);
+  const popular = items.filter((i) => i.views > 0).sort((a, b) => b.views - a.views).slice(0, 10);
+  const districts = useMemo(() => {
+    const groups = new Map<string, CatalogItem[]>();
+    for (const i of items) if (i.district) groups.set(i.district, [...(groups.get(i.district) ?? []), i]);
+    return [...groups.entries()]
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, 6)
+      .map(([district, list]) => {
+        const deal = (["rent", "sale", "daily"] as DealKind[]).sort((a, b) => list.filter((i) => i.kind === b).length - list.filter((i) => i.kind === a).length)[0];
+        const ofDeal = list.filter((i) => i.kind === deal && i.price != null);
+        const cheapest = ofDeal.length ? ofDeal.reduce((a, b) => ((a.usd ?? 1e12) <= (b.usd ?? 1e12) ? a : b)) : null;
+        return { district, deal, count: list.length, photo: list.find((i) => i.photos[0])?.photos[0] ?? null, cheapest };
+      });
+  }, [items]);
+  const tile = "flex flex-col items-start gap-1 rounded-2xl bg-[var(--bg)] p-3 text-left shadow-sm active:scale-[0.98]";
+
+  return (
+    <main className="space-y-5 px-3 pb-4 pt-1">
+      <section className="rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-white shadow-md">
+        <div className="text-xl font-bold">👋 {t.hello(name)}</div>
+        <div className="mt-0.5 text-sm text-white/85">{t.homeSub(items.length)}</div>
+        <form onSubmit={(e) => { e.preventDefault(); onQuery(q.trim()); }} className="mt-3 flex items-center gap-2 rounded-2xl bg-white px-3 text-gray-900">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-gray-400"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+          <input value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="search" placeholder={t.homeSearch} className="min-w-0 flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-gray-400" />
+          {q ? <button type="submit" className="text-sm font-semibold text-emerald-700">→</button> : null}
+        </form>
+      </section>
+
+      <section className="grid grid-cols-3 gap-2">
+        {deals.map((d) => (
+          <button key={d} type="button" onClick={() => onBrowse({ deal: d })} className={tile}>
+            <span className="text-2xl">{DEAL_EMOJI[d]}</span>
+            <span className="text-sm font-semibold">{t[d]}</span>
+            <span className="text-xs text-[var(--hint)]">{items.filter((i) => i.kind === d).length}</span>
+          </button>
+        ))}
+        {nearMetro ? (
+          <button type="button" onClick={() => onBrowse({ deal: main, nearMetro: true })} className={tile}>
+            <span className="text-2xl">🚇</span>
+            <span className="text-sm font-semibold">{t.nearMetro.replace("🚇 ", "")}</span>
+            <span className="text-xs text-[var(--hint)]">{nearMetro}</span>
+          </button>
+        ) : null}
+        {pets ? (
+          <button type="button" onClick={() => onBrowse({ deal: "rent", pets: true })} className={tile}>
+            <span className="text-2xl">🐾</span>
+            <span className="text-sm font-semibold">{t.petsOk.replace("🐾 ", "")}</span>
+            <span className="text-xs text-[var(--hint)]">{pets}</span>
+          </button>
+        ) : null}
+        <button type="button" onClick={onMap} className={tile}>
+          <span className="text-2xl">🗺</span>
+          <span className="text-sm font-semibold">{t.onMap.replace("🗺 ", "")}</span>
+          <span className="text-xs text-[var(--hint)]">{items.filter((i) => i.point).length}</span>
+        </button>
+      </section>
+
+      {searchProps.searches.length ? <SearchList {...searchProps} /> : null}
+      <Row title={t.recentRow} items={recent.slice(0, 10)} lang={lang} onOpen={onOpen} />
+      <Row title={t.newRow} items={newest} lang={lang} onOpen={onOpen} onMore={() => onBrowse({ deal: main })} more={t.seeAll} />
+      {popular.length >= 3 ? <Row title={t.popularRow} items={popular} lang={lang} onOpen={onOpen} /> : null}
+
+      {districts.length > 1 ? (
+        <section>
+          <h2 className="mb-2 px-1 text-sm font-bold">{t.districtsRow}</h2>
+          <div className="grid grid-cols-2 gap-2">
+            {districts.map((d) => (
+              <button
+                key={d.district}
+                type="button"
+                onClick={() => onBrowse({ deal: d.deal, districts: [d.district] })}
+                className="relative h-24 overflow-hidden rounded-2xl bg-emerald-700 bg-cover bg-center text-left shadow-sm active:scale-[0.98]"
+                style={d.photo ? { backgroundImage: `url(${d.photo})` } : undefined}
+              >
+                <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+                <span className="absolute inset-x-2.5 bottom-2 text-white">
+                  <span className="block truncate text-sm font-bold">{placeName(d.district, lang)}</span>
+                  <span className="block text-[11px] text-white/85">{d.count}{d.cheapest ? ` · ${t.fromPrice(shortPrice(d.cheapest))}` : ""}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <button type="button" onClick={onRequest} className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-[var(--accent)] bg-[var(--bg)] p-4 text-left">
+        <span className="text-3xl">🔎</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold">{t.findCard}</span>
+          <span className="block text-xs text-[var(--hint)]">{t.findCardText}</span>
+        </span>
+        <span className="text-[var(--accent)]">›</span>
+      </button>
+    </main>
   );
 }
 
@@ -628,9 +967,21 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
   const map = item.point ? mapView(item.point.lat, item.point.lng, item.point.exact ? "exact" : "approx") : null;
   const perM2 = item.kind === "sale" && item.price && item.area ? Math.round(item.price / item.area) : null;
   const description = item.description[lang];
+  // Same deal; scored by district, price within 25%, same rooms and a shared metro station.
   const similar = items
-    .filter((i) => i.ref !== item.ref && i.kind === item.kind && (i.district === item.district || (item.usd && i.usd && Math.abs(i.usd - item.usd) / item.usd < 0.25)))
-    .slice(0, 8);
+    .filter((i) => i.ref !== item.ref && i.kind === item.kind)
+    .map((i) => {
+      let score = 0;
+      if (item.district && i.district === item.district) score += 3;
+      if (item.usd && i.usd && Math.abs(i.usd - item.usd) / item.usd < 0.25) score += 2;
+      if (item.rooms && i.rooms === item.rooms) score += 1;
+      if (i.metro.some((m) => m.minutes <= 15 && item.metro.some((n) => n.id === m.id && n.minutes <= 15))) score += 1;
+      return { i, score };
+    })
+    .filter((x) => x.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map((x) => x.i);
   const rows = [
     [t.rooms, item.rooms],
     [t.bedrooms, item.bedrooms],

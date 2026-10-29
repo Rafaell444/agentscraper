@@ -283,6 +283,7 @@ export type CatalogItem = {
   metro: MetroNear[];
   photos: string[];
   createdAt: string;
+  views: number;
 };
 
 export function toCatalogItem(post: SharedPost & { photos: { id: string }[] }): CatalogItem {
@@ -311,5 +312,6 @@ export function toCatalogItem(post: SharedPost & { photos: { id: string }[] }): 
     metro: post.mapMode === "off" ? [] : metroNearby(post.lat, post.lng),
     photos: post.photos.map((p) => `/api/catalog/photo/${p.id}`),
     createdAt: post.channelPostedAt?.toISOString() ?? post.updatedAt.toISOString(),
+    views: post.catalogViews,
   };
 }
