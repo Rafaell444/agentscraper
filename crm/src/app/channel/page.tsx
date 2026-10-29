@@ -183,6 +183,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">{KIND[lead.kind] ?? lead.kind}</span>
+                      {lead.alerts ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800" title="ბოტი ახალ შესაფერის ბინებს უგზავნის">🔔 შეტყობინებები{lead.alertedRefs ? ` · ${lead.alertedRefs.split(",").length} გაეგზავნა` : ""}</span> : null}
                       {lead.client ? <Link href={`/clients/${lead.client.id}`} className="font-semibold text-gray-900 hover:text-emerald-700">{lead.client.name}</Link> : <span className="font-semibold">{lead.name}</span>}
                       <span className="text-xs text-gray-500">{fmtDate(lead.createdAt, true)} · {lead.lang}</span>
                     </div>

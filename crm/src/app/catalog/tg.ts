@@ -13,6 +13,7 @@ export type TgWebApp = {
   setBackgroundColor?: (color: string) => void;
   openTelegramLink?: (url: string) => void;
   openLink?: (url: string) => void;
+  requestWriteAccess?: (cb: (ok: boolean) => void) => void;
   requestContact?: (cb: (ok: boolean, res?: { responseUnsafe?: { contact?: { phone_number?: string } } }) => void) => void;
   BackButton?: { show: () => void; hide: () => void; onClick: (cb: () => void) => void; offClick: (cb: () => void) => void };
   HapticFeedback?: { impactOccurred: (s: "light" | "medium") => void; notificationOccurred: (s: "success" | "error") => void; selectionChanged: () => void };

@@ -504,9 +504,15 @@ model CatalogLead {
   lang       String?
   message    String?
   status     String      @default("new") // new | done
+  // "Find me a flat": the criteria as JSON, and whether the bot may message
+  // the client when a matching flat is added to the mini app.
+  prefs      String?
+  alerts     Boolean     @default(false)
+  alertedRefs String     @default("") @map("alerted_refs") // refs already sent, comma separated
   createdAt  DateTime    @default(now()) @map("created_at")
 
   @@index([status, createdAt])
   @@index([tgUserId])
+  @@index([alerts])
   @@map("catalog_leads")
 }

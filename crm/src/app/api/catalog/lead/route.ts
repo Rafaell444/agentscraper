@@ -14,7 +14,8 @@ type Body = {
   message?: string;
   lang?: string;
   initData?: string;
-  prefs?: { deal?: string; budgetMax?: number; roomsMin?: number; areas?: string[]; moveIn?: string };
+  prefs?: { deal?: string; budgetMax?: number; roomsMin?: number; areas?: string[]; moveIn?: string; pets?: boolean };
+  alerts?: boolean;
 };
 
 const KIND_LABEL: Record<string, string> = { viewing: "🗓 ჩვენების მოთხოვნა", question: "❓ კითხვა", search: "🔎 „მომიძებნეთ ბინა“" };
@@ -87,7 +88,24 @@ export async function POST(request: Request) {
       });
 
   await prisma.catalogLead.create({
-    data: { kind, postId: post?.id ?? null, clientId: client.id, name, phone: phone || null, tgUserId, tgUsername: username, lang, message: message || null },
+    data: {
+      kind,
+      postId: post?.id ?? null,
+      clientId: client.id,
+      name,
+      phone: phone || null,
+      tgUserId,
+      tgUsername: username,
+      lang,
+      message: message || null,
+      ...(kind === "search"
+        ? {
+            prefs: JSON.stringify({ deal: ["rent", "sale", "daily"].includes(prefs.deal ?? "") ? prefs.deal : undefined, budgetMax: prefs.budgetMax && prefs.budgetMax > 0 ? prefs.budgetMax : undefined, roomsMin: prefs.roomsMin && prefs.roomsMin > 0 ? Math.round(prefs.roomsMin) : undefined, areas, pets: prefs.pets || undefined }),
+            // Only a Telegram user who allowed the bot to write can get alerts.
+            alerts: Boolean(body.alerts && tgUserId),
+          }
+        : {}),
+    },
   });
 
   // CRM bell for admins and the agent who owns the listing.
@@ -107,6 +125,7 @@ export async function POST(request: Request) {
       ? [prefs.deal ? DEAL_LABEL[prefs.deal === "sale" ? "sale" : "rent"].ka : "", prefs.budgetMax ? `ბიუჯეტი $${prefs.budgetMax}` : "", prefs.roomsMin ? `${prefs.roomsMin}+ ოთახი` : "", areas.join(", "), moveIn ? `შესვლა ${moveIn.toISOString().slice(0, 10)}` : ""].filter(Boolean).join(" · ")
       : "",
     message ? `💬 ${message}` : "",
+    kind === "search" && body.alerts && tgUserId ? "🔔 ახალ ბინებზე შეტყობინებები ჩართო" : "",
     `🌐 ენა: ${lang}`,
   ].filter(Boolean);
   await notifyRecipients(lines.join("\n"));

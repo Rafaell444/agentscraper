@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEAL_LABEL, FEATURES, PETS, placeName, priceText, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
 import { mapView } from "@/lib/map";
+import { METRO, METRO_LINE_COLOR, metroName } from "@/lib/metro";
 import { Gallery } from "@/app/s/[token]/Gallery";
 import { DICT, type Dict } from "./i18n";
 import { MapView, shortPrice } from "./MapView";
 import { haptic, openTelegram, tg } from "./tg";
 
-type Filters = { deal: DealKind; type: string; districts: string[]; priceMin: string; priceMax: string; rooms: number[]; areaMin: string; pets: boolean; features: string[] };
+type Filters = { deal: DealKind; type: string; districts: string[]; priceMin: string; priceMax: string; rooms: number[]; areaMin: string; pets: boolean; features: string[]; nearMetro: boolean; metro: string[] };
 type Sort = "new" | "priceAsc" | "priceDesc" | "area";
 type Tab = "list" | "map" | "saved" | "request";
 type Sheet = null | "filters" | { kind: "viewing" | "question"; ref: number };
@@ -34,6 +35,8 @@ function matches(item: CatalogItem, f: Filters, q: string, lang: Lang): boolean 
   if (area && (item.area ?? 0) < area) return false;
   if (f.pets && item.pets !== "yes" && item.pets !== "ask") return false;
   if (f.features.length && !f.features.every((k) => item.features.includes(k))) return false;
+  if (f.nearMetro && !item.metro.some((m) => m.minutes <= 10)) return false;
+  if (f.metro.length && !item.metro.some((m) => m.minutes <= 15 && f.metro.includes(m.id))) return false;
   if (q) {
     const needle = q.toLowerCase().replace(/^#/, "");
     if (/^\d+$/.test(needle) && String(item.ref).includes(needle)) return true;
@@ -130,7 +133,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
   const [lang, setLang] = useState<Lang>("en");
   const t = DICT[lang];
   const deals = useMemo(() => (["rent", "sale", "daily"] as DealKind[]).filter((d) => items.some((i) => i.kind === d)), [items]);
-  const emptyFilters = useCallback((deal: DealKind): Filters => ({ deal, type: "", districts: [], priceMin: "", priceMax: "", rooms: [], areaMin: "", pets: false, features: [] }), []);
+  const emptyFilters = useCallback((deal: DealKind): Filters => ({ deal, type: "", districts: [], priceMin: "", priceMax: "", rooms: [], areaMin: "", pets: false, features: [], nearMetro: false, metro: [] }), []);
   const [filters, setFilters] = useState<Filters>(() => emptyFilters(deals[0] ?? "rent"));
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("new");
@@ -227,7 +230,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     for (const i of items) if (i.kind === filters.deal && i.district) counts.set(i.district, (counts.get(i.district) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   }, [items, filters.deal]);
-  const activeCount = [filters.type, filters.districts.length, filters.priceMin, filters.priceMax, filters.rooms.length, filters.areaMin, filters.pets, filters.features.length].filter(Boolean).length;
+  const activeCount = [filters.type, filters.districts.length, filters.priceMin, filters.priceMax, filters.rooms.length, filters.areaMin, filters.pets, filters.features.length, filters.nearMetro, filters.metro.length].filter(Boolean).length;
 
   const share = (item: CatalogItem) => {
     const link = linkTemplate.replace("{ref}", String(item.ref));
@@ -316,6 +319,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
                       {r === 4 ? "4+" : r} {lang === "ka" ? "ოთ." : lang === "ru" ? "к." : "rm"}
                     </QuickChip>
                   ))}
+                  {items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.minutes <= 10)) ? <QuickChip active={filters.nearMetro} onClick={() => setFilters((f) => ({ ...f, nearMetro: !f.nearMetro }))}>{t.nearMetro}</QuickChip> : null}
                   {filters.deal !== "sale" ? <QuickChip active={filters.pets} onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))}>{t.petsOk}</QuickChip> : null}
                   {districts.slice(0, 8).map((d) => (
                     <QuickChip key={d} active={filters.districts.includes(d)} onClick={() => setFilters((f) => ({ ...f, districts: f.districts.includes(d) ? f.districts.filter((x) => x !== d) : [...f.districts, d] }))}>
@@ -353,7 +357,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
 
           {tab === "map" ? (
             <div className="relative h-[calc(100vh-11.5rem-env(safe-area-inset-bottom))] min-h-[320px] overflow-hidden">
-              <MapView items={results} selected={mapSelected} onSelect={setMapSelected} labels={t.mapLabels} dark={tg()?.colorScheme === "dark"} />
+              <MapView items={results} selected={mapSelected} onSelect={setMapSelected} labels={{ ...t.mapLabels, metro: t.metroLayer }} dark={tg()?.colorScheme === "dark"} lang={lang} />
               {!results.some((i) => i.point) ? <div className="pointer-events-none absolute left-3 right-16 top-3 z-[500] rounded-xl bg-[var(--bg)] p-3 text-center text-sm text-[var(--hint)] shadow">{t.mapEmpty}</div> : null}
               {!mapSelected && results.some((i) => !i.point) ? (
                 <button type="button" onClick={() => setTab("list")} className="absolute bottom-3 left-1/2 z-[500] -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--bg)] px-3 py-1.5 text-xs font-medium text-[var(--hint)] shadow-md">
@@ -527,6 +531,25 @@ function Facts({ item, lang, t }: { item: CatalogItem; lang: Lang; t: Dict }) {
   );
 }
 
+/** "Ⓜ Rustaveli · 5 min walk"; in the detail view every station within 15 minutes. */
+function MetroBadge({ item, lang, t, small = false, all = false }: { item: CatalogItem; lang: Lang; t: Dict; small?: boolean; all?: boolean }) {
+  const list = item.metro.filter((m) => m.minutes <= 15).slice(0, all ? 3 : 1);
+  if (!list.length) return null;
+  return (
+    <div className={`flex flex-wrap gap-x-3 gap-y-1 ${small ? "text-xs" : "text-sm"}`}>
+      {list.map((m) => {
+        const station = METRO.find((s) => s.id === m.id)!;
+        return (
+          <span key={m.id} className="inline-flex items-center gap-1.5 text-[var(--hint)]">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black text-white" style={{ background: METRO_LINE_COLOR[station.lines[0]] }}>M</span>
+            <span className="truncate"><span className="text-[var(--text)]">{metroName(m.id, lang)}</span> · {t.walkMin(m.minutes)}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function Card({ item, lang, t, fav, onFav, onOpen, compact = false }: { item: CatalogItem; lang: Lang; t: Dict; fav: boolean; onFav: (ref: number) => void; onOpen: (ref: number) => void; compact?: boolean }) {
   const place = placeName(item.location || item.district, lang);
   if (compact) {
@@ -538,6 +561,7 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false }: { item: Ca
           <div className="text-base font-bold">{priceText(item.price, item.currency, item.kind, lang)}</div>
           <div className="truncate text-sm">{title(item, lang)}{item.area ? ` · ${item.area} ${m2(lang)}` : ""}</div>
           <div className="truncate text-xs text-[var(--hint)]">{place}</div>
+          <MetroBadge item={item} lang={lang} t={t} small />
         </div>
         <span className="self-center pr-1 text-[var(--accent)]">›</span>
       </button>
@@ -568,6 +592,7 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false }: { item: Ca
             <span className="truncate">{place}</span>
           </div>
         ) : null}
+        <MetroBadge item={item} lang={lang} t={t} />
         {item.features.length || item.pets === "yes" ? (
           <div className="flex flex-wrap gap-1">
             {item.pets === "yes" ? <span className="rounded-full bg-[var(--bg2)] px-2 py-0.5 text-[11px]">🐾</span> : null}
@@ -645,6 +670,7 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
           <div className="text-2xl font-bold">{priceText(item.price, item.currency, item.kind, lang)}</div>
           <h1 className="text-base font-semibold">{title(item, lang)}{item.area ? `, ${item.area} ${m2(lang)}` : ""}</h1>
           {place ? <div className="text-sm text-[var(--hint)]">📍 {place}</div> : null}
+          <MetroBadge item={item} lang={lang} t={t} all />
         </section>
 
         <section className="rounded-2xl bg-[var(--bg)] p-4">
@@ -740,7 +766,9 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>; districts: string[]; lang: Lang; t: Dict; items: CatalogItem[]; count: number; onReset: () => void; onApply: () => void;
 }) {
   const types = [...new Set(items.filter((i) => i.kind === filters.deal).map((i) => i.type ?? "ბინა"))];
-  const toggleIn = <K extends "districts" | "features">(key: K, value: string) =>
+  // Only stations that have a listing of this deal type within 15 minutes.
+  const stations = METRO.filter((st) => items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.id === st.id && m.minutes <= 15)));
+  const toggleIn = <K extends "districts" | "features" | "metro">(key: K, value: string) =>
     setFilters((f) => ({ ...f, [key]: f[key].includes(value) ? f[key].filter((x) => x !== value) : [...f[key], value] }));
   const box = "w-full rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]";
   return (
@@ -788,6 +816,20 @@ function FilterPanel({ filters, setFilters, districts, lang, t, items, count, on
           </div>
         </div>
       ) : null}
+      {stations.length ? (
+        <div>
+          <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.metroFilter}</div>
+          <div className="flex flex-wrap gap-1.5">
+            <ChipToggle active={filters.nearMetro} onClick={() => setFilters((f) => ({ ...f, nearMetro: !f.nearMetro }))}>{t.nearMetro}</ChipToggle>
+            {stations.map((st) => (
+              <ChipToggle key={st.id} active={filters.metro.includes(st.id)} onClick={() => toggleIn("metro", st.id)}>
+                <span className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: METRO_LINE_COLOR[st.lines[0]] }} />
+                {st.name[lang]}
+              </ChipToggle>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div>
         <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.features}</div>
         <div className="flex flex-wrap gap-1.5">
@@ -817,6 +859,7 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
   const [areas, setAreas] = useState<string[]>([]);
   const [moveIn, setMoveIn] = useState("");
   const [pets, setPets] = useState(false);
+  const [alerts, setAlerts] = useState(true);
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState("");
   const box = "w-full rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]";
@@ -837,6 +880,8 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
     }
     setError("");
     setState("sending");
+    // Alerts need the user's permission for the bot to write to them.
+    const allowed = kind === "search" && alerts && app?.requestWriteAccess ? await new Promise<boolean>((resolve) => app.requestWriteAccess!((ok) => resolve(ok))) : false;
     const parts = [when ? `${t.when} ${when}` : "", pets ? "🐾 pets" : "", message].filter(Boolean);
     try {
       const response = await fetch("/api/catalog/lead", {
@@ -850,7 +895,8 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
           message: parts.join("\n"),
           lang,
           initData: app?.initData ?? "",
-          prefs: kind === "search" ? { deal, budgetMax: num(budget) ?? undefined, roomsMin: rooms ?? undefined, areas, moveIn: moveIn || undefined } : undefined,
+          prefs: kind === "search" ? { deal, budgetMax: num(budget) ?? undefined, roomsMin: rooms ?? undefined, areas, moveIn: moveIn || undefined, pets } : undefined,
+          alerts: allowed,
         }),
       });
       if (!response.ok) throw new Error(String(response.status));
@@ -933,6 +979,15 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
         <span className="mb-1 block text-xs font-medium text-[var(--hint)]">{t.message}</span>
         <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} className={box} />
       </label>
+      {kind === "search" && app?.requestWriteAccess ? (
+        <label className="flex items-start gap-2.5 rounded-xl bg-[var(--bg2)] p-3 text-sm">
+          <input type="checkbox" checked={alerts} onChange={(e) => setAlerts(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
+          <span>
+            <span className="font-semibold">{t.alertsLabel}</span>
+            <span className="mt-0.5 block text-xs text-[var(--hint)]">{t.alertsHint}</span>
+          </span>
+        </label>
+      ) : null}
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
       <button type="submit" disabled={state === "sending"} className="w-full rounded-xl bg-[var(--accent)] py-3.5 text-sm font-semibold text-white disabled:opacity-60">{state === "sending" ? t.sending : t.send}</button>
     </form>

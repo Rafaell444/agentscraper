@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
 import { ensureRefNo, publishToChannel, refreshChannelPost } from "@/lib/channel";
+import { alertMatchingClients } from "@/lib/clientAlerts";
 import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, requestCollectorFetch, type PostDraft } from "@/lib/sharedPosts";
 
 function text(formData: FormData, key: string): string | null {
@@ -141,6 +142,8 @@ export async function updatePost(formData: FormData) {
     await prisma.sharedPost.update({ where: { id }, data: { catalog: true } });
     await ensureRefNo(id);
     notes.push("📱 მინი აპში დაემატა");
+    const alerted = await alertMatchingClients(id).catch(() => 0);
+    if (alerted) notes.push(`🔔 ${alerted} კლიენტს ეცნობა ბოტში`);
   }
   if (target === "tg" || target === "both") {
     const result = await publishToChannel(id);

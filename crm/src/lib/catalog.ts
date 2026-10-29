@@ -2,6 +2,7 @@
 // app (/catalog) and can be posted to the agency's Telegram channel.
 
 import type { SharedPost } from "@prisma/client";
+import { metroName, metroNearby, type MetroNear } from "./metro";
 
 export type Lang = "ka" | "en" | "ru";
 export const LANGS: Lang[] = ["ka", "en", "ru"];
@@ -229,6 +230,7 @@ export function channelCaption(post: SharedPost, lang: Lang, links: CaptionLinks
   const head = [
     `${status}🏠 <b>${escapeHtml(headline(post, lang))}</b>`,
     place ? `📍 ${escapeHtml(place)}` : "",
+    metroLine(post, lang),
     "",
     `💰 <b>${escapeHtml(priceText(post.price, post.currency, kind, lang))}</b>`,
     facts,
@@ -243,6 +245,14 @@ export function channelCaption(post: SharedPost, lang: Lang, links: CaptionLinks
   if (room < 80) description = "";
   else if (description.length > room) description = description.slice(0, room - 1).replace(/\s+\S*$/, "") + "…";
   return head + (description ? `\n\n${escapeHtml(description)}` : "") + tail;
+}
+
+/** "🚇 Rustaveli · 5 min walk" when a station is within 15 minutes on foot. */
+export function metroLine(post: { lat: number | null; lng: number | null }, lang: Lang): string {
+  const near = metroNearby(post.lat, post.lng, 15)[0];
+  if (!near) return "";
+  const walk = { ka: `${near.minutes} წთ ფეხით`, en: `${near.minutes} min walk`, ru: `${near.minutes} мин пешком` }[lang];
+  return `🚇 ${escapeHtml(metroName(near.id, lang))} · ${walk}`;
 }
 
 // ---------------------------------------------------------------- mini app ---
@@ -269,6 +279,8 @@ export type CatalogItem = {
   availability: string;
   description: Record<Lang, string>;
   point: { lat: number; lng: number; exact: boolean } | null;
+  /** Metro stations within 20 minutes on foot, nearest first. */
+  metro: MetroNear[];
   photos: string[];
   createdAt: string;
 };
@@ -296,6 +308,7 @@ export function toCatalogItem(post: SharedPost & { photos: { id: string }[] }): 
     availability: post.availability,
     description: { ka: descriptionFor(post, "ka"), en: descriptionFor(post, "en"), ru: descriptionFor(post, "ru") },
     point: publicPoint(post.lat, post.lng, post.mapMode),
+    metro: post.mapMode === "off" ? [] : metroNearby(post.lat, post.lng),
     photos: post.photos.map((p) => `/api/catalog/photo/${p.id}`),
     createdAt: post.channelPostedAt?.toISOString() ?? post.updatedAt.toISOString(),
   };

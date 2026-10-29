@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CatalogItem, DealKind } from "@/lib/catalog";
+import type { CatalogItem, DealKind, Lang } from "@/lib/catalog";
+import { METRO, METRO_LINE_COLOR, metroLine } from "@/lib/metro";
 
 // Leaflet + marker clustering, loaded from a CDN only when the map tab opens.
 // Pins are photo "pills" coloured by deal type; nearby flats group into
@@ -71,6 +72,10 @@ const STYLE = `
 .mc b{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font:800 14px system-ui,sans-serif;background:radial-gradient(circle at 30% 30%,#34d399,#047857);box-shadow:0 0 0 5px rgba(5,150,105,.25),0 0 0 10px rgba(5,150,105,.12),0 4px 12px rgba(0,0,0,.3)}
 .mc span{margin-top:6px;padding:2px 7px;border-radius:999px;background:#fff;color:#065f46;font:700 11px system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.25);white-space:nowrap}
 .me{width:16px;height:16px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25);transform:translate(-50%,-50%)}
+.ms{display:flex;align-items:center;gap:4px;width:max-content;transform:translate(-9px,-9px);pointer-events:none}
+.ms b{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--c);color:#fff;border:2px solid #fff;font:900 10px system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.ms span{display:none;padding:1px 5px;border-radius:6px;background:rgba(255,255,255,.92);color:#111;font:600 11px system-ui,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.zoom-hi .ms span{display:block}
 .leaflet-container{background:#e5e7eb;font-family:system-ui,sans-serif}
 `;
 
@@ -99,9 +104,9 @@ function pinHtml(item: CatalogItem, active: boolean): string {
   return `<div class="mp${active ? " on" : ""}" style="--k:${KIND_COLOR[item.kind]}">${thumb}${shortPrice(item)}</div>`;
 }
 
-export type MapLabels = { layers: Record<LayerKey, string>; locate: string; fit: string; from: string };
+export type MapLabels = { layers: Record<LayerKey, string>; locate: string; fit: string; from: string; metro: string };
 
-export function MapView({ items, selected, onSelect, labels, dark }: { items: CatalogItem[]; selected: number | null; onSelect: (ref: number | null) => void; labels: MapLabels; dark: boolean }) {
+export function MapView({ items, selected, onSelect, labels, dark, lang }: { items: CatalogItem[]; selected: number | null; onSelect: (ref: number | null) => void; labels: MapLabels; dark: boolean; lang: Lang }) {
   const box = useRef<HTMLDivElement>(null);
   const lib = useRef<Lf>(null);
   const map = useRef<Lf>(null);
@@ -109,6 +114,14 @@ export function MapView({ items, selected, onSelect, labels, dark }: { items: Ca
   const tiles = useRef<Lf[]>([]);
   const area = useRef<Lf>(null);
   const me = useRef<Lf>(null);
+  const metro = useRef<Lf>(null);
+  const [showMetro, setShowMetro] = useState(() => {
+    try {
+      return localStorage.getItem("catalog_metro") !== "0";
+    } catch {
+      return true;
+    }
+  });
   const markers = useRef(new Map<number, Lf>());
   const select = useRef(onSelect);
   select.current = onSelect;
@@ -170,6 +183,11 @@ export function MapView({ items, selected, onSelect, labels, dark }: { items: Ca
           },
         });
         m.addLayer(cluster.current);
+        // Metro lines and stations sit under the listing pins.
+        m.createPane("metro").style.zIndex = "450";
+        const zoomClass = () => box.current?.classList.toggle("zoom-hi", m.getZoom() >= 14);
+        m.on("zoomend", zoomClass);
+        zoomClass();
         setReady(true);
       })
       .catch(() => setFailed(true));
@@ -195,6 +213,29 @@ export function MapView({ items, selected, onSelect, labels, dark }: { items: Ca
       // storage blocked
     }
   }, [layer, ready]);
+
+  // Metro lines and stations (labels in the app language).
+  useEffect(() => {
+    const L = lib.current;
+    if (!ready || !L || !map.current) return;
+    metro.current?.remove();
+    metro.current = null;
+    if (showMetro) {
+      const group = L.layerGroup();
+      for (const line of [1, 2]) {
+        L.polyline(metroLine(line).map((st) => [st.lat, st.lng]), { pane: "metro", color: METRO_LINE_COLOR[line], weight: 5, opacity: 0.75, interactive: false }).addTo(group);
+      }
+      for (const st of METRO) {
+        L.marker([st.lat, st.lng], { pane: "metro", interactive: false, icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="ms" style="--c:${METRO_LINE_COLOR[st.lines[0]]}"><b>M</b><span>${st.name[lang]}</span></div>` }) }).addTo(group);
+      }
+      metro.current = group.addTo(map.current);
+    }
+    try {
+      localStorage.setItem("catalog_metro", showMetro ? "1" : "0");
+    } catch {
+      // storage blocked
+    }
+  }, [showMetro, ready, lang]);
 
   // Markers whenever the filtered list changes.
   useEffect(() => {
@@ -284,6 +325,10 @@ export function MapView({ items, selected, onSelect, labels, dark }: { items: Ca
               {labels.layers[k]}
             </button>
           ))}
+          <button type="button" onClick={() => setShowMetro((v) => !v)} className={`col-span-2 flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-semibold ${showMetro ? "bg-[var(--accent)] text-white" : "bg-[var(--bg2)] text-[var(--text)]"}`}>
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#dc2626] text-[9px] font-black text-white">M</span>
+            {labels.metro} {showMetro ? "✓" : ""}
+          </button>
         </div>
       ) : null}
     </div>

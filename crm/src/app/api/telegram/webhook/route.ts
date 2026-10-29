@@ -3,6 +3,7 @@ import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
 import { asLang } from "@/lib/catalog";
 import { call, connectRecipient, webhookSecret } from "@/lib/telegram";
+import { stopAlerts } from "@/lib/clientAlerts";
 
 // Telegram sends the bot's messages here once the webhook is turned on from
 // the "არხი და აპი" page: /start <code> links an alert phone, any other
@@ -25,6 +26,13 @@ export async function POST(request: Request) {
   if (!message?.text || message.chat.type !== "private") return Response.json({ ok: true });
   const chatId = String(message.chat.id);
   const text = message.text.trim();
+
+  if (/^\/stop\b/i.test(text)) {
+    await stopAlerts(chatId);
+    const STOPPED = { ka: "🔕 ახალ ბინებზე შეტყობინებები გაითიშა.", en: "🔕 New-flat alerts are off.", ru: "🔕 Уведомления о новых квартирах отключены." };
+    await call("sendMessage", { chat_id: chatId, text: STOPPED[asLang(message.from?.language_code)] });
+    return Response.json({ ok: true });
+  }
 
   const code = text.match(/^\/start\s+([a-f0-9]{12})\b/);
   if (code) {
