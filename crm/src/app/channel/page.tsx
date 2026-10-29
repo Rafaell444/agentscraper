@@ -123,7 +123,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
                     <textarea name="text" rows={12} defaultValue={c.post?.text ?? defaults.text} className="ui-field h-auto py-2 text-sm" />
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="block text-xs text-gray-600">ღილაკი 1 (აპი)<input name="button" defaultValue={c.post?.button ?? defaults.button} className="ui-field mt-1" /></label>
-                      <label className="block text-xs text-gray-600">ღილაკი 2 (რუკა, ცარიელი = არა)<input name="mapButton" defaultValue={c.post?.mapButton ?? defaults.mapButton} className="ui-field mt-1" /></label>
+                      <label className="block text-xs text-gray-600">ღილაკი 2 (რუკა) — ცარიელი დატოვე, თუ მიმაგრებულ ზოლზე „Open App“ გინდა<input name="mapButton" defaultValue={c.post?.mapButton ?? defaults.mapButton} className="ui-field mt-1" /></label>
                     </div>
                     <label className="block text-xs text-gray-600">ფოტო (ლოგო, არასავალდებულო; ტექსტი მაშინ ≤1024 სიმბოლო)<input type="file" name="photo" accept="image/jpeg,image/png" className="mt-1 block w-full text-xs" /></label>
                     <div className="flex flex-wrap items-center gap-4 text-xs text-gray-700">

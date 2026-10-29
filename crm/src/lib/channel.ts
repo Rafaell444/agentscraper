@@ -158,12 +158,12 @@ export const WELCOME_DEFAULTS: Record<"ru" | "en", Omit<WelcomePost, "chat" | "i
   ru: {
     text: "👋 Добро пожаловать в **Тбилиси Home**!\n\nПомогаем снять или купить квартиру в Тбилиси.\n\n✅ **Только проверенные объявления**: реальные фото, честные цены в $ и ₾.\n\n🔎 **Быстрый поиск в приложении**: фильтры по цене, районам и комнатам, карта, избранное.\n\n📩 **Понравилась квартира?** Отправьте её ID менеджеру или нажмите «Запросить просмотр» в приложении.\n\n🔔 Включите уведомления, чтобы не пропустить новые квартиры.",
     button: "🏠 Открыть приложение",
-    mapButton: "🗺 Квартиры на карте",
+    mapButton: "",
   },
   en: {
     text: "👋 Welcome to **Tbilisi Home**!\n\nWe help you rent or buy an apartment in Tbilisi.\n\n✅ **Verified listings only**: real photos, honest prices in $ and ₾.\n\n🔎 **Find faster in our app**: filters by price, district and rooms, a map, and saved favourites.\n\n📩 **Found one you like?** Send the listing ID to our manager or tap “Request a viewing” in the app.\n\n🔔 Turn on notifications so you never miss a new listing.",
     button: "🏠 Open App",
-    mapButton: "🗺 Listings on the map",
+    mapButton: "",
   },
 };
 
