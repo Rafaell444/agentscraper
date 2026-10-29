@@ -15,7 +15,7 @@ import { PhotoManager } from "./PhotoManager";
 import { filterOptions } from "@/lib/queries";
 import { AVAILABILITY, FEATURES, LEASE_TERMS, featureList, termText } from "@/lib/catalog";
 import { CHANNEL_FLAG, catalogLink, channelTargets, parseChannelIds } from "@/lib/channel";
-import { setAvailability, takeOffApp, takeOffChannel } from "@/app/channel/actions";
+import { setAvailability, showInApp, takeOffApp, takeOffBoth, takeOffChannel } from "@/app/channel/actions";
 import { ImportWaiter } from "./ImportWaiter";
 
 export const dynamic = "force-dynamic";
@@ -320,7 +320,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
       </form>
 
 
-      {post.catalog || post.channelMessageIds ? (
+      {post.catalog || post.channelMessageIds || post.refNo ? (
         <Card title="აპი და Telegram — მართვა">
           <div className="space-y-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
@@ -334,22 +334,59 @@ export default async function SharedPostEditor({ params, searchParams }: { param
               ))}
             </div>
             <p className="text-xs text-gray-500">„გაქირავდა“ / „გაიყიდა“ — ბინა აპიდან ქრება, არხის პოსტზე კი თავში ეწერება 🔴 სტატუსი.</p>
-            <div className="flex flex-wrap items-center gap-2">
-              {post.catalog ? (
-                <form action={takeOffApp}>
-                  <input type="hidden" name="id" value={post.id} />
-                  <SubmitButton pending="…" className="ui-btn ui-btn-secondary" confirm="მოვხსნა ეს ბინა მინი აპიდან?">აპიდან მოხსნა</SubmitButton>
-                </form>
-              ) : null}
-              {post.channelMessageIds ? (
-                <form action={takeOffChannel}>
-                  <input type="hidden" name="id" value={post.id} />
-                  <SubmitButton pending="იშლება…" className="ui-btn ui-btn-secondary" confirm="წავშალო ეს პოსტი არხიდან?">არხიდან წაშლა</SubmitButton>
-                </form>
-              ) : null}
-              {catalogUrl && post.catalog ? <a href={catalogUrl} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm">აპში ნახვა ↗</a> : null}
-              {catalogUrl && post.catalog ? <CopyButton value={catalogUrl} className="ui-btn ui-btn-ghost ui-btn-sm" /> : null}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-gray-200 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="font-semibold">📱 მინი აპი</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${post.catalog ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-600"}`}>{post.catalog ? "ჩანს" : "დამალულია"}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {post.catalog ? (
+                    <form action={takeOffApp}>
+                      <input type="hidden" name="id" value={post.id} />
+                      <SubmitButton pending="…" className="ui-btn ui-btn-secondary ui-btn-sm">🙈 აპიდან დამალვა</SubmitButton>
+                    </form>
+                  ) : (
+                    <form action={showInApp}>
+                      <input type="hidden" name="id" value={post.id} />
+                      <SubmitButton pending="…" className="ui-btn ui-btn-primary ui-btn-sm">👁 აპში დაბრუნება</SubmitButton>
+                    </form>
+                  )}
+                  {catalogUrl && post.catalog ? <a href={catalogUrl} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm">აპში ნახვა ↗</a> : null}
+                  {catalogUrl && post.catalog ? <CopyButton value={catalogUrl} className="ui-btn ui-btn-ghost ui-btn-sm" /> : null}
+                </div>
+                <p className="mt-2 text-[11px] text-gray-500">დამალვა არაფერს შლის: ნომერი, ფოტოები და ტექსტი რჩება, ერთი ღილაკით ბრუნდება.</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="font-semibold">📣 Telegram არხები</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${post.channelMessageIds ? "bg-sky-100 text-sky-800" : "bg-gray-100 text-gray-600"}`}>{post.channelMessageIds ? (Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ") : "არ არის"}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {(Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => (
+                    <form key={l} action={takeOffChannel}>
+                      <input type="hidden" name="id" value={post.id} />
+                      <input type="hidden" name="lang" value={l} />
+                      <SubmitButton pending="იშლება…" className="ui-btn ui-btn-secondary ui-btn-sm" confirm={`წავშალო ${CHANNEL_FLAG[l]} არხიდან?`}>🗑 {CHANNEL_FLAG[l]}</SubmitButton>
+                    </form>
+                  ))}
+                  {Object.keys(postedIn).length > 1 ? (
+                    <form action={takeOffChannel}>
+                      <input type="hidden" name="id" value={post.id} />
+                      <SubmitButton pending="იშლება…" className="ui-btn ui-btn-secondary ui-btn-sm" confirm="წავშალო ყველა არხიდან?">🗑 ყველა არხიდან</SubmitButton>
+                    </form>
+                  ) : null}
+                  {!post.channelMessageIds ? <span className="text-xs text-gray-500">გამოსაქვეყნებლად — „სად გამოვაქვეყნოთ“ ზემოთ</span> : null}
+                </div>
+                <p className="mt-2 text-[11px] text-gray-500">Telegram-ში პოსტის დამალვა შეუძლებელია, მხოლოდ წაშლა. დროებით — სტატუსი „დაჯავშნილია“ / „გაქირავდა“ (პოსტს თავში 🟡/🔴 ეწერება).</p>
+              </div>
             </div>
+            {post.catalog && post.channelMessageIds ? (
+              <form action={takeOffBoth}>
+                <input type="hidden" name="id" value={post.id} />
+                <SubmitButton pending="…" className="ui-btn ui-btn-secondary ui-btn-sm" confirm="დავმალო აპიდან და წავშალო ყველა არხიდან?">🙈 + 🗑 ორივედან მოხსნა (აპიდან დამალვა და არხებიდან წაშლა)</SubmitButton>
+              </form>
+            ) : null}
             <p className="text-xs text-gray-500">
               {post.channelPostedAt ? `არხებშია: ${(Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ")} · ${fmtDate(post.channelPostedAt, true)} · ` : ""}აპში ნახვები: {post.catalogViews}. სტატუსის შეცვლა არხის პოსტსაც ანახლებს.
             </p>
@@ -377,7 +414,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
           </form>
           <form action={deletePost}>
             <input type="hidden" name="id" value={post.id} />
-            <SubmitButton pending="იშლება…" className="ui-btn ui-btn-danger ui-btn-sm" confirm="წავშალო პოსტი და მისი ფოტოები? ბმული აღარ იმუშავებს.">წაშლა</SubmitButton>
+            <SubmitButton pending="იშლება…" className="ui-btn ui-btn-danger ui-btn-sm" confirm="სამუდამოდ წავშალო? ქრება CRM-იდან, მინი აპიდან და Telegram არხებიდან, ფოტოებიც. დაბრუნება შეუძლებელია.">🗑 სამუდამოდ წაშლა (ყველგან)</SubmitButton>
           </form>
         </div>
         <p className="mt-2 text-[11px] text-gray-500">ორიგინალის ბმული მხოლოდ CRM-ში ჩანს, კლიენტის გვერდზე — არა.</p>

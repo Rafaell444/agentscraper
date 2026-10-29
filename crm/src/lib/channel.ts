@@ -139,19 +139,25 @@ export async function refreshChannelPost(postId: string): Promise<void> {
   if (post?.channelMessageIds) await publishToChannel(postId, true).catch(() => undefined);
 }
 
-export async function removeFromChannel(postId: string): Promise<ChannelResult> {
+/** Delete the listing's posts from every channel, or only from one language's channel. */
+export async function removeFromChannel(postId: string, only?: Lang): Promise<ChannelResult> {
   const targets = channelTargets(await getSettings());
   const post = await prisma.sharedPost.findUniqueOrThrow({ where: { id: postId }, select: { channelMessageIds: true } });
   const posted = parseChannelIds(post.channelMessageIds);
   const failed: string[] = [];
+  const removed: string[] = [];
   for (const [lang, ids] of Object.entries(posted) as [Lang, number[]][]) {
+    if (only && lang !== only) continue;
     const target = targets.find((t) => t.lang === lang);
     const deleted = target ? await deleteMessages(target.chat, ids) : { ok: false as const, error: "არხი პარამეტრებში აღარ არის" };
     if (!deleted.ok) failed.push(`${CHANNEL_FLAG[lang]}: ${deleted.error}`);
+    removed.push(CHANNEL_FLAG[lang]);
+    delete posted[lang];
   }
-  await prisma.sharedPost.update({ where: { id: postId }, data: { channelMessageIds: null, channelPostedAt: null, channelIsText: false } });
+  const left = formatChannelIds(posted);
+  await prisma.sharedPost.update({ where: { id: postId }, data: left ? { channelMessageIds: left } : { channelMessageIds: null, channelPostedAt: null, channelIsText: false } });
   const warning = failed.length ? ` (ვერ წაიშალა — ${failed.join("; ")}; წაშალე არხში ხელით)` : "";
-  return { ok: true, message: `არხებიდან მოიხსნა.${warning}` };
+  return { ok: true, message: `${removed.length ? `${removed.join(", ")}: ` : ""}არხიდან წაიშალა.${warning}` };
 }
 
 // Welcome post: a message the bot sends itself, so it can carry "Open App"

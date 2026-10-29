@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
-import { ensureRefNo, publishToChannel, refreshChannelPost } from "@/lib/channel";
+import { ensureRefNo, publishToChannel, refreshChannelPost, removeFromChannel } from "@/lib/channel";
 import { alertMatchingClients } from "@/lib/clientAlerts";
 import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, requestCollectorFetch, type PostDraft } from "@/lib/sharedPosts";
 
@@ -217,8 +217,12 @@ export async function deletePost(formData: FormData) {
   await requireUser();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
+  // The channel posts go too, so nothing is left behind in Telegram.
+  const post = await prisma.sharedPost.findUnique({ where: { id }, select: { channelMessageIds: true } });
+  if (post?.channelMessageIds) await removeFromChannel(id).catch(() => undefined);
   await prisma.sharedPost.delete({ where: { id } });
   revalidatePath("/shared");
+  revalidatePath("/channel");
   redirect("/shared");
 }
 

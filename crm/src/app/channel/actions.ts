@@ -6,8 +6,9 @@ import { prisma } from "@/lib/db";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
-import { AVAILABILITY } from "@/lib/catalog";
-import { publishToChannel, publishWelcome, refreshChannelPost, removeFromChannel } from "@/lib/channel";
+import { AVAILABILITY, asLang } from "@/lib/catalog";
+import { ensureRefNo, publishToChannel, publishWelcome, refreshChannelPost, removeFromChannel } from "@/lib/channel";
+import { alertMatchingClients } from "@/lib/clientAlerts";
 import { callVerbose, webhookSecret } from "@/lib/telegram";
 
 function back(id: string, result: { ok: boolean; message?: string; error?: string }): never {
@@ -24,11 +25,35 @@ export async function postToChannel(formData: FormData) {
   back(id, await publishToChannel(id));
 }
 
+/** Delete from all channels, or from one ("lang" = ru / en). */
 export async function takeOffChannel(formData: FormData) {
   await requireUser();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  back(id, await removeFromChannel(id));
+  const lang = String(formData.get("lang") ?? "");
+  back(id, await removeFromChannel(id, lang ? asLang(lang) : undefined));
+}
+
+/** Hide from the mini app and delete from every channel. */
+export async function takeOffBoth(formData: FormData) {
+  await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.sharedPost.update({ where: { id }, data: { catalog: false } });
+  const result = await removeFromChannel(id);
+  back(id, { ok: true, message: `🙈 მინი აპიდან დაიმალა. 📣 ${result.ok ? result.message : result.error}` });
+}
+
+/** Show a hidden flat in the mini app again (same number); matching clients get the bot alert. */
+export async function showInApp(formData: FormData) {
+  await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.sharedPost.update({ where: { id }, data: { catalog: true } });
+  await ensureRefNo(id);
+  await refreshChannelPost(id);
+  const alerted = await alertMatchingClients(id).catch(() => 0);
+  back(id, { ok: true, message: `👁 მინი აპში ისევ ჩანს${alerted ? `. 🔔 ${alerted} კლიენტს ეცნობა` : ""}` });
 }
 
 /** Hide the flat from the mini app; channel posts stay but lose the app link. */
@@ -38,7 +63,7 @@ export async function takeOffApp(formData: FormData) {
   if (!id) return;
   await prisma.sharedPost.update({ where: { id }, data: { catalog: false } });
   await refreshChannelPost(id);
-  back(id, { ok: true, message: "მინი აპიდან მოიხსნა" });
+  back(id, { ok: true, message: "🙈 მინი აპიდან დაიმალა — „👁 აპში დაბრუნება“ აბრუნებს" });
 }
 
 export async function setAvailability(formData: FormData) {
