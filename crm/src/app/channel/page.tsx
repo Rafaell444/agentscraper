@@ -5,7 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
 import { fmtDate } from "@/lib/format";
 import { AVAILABILITY, dealKind, headline, priceText } from "@/lib/catalog";
-import { CHANNEL_FLAG, WELCOME_DEFAULTS, catalogLink, channelTargets, getWelcome, managerLink } from "@/lib/channel";
+import { CHANNEL_FLAG, WELCOME_DEFAULTS, catalogLink, channelTargets, getWelcome, managerLink, mapLink } from "@/lib/channel";
 import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
@@ -103,8 +103,13 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
         <Card title="მისასალმებელი პოსტი „Open App“ ღილაკით">
           <div id="welcome" className="space-y-4">
             <p className="text-xs text-gray-600">
-              Telegram-ში ხელით დაწერილ პოსტს ღილაკი ვერ ექნება — ღილაკიან პოსტს მხოლოდ ბოტი აქვეყნებს. აქედან ბოტი გამოაქვეყნებს პოსტს „🏠 Open App“ და „🗺 Map“ ღილაკებით და მიამაგრებს; მიმაგრებულ ზოლზეც გამოჩნდება „Open App“. ხელით დაწერილი ძველი პოსტი არხში წაშალე. **ტექსტი** = მუქი. შემდეგ ჯერზე იგივე პოსტი განახლდება (ახლის ნაცვლად), თუ „ახალი პოსტი“ არ მონიშნე.
+              Telegram-ში ხელით დაწერილ პოსტს ღილაკი ვერ ექნება — ღილაკიან პოსტს მხოლოდ ბოტი აქვეყნებს. აქედან ბოტი გამოაქვეყნებს პოსტს „🏠 Open App“ ღილაკით და მიამაგრებს; მიმაგრებულ ზოლზეც გამოჩნდება (Telegram ზოლზე ღილაკს მხოლოდ მაშინ აჩენს, როცა პოსტს ერთი ღილაკი აქვს). რუკის ბმული ტექსტში ჩასვი (ქვემოთ). ხელით დაწერილი ძველი პოსტი არხში წაშალე. **ტექსტი** = მუქი. შემდეგ ჯერზე იგივე პოსტი განახლდება (ახლის ნაცვლად), თუ „ახალი პოსტი“ არ მონიშნე.
             </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+              რუკის ბმული ტექსტისთვის:
+              <code className="rounded bg-gray-100 px-1.5 py-0.5">{mapLink(settings, base)}</code>
+              <CopyButton value={mapLink(settings, base)} className="ui-btn ui-btn-ghost ui-btn-sm" />
+            </div>
             {welcome ? (
               <div className={`rounded-lg border p-3 text-sm font-medium ${welcome.startsWith("ok:") ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}>
                 {welcome.startsWith("ok:") ? "✅ " : "⚠️ "}{welcome.replace(/^(ok|err):/, "")}
@@ -122,8 +127,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
                     </div>
                     <textarea name="text" rows={12} defaultValue={c.post?.text ?? defaults.text} className="ui-field h-auto py-2 text-sm" />
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <label className="block text-xs text-gray-600">ღილაკი 1 (აპი)<input name="button" defaultValue={c.post?.button ?? defaults.button} className="ui-field mt-1" /></label>
-                      <label className="block text-xs text-gray-600">ღილაკი 2 (რუკა) — ცარიელი დატოვე, თუ მიმაგრებულ ზოლზე „Open App“ გინდა<input name="mapButton" defaultValue={c.post?.mapButton ?? defaults.mapButton} className="ui-field mt-1" /></label>
+                      <label className="block text-xs text-gray-600">ღილაკის ტექსტი<input name="button" defaultValue={c.post?.button ?? defaults.button} className="ui-field mt-1" /></label>
                     </div>
                     <label className="block text-xs text-gray-600">ფოტო (ლოგო, არასავალდებულო; ტექსტი მაშინ ≤1024 სიმბოლო)<input type="file" name="photo" accept="image/jpeg,image/png" className="mt-1 block w-full text-xs" /></label>
                     <div className="flex flex-wrap items-center gap-4 text-xs text-gray-700">

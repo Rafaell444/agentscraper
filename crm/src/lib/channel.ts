@@ -152,18 +152,16 @@ export async function removeFromChannel(postId: string): Promise<ChannelResult> 
 // buttons (posts written by hand in Telegram cannot).  Pinned, its first
 // button shows on the pinned bar.  Stored per language in the settings table.
 
-export type WelcomePost = { chat: string; id: number; photo: boolean; text: string; button: string; mapButton: string };
+export type WelcomePost = { chat: string; id: number; photo: boolean; text: string; button: string };
 
 export const WELCOME_DEFAULTS: Record<"ru" | "en", Omit<WelcomePost, "chat" | "id" | "photo">> = {
   ru: {
     text: "👋 Добро пожаловать в **Тбилиси Home**!\n\nПомогаем снять или купить квартиру в Тбилиси.\n\n✅ **Только проверенные объявления**: реальные фото, честные цены в $ и ₾.\n\n🔎 **Быстрый поиск в приложении**: фильтры по цене, районам и комнатам, карта, избранное.\n\n📩 **Понравилась квартира?** Отправьте её ID менеджеру или нажмите «Запросить просмотр» в приложении.\n\n🔔 Включите уведомления, чтобы не пропустить новые квартиры.",
     button: "🏠 Открыть приложение",
-    mapButton: "",
   },
   en: {
     text: "👋 Welcome to **Tbilisi Home**!\n\nWe help you rent or buy an apartment in Tbilisi.\n\n✅ **Verified listings only**: real photos, honest prices in $ and ₾.\n\n🔎 **Find faster in our app**: filters by price, district and rooms, a map, and saved favourites.\n\n📩 **Found one you like?** Send the listing ID to our manager or tap “Request a viewing” in the app.\n\n🔔 Turn on notifications so you never miss a new listing.",
     button: "🏠 Open App",
-    mapButton: "",
   },
 };
 
@@ -181,59 +179,66 @@ function welcomeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 }
 
-export async function publishWelcome(input: { lang: Lang; text: string; button: string; mapButton: string; pin: boolean; fresh: boolean; photo: File | null }): Promise<ChannelResult> {
+/** One button only: Telegram shows it on the pinned bar only when the post has a single button. */
+export async function publishWelcome(input: { lang: Lang; text: string; button: string; pin: boolean; fresh: boolean; photo: File | null }): Promise<ChannelResult> {
   const settings = await getSettings();
   const target = channelTargets(settings).find((t) => t.lang === input.lang);
   if (!target) return { ok: false, error: "ამ ენის არხი პარამეტრებში არ არის." };
   const text = input.text.trim();
   if (!text) return { ok: false, error: "ტექსტი ცარიელია." };
   const base = await shareBase(settings.public_base_url);
-  const keyboard = [[{ text: input.button.trim() || WELCOME_DEFAULTS.en.button, url: catalogLink(settings, base) }]];
-  if (input.mapButton.trim()) keyboard.push([{ text: input.mapButton.trim(), url: mapLink(settings, base) }]);
-  const reply_markup = { inline_keyboard: keyboard };
+  const button = input.button.trim() || WELCOME_DEFAULTS[input.lang === "ru" ? "ru" : "en"].button;
+  const reply_markup = { inline_keyboard: [[{ text: button, url: catalogLink(settings, base) }]] };
   const html = welcomeHtml(text);
   const visible = text.split("**").join("").length; // Telegram counts the caption without markup
   const photo = input.photo && input.photo.size > 0 ? input.photo : null;
+  const tooLong = `ფოტოიან პოსტში ტექსტი მაქს. 1024 სიმბოლოა (ახლა ${visible}). შეამოკლე.`;
 
   const old = await getWelcome(input.lang);
-  const canEdit = old && old.chat === target.chat && !input.fresh && !photo;
-  let id: number;
-  let hasPhoto: boolean;
-  if (canEdit) {
-    if (old.photo && visible > 1024) return { ok: false, error: `ფოტოიან პოსტში ტექსტი მაქს. 1024 სიმბოლოა (ახლა ${visible}). შეამოკლე.` };
+  let id = 0;
+  let hasPhoto = false;
+  let updated = false;
+  if (old && old.chat === target.chat && !input.fresh && !photo) {
+    if (old.photo && visible > 1024) return { ok: false, error: tooLong };
     const edited = old.photo
       ? await callVerbose("editMessageCaption", { chat_id: target.chat, message_id: old.id, caption: html, parse_mode: "HTML", reply_markup })
       : await callVerbose("editMessageText", { chat_id: target.chat, message_id: old.id, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
-    if (!edited.ok && !/not modified/i.test(edited.error)) return { ok: false, error: `Telegram — ${edited.error}` };
-    id = old.id;
-    hasPhoto = old.photo;
-  } else if (photo) {
-    if (visible > 1024) return { ok: false, error: `ფოტოიან პოსტში ტექსტი მაქს. 1024 სიმბოლოა (ახლა ${visible}). შეამოკლე ან ფოტოს გარეშე გამოაქვეყნე.` };
-    const form = new FormData();
-    form.set("chat_id", target.chat);
-    form.set("photo", photo, photo.name || "welcome.jpg");
-    form.set("caption", html);
-    form.set("parse_mode", "HTML");
-    form.set("reply_markup", JSON.stringify(reply_markup));
-    const sent = await callVerbose<{ message_id: number }>("sendPhoto", form);
+    if (edited.ok || /not modified/i.test(edited.error)) {
+      id = old.id;
+      hasPhoto = old.photo;
+      updated = true;
+    } else if (!/not found/i.test(edited.error)) {
+      return { ok: false, error: `Telegram — ${edited.error}` };
+    }
+    // "message to edit not found": it was deleted in Telegram, so post a new one below.
+  }
+  if (!updated) {
+    if (photo && visible > 1024) return { ok: false, error: tooLong };
+    let sent;
+    if (photo) {
+      const form = new FormData();
+      form.set("chat_id", target.chat);
+      form.set("photo", photo, photo.name || "welcome.jpg");
+      form.set("caption", html);
+      form.set("parse_mode", "HTML");
+      form.set("reply_markup", JSON.stringify(reply_markup));
+      sent = await callVerbose<{ message_id: number }>("sendPhoto", form);
+    } else {
+      sent = await callVerbose<{ message_id: number }>("sendMessage", { chat_id: target.chat, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
+    }
     if (!sent.ok) return { ok: false, error: `Telegram — ${sent.error}` };
     id = sent.result.message_id;
-    hasPhoto = true;
-  } else {
-    const sent = await callVerbose<{ message_id: number }>("sendMessage", { chat_id: target.chat, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
-    if (!sent.ok) return { ok: false, error: `Telegram — ${sent.error}` };
-    id = sent.result.message_id;
-    hasPhoto = false;
+    hasPhoto = Boolean(photo);
+    // A new post replaces the previous welcome in the same channel.
+    if (old && old.chat === target.chat && old.id !== id) await deleteMessages(old.chat, [old.id]);
   }
 
-  // A new post replaces the previous welcome in the same channel.
-  if (!canEdit && old && old.chat === target.chat && old.id !== id) await deleteMessages(old.chat, [old.id]);
   let pinNote = "";
   if (input.pin) {
     const pinned = await callVerbose("pinChatMessage", { chat_id: target.chat, message_id: id, disable_notification: true });
     pinNote = pinned.ok ? " და მიმაგრდა 📌" : ` (ვერ მიმაგრდა: ${pinned.error} — ბოტს „Edit messages“ უფლება სჭირდება)`;
   }
-  const saved: WelcomePost = { chat: target.chat, id, photo: hasPhoto, text, button: input.button, mapButton: input.mapButton };
+  const saved: WelcomePost = { chat: target.chat, id, photo: hasPhoto, text, button };
   await prisma.setting.upsert({ where: { key: `welcome_${input.lang}` }, create: { key: `welcome_${input.lang}`, value: JSON.stringify(saved) }, update: { value: JSON.stringify(saved) } });
-  return { ok: true, message: `${CHANNEL_FLAG[input.lang]}: ${canEdit ? "განახლდა" : "გამოქვეყნდა"}${pinNote}` };
+  return { ok: true, message: `${CHANNEL_FLAG[input.lang]}: ${updated ? "განახლდა" : "გამოქვეყნდა"}${pinNote}` };
 }

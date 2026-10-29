@@ -76,7 +76,6 @@ export async function postWelcome(formData: FormData) {
     lang,
     text: String(formData.get("text") ?? ""),
     button: String(formData.get("button") ?? ""),
-    mapButton: String(formData.get("mapButton") ?? ""),
     pin: formData.get("pin") === "1",
     fresh: formData.get("fresh") === "1",
     photo: photo instanceof File ? photo : null,
