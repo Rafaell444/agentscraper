@@ -149,6 +149,8 @@ const ka = {
   shareSent: "გაზიარდა",
   openMap: "რუკის გახსნა",
   thisFlat: "ეს ბინა",
+  minShort: "წთ",
+  nearFilter: (n: number) => `ახლოს (${n} წთ-მდე ფეხით)`,
 };
 
 export type Dict = typeof ka;
@@ -302,6 +304,8 @@ const en: Dict = {
   shareSent: "Shared",
   openMap: "Open map",
   thisFlat: "This flat",
+  minShort: "min",
+  nearFilter: (n: number) => `Nearby (up to ${n} min walk)`,
 };
 
 const ru: Dict = {
@@ -453,6 +457,8 @@ const ru: Dict = {
   shareSent: "Отправлено",
   openMap: "Открыть карту",
   thisFlat: "Эта квартира",
+  minShort: "мин",
+  nearFilter: (n: number) => `Рядом (до ${n} мин пешком)`,
 };
 
 export const DICT: Record<Lang, Dict> = { ka, en, ru };

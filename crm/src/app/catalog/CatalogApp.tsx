@@ -7,8 +7,10 @@ import { MediaGallery, NearbySection } from "./Media";
 import { DICT, type Dict } from "./i18n";
 import { MapView, shortPrice } from "./MapView";
 import { haptic, openTelegram, tg } from "./tg";
+import { KIND_ORDER, NEAR_MINUTES, PLACE_EMOJI } from "./places";
 
-type Filters = { deal: DealKind; type: string; districts: string[]; priceMin: string; priceMax: string; rooms: number[]; areaMin: string; pets: boolean; features: string[]; nearMetro: boolean; metro: string[] };
+// near: place kinds (lib/nearby) within NEAR_MINUTES on foot; optional so older saved searches still load.
+type Filters = { deal: DealKind; type: string; districts: string[]; priceMin: string; priceMax: string; rooms: number[]; areaMin: string; pets: boolean; features: string[]; nearMetro: boolean; metro: string[]; near?: string[] };
 type Sort = "new" | "priceAsc" | "priceDesc" | "area";
 type Tab = "home" | "list" | "map" | "saved" | "request";
 type SavedSearch = { id: string; filters: Filters; query: string; seen: number; notify?: boolean };
@@ -55,6 +57,7 @@ function matches(item: CatalogItem, f: Filters, q: string, lang: Lang): boolean 
   if (f.features.length && !f.features.every((k) => item.features.includes(k))) return false;
   if (f.nearMetro && !item.metro.some((m) => m.minutes <= 10)) return false;
   if (f.metro.length && !item.metro.some((m) => m.minutes <= 15 && f.metro.includes(m.id))) return false;
+  if (f.near?.length && !f.near.every((k) => item.nearby?.some((n) => n.kind === k && n.minutes <= NEAR_MINUTES))) return false;
   if (q) {
     const needle = q.toLowerCase().replace(/^#/, "");
     if (/^\d+$/.test(needle) && String(item.ref).includes(needle)) return true;
@@ -183,6 +186,7 @@ function describeSearch(search: SavedSearch, lang: Lang, t: Dict): string {
     places.length > 2 ? `${places.slice(0, 2).join(", ")} +${places.length - 2}` : places.join(", "),
     f.metro.length ? `Ⓜ ${f.metro.map((id) => metroName(id, lang)).join(", ")}` : f.nearMetro ? t.nearMetro : "",
     f.pets ? t.petsOk : "",
+    f.near?.length ? f.near.map((k) => PLACE_EMOJI[k]).join("") : "",
     search.query ? `“${search.query}”` : "",
   ].filter(Boolean).join(" · ");
 }
@@ -256,7 +260,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
   const [lang, setLang] = useState<Lang>("en");
   const t = DICT[lang];
   const deals = useMemo(() => (["rent", "sale", "daily"] as DealKind[]).filter((d) => items.some((i) => i.kind === d)), [items]);
-  const emptyFilters = useCallback((deal: DealKind): Filters => ({ deal, type: "", districts: [], priceMin: "", priceMax: "", rooms: [], areaMin: "", pets: false, features: [], nearMetro: false, metro: [] }), []);
+  const emptyFilters = useCallback((deal: DealKind): Filters => ({ deal, type: "", districts: [], priceMin: "", priceMax: "", rooms: [], areaMin: "", pets: false, features: [], nearMetro: false, metro: [], near: [] }), []);
   const [filters, setFilters] = useState<Filters>(() => emptyFilters(deals[0] ?? "rent"));
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("new");
@@ -405,7 +409,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
     for (const i of items) if (i.kind === filters.deal && i.district) counts.set(i.district, (counts.get(i.district) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   }, [items, filters.deal]);
-  const activeCount = [filters.type, filters.districts.length, filters.priceMin || filters.priceMax, filters.rooms.length, filters.areaMin, filters.pets, filters.features.length, filters.nearMetro, filters.metro.length].filter(Boolean).length;
+  const activeCount = [filters.type, filters.districts.length, filters.priceMin || filters.priceMax, filters.rooms.length, filters.areaMin, filters.pets, filters.features.length, filters.nearMetro, filters.metro.length, filters.near?.length].filter(Boolean).length;
 
   // In Telegram the bot prepares a card (photo, price, Open button) for Telegram's chat picker;
   // older clients and the web get the plain link.
@@ -1083,6 +1087,15 @@ function MetroBadge({ item, lang, t, small = false, all = false }: { item: Catal
   );
 }
 
+/** "🛒 2 min · 🏫 4 min · 🌳 3 min": the nearest of the main kinds, for the map card. */
+function NearbyLine({ item, t }: { item: CatalogItem; t: Dict }) {
+  const list = (item.nearby ?? []).filter((n) => ["supermarket", "school", "kindergarten", "park", "pharmacy"].includes(n.kind) && n.minutes <= 15)
+    .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind))
+    .slice(0, 4);
+  if (!list.length) return null;
+  return <div className="mt-0.5 truncate text-[11px] text-[var(--hint)]">{list.map((n) => `${PLACE_EMOJI[n.kind]} ${n.minutes} ${t.minShort}`).join(" · ")}</div>;
+}
+
 function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null }: { item: CatalogItem; lang: Lang; t: Dict; fav: boolean; onFav: (ref: number) => void; onOpen: (ref: number) => void; compact?: boolean; good?: number | null }) {
   const place = placeName(item.location || item.district, lang);
   if (compact) {
@@ -1095,6 +1108,7 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null 
           <div className="truncate text-sm">{title(item, lang)}{item.area ? ` · ${item.area} ${m2(lang)}` : ""}</div>
           <div className="truncate text-xs text-[var(--hint)]">{place}</div>
           <MetroBadge item={item} lang={lang} t={t} small />
+          <NearbyLine item={item} t={t} />
         </div>
         <span className="self-center pr-1 text-[var(--accent)]">›</span>
       </button>
@@ -1360,6 +1374,8 @@ function FilterPanel({ only, deals = [], onDeal, filters, setFilters, districts,
   const types = [...new Set(items.filter((i) => i.kind === filters.deal).map((i) => i.type ?? "ბინა"))];
   // Only stations that have a listing of this deal type within 15 minutes.
   const stations = METRO.filter((st) => items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.id === st.id && m.minutes <= 15)));
+  // Only kinds some flat of this deal type is near, so no chip ever gives an empty list.
+  const nearKinds = KIND_ORDER.filter((k) => items.some((i) => i.kind === filters.deal && i.nearby?.some((n) => n.kind === k && n.minutes <= NEAR_MINUTES)));
   const toggleIn = <K extends "districts" | "features" | "metro">(key: K, value: string) =>
     setFilters((f) => ({ ...f, [key]: f[key].includes(value) ? f[key].filter((x) => x !== value) : [...f[key], value] }));
   const box = "w-full rounded-xl border border-[var(--line)] bg-transparent px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]";
@@ -1435,6 +1451,18 @@ function FilterPanel({ only, deals = [], onDeal, filters, setFilters, districts,
               <ChipToggle key={st.id} active={filters.metro.includes(st.id)} onClick={() => toggleIn("metro", st.id)}>
                 <span className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: METRO_LINE_COLOR[st.lines[0]] }} />
                 {st.name[lang]}
+              </ChipToggle>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {!only && nearKinds.length ? (
+        <div>
+          <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.nearFilter(NEAR_MINUTES)}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {nearKinds.map((k) => (
+              <ChipToggle key={k} active={Boolean(filters.near?.includes(k))} onClick={() => setFilters((f) => ({ ...f, near: f.near?.includes(k) ? f.near.filter((x) => x !== k) : [...(f.near ?? []), k] }))}>
+                {PLACE_EMOJI[k]} {t.places[k]}
               </ChipToggle>
             ))}
           </div>

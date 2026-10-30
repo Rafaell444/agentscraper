@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CatalogItem, DealKind, Lang } from "@/lib/catalog";
 import { METRO, METRO_LINE_COLOR, metroLine } from "@/lib/metro";
+import { fetchNearby, placeHtml } from "./places";
 
 // Leaflet + marker clustering, loaded from a CDN only when the map tab opens.
 // Pins are photo "pills" coloured by deal type; nearby flats group into
@@ -49,6 +50,61 @@ export function loadLeaflet(): Promise<Lf> {
   return loading;
 }
 
+// ---------------------------------------------------------------- vector ---
+
+type VectorStyle = "liberty" | "dark";
+const MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
+const MAPLIBRE_LEAFLET = "https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.3/leaflet-maplibre-gl.js";
+const VECTOR_ATTRIBUTION = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+let glLoading: Promise<boolean> | null = null;
+const styles = new Map<VectorStyle, Promise<Lf>>();
+
+/** MapLibre and its Leaflet bridge, once; false without WebGL or when the CDN fails. */
+function loadGl(): Promise<boolean> {
+  if (!glLoading) {
+    const canvas = document.createElement("canvas");
+    const webgl = Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+    glLoading = !webgl
+      ? Promise.resolve(false)
+      : (addCss(`${MAPLIBRE}.css`), addScript(`${MAPLIBRE}.js`).then(() => addScript(MAPLIBRE_LEAFLET)).then(() => true).catch(() => false));
+  }
+  return glLoading;
+}
+
+/** Names in the reader's language; streets missing one fall back to the Latin spelling (en, ru) or the local name. */
+function nameIn(lang: Lang): unknown[] {
+  if (lang === "ka") return ["coalesce", ["get", "name:ka"], ["get", "name"]];
+  if (lang === "ru") return ["coalesce", ["get", "name:ru"], ["get", "name:latin"], ["get", "name"]];
+  return ["coalesce", ["get", "name:en"], ["get", "name_en"], ["get", "name:latin"], ["get", "name"]];
+}
+
+async function localStyle(name: VectorStyle, lang: Lang, labelsOnly: boolean): Promise<Lf> {
+  if (!styles.has(name)) styles.set(name, fetch(`https://tiles.openfreemap.org/styles/${name}`).then((r) => r.json()));
+  const style = structuredClone(await styles.get(name)!);
+  style.layers = (style.layers as Lf[])
+    .filter((l) => !labelsOnly || l.type === "symbol")
+    .map((l) => {
+      const field = l.layout?.["text-field"];
+      // Only name labels; road numbers ("{ref}") stay as they are.
+      if (field && JSON.stringify(field).includes("name")) l.layout["text-field"] = nameIn(lang);
+      // Labels over a satellite photo need a halo to stay readable.
+      if (labelsOnly && l.paint) Object.assign(l.paint, { "text-color": "#ffffff", "text-halo-color": "rgba(0,0,0,0.75)", "text-halo-width": 1.4 });
+      return l;
+    });
+  return style;
+}
+
+/** A Leaflet layer drawing the vector map; null when it cannot (the caller uses raster tiles). */
+export async function vectorLayer(L: Lf, name: VectorStyle, lang: Lang, labelsOnly = false): Promise<Lf | null> {
+  try {
+    if (!(await loadGl()) || !L.maplibreGL) return null;
+    const style = await localStyle(name, lang, labelsOnly);
+    return L.maplibreGL({ style, attribution: VECTOR_ATTRIBUTION, interactive: false, ...(labelsOnly ? { pane: "overlayPane" } : {}) });
+  } catch {
+    return null;
+  }
+}
+
 export function shortPrice(item: Pick<CatalogItem, "price" | "currency">): string {
   if (item.price == null) return "•";
   const sym = item.currency === "GEL" ? "₾" : "$";
@@ -77,18 +133,25 @@ const STYLE = `
 .ms b{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--c);color:#fff;border:2px solid #fff;font:900 10px system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .ms span{display:none;padding:1px 5px;border-radius:6px;background:rgba(255,255,255,.92);color:#111;font:600 11px system-ui,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .zoom-hi .ms span{display:block}
+.pl{animation:pl-in .25s ease both}
+@keyframes pl-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
 .leaflet-container{background:#e5e7eb;font-family:system-ui,sans-serif}
 `;
 
 export type LayerKey = "streets" | "satellite" | "terrain" | "dark";
 
-const LAYERS: Record<LayerKey, { url: string; max: number; attribution: string; labels?: string }> = {
-  streets: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, attribution: "© OpenStreetMap" },
+// Streets, dark and the satellite labels are vector maps (OpenFreeMap, free,
+// no key) drawn by MapLibre inside Leaflet, so street and district names
+// follow the app language. url / labels are the raster fallback (and the
+// picker preview) when WebGL or the vector map is not available.
+const LAYERS: Record<LayerKey, { url: string; max: number; attribution: string; labels?: string; vector?: VectorStyle; vectorLabels?: boolean }> = {
+  streets: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, attribution: "© OpenStreetMap", vector: "liberty" },
   satellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     max: 19,
     attribution: "© Esri",
     labels: "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    vectorLabels: true,
   },
   terrain: { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", max: 17, attribution: "© OpenStreetMap © OpenTopoMap" },
   dark: {
@@ -96,6 +159,7 @@ const LAYERS: Record<LayerKey, { url: string; max: number; attribution: string; 
     max: 16,
     attribution: "© Esri",
     labels: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    vector: "dark",
   },
 };
 
@@ -116,6 +180,7 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
   const area = useRef<Lf>(null);
   const me = useRef<Lf>(null);
   const metro = useRef<Lf>(null);
+  const places = useRef<Lf>(null);
   const [showMetro, setShowMetro] = useState(() => {
     try {
       return localStorage.getItem("catalog_metro") !== "0";
@@ -124,6 +189,9 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
     }
   });
   const markers = useRef(new Map<number, Lf>());
+  // Read by the cluster icons, which are made once: keeps "from $750" in the current language.
+  const fromLabel = useRef(labels.from);
+  fromLabel.current = labels.from;
   const select = useRef(onSelect);
   select.current = onSelect;
   const [failed, setFailed] = useState(false);
@@ -161,7 +229,8 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
       .then((L) => {
         if (cancelled || !box.current) return;
         lib.current = L;
-        const m = L.map(box.current, { zoomControl: false, attributionControl: true });
+        // maxZoom on the map itself: the clusters need it before the (async) base layer is added.
+        const m = L.map(box.current, { zoomControl: false, attributionControl: true, maxZoom: 19, minZoom: 9 });
         m.attributionControl.setPrefix(false);
         map.current = m;
         m.on("click", () => select.current(null));
@@ -179,13 +248,17 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
             return L.divIcon({
               className: "",
               iconSize: [0, 0],
-              html: `<div class="mc"><b style="width:${size}px;height:${size}px">${count}</b>${cheapest ? `<span>${labels.from.replace("{p}", shortPrice(cheapest))}</span>` : ""}</div>`,
+              html: `<div class="mc"><b style="width:${size}px;height:${size}px">${count}</b>${cheapest ? `<span>${fromLabel.current.replace("{p}", shortPrice(cheapest))}</span>` : ""}</div>`,
             });
           },
         });
         m.addLayer(cluster.current);
         // Metro lines and stations sit under the listing pins.
         m.createPane("metro").style.zIndex = "450";
+        // Places of the selected flat: above metro, under the listing pins.
+        const placesPane = m.createPane("places");
+        placesPane.style.zIndex = "500";
+        placesPane.style.pointerEvents = "none";
         const zoomClass = () => box.current?.classList.toggle("zoom-hi", m.getZoom() >= 14);
         m.on("zoomend", zoomClass);
         zoomClass();
@@ -197,23 +270,37 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
       map.current?.remove();
       map.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Base layer.
+  // Base layer (labels in the app language where the layer is a vector map).
   useEffect(() => {
     const L = lib.current;
     if (!ready || !L || !map.current) return;
-    for (const t of tiles.current) map.current.removeLayer(t);
+    let alive = true;
+    const m = map.current;
     const spec = LAYERS[layer];
-    tiles.current = [L.tileLayer(spec.url, { maxZoom: 19, maxNativeZoom: spec.max, attribution: spec.attribution, subdomains: "abc" }).addTo(map.current)];
-    if (spec.labels) tiles.current.push(L.tileLayer(spec.labels, { maxZoom: 19, maxNativeZoom: spec.max, pane: "overlayPane" }).addTo(map.current));
+    const show = (next: Lf[]) => {
+      for (const t of tiles.current) m.removeLayer(t);
+      tiles.current = next.map((t) => t.addTo(m));
+    };
+    const raster = () => L.tileLayer(spec.url, { maxZoom: 19, maxNativeZoom: spec.max, attribution: spec.attribution, subdomains: "abc" });
+    const rasterLabels = () => (spec.labels ? [L.tileLayer(spec.labels, { maxZoom: 19, maxNativeZoom: spec.max, pane: "overlayPane" })] : []);
+    if (spec.vector) {
+      vectorLayer(L, spec.vector, lang).then((gl) => alive && show(gl ? [gl] : [raster(), ...rasterLabels()]));
+    } else if (spec.vectorLabels) {
+      vectorLayer(L, "liberty", lang, true).then((gl) => alive && show([raster(), ...(gl ? [gl] : rasterLabels())]));
+    } else {
+      show([raster(), ...rasterLabels()]);
+    }
     try {
       localStorage.setItem("catalog_layer", layer);
     } catch {
       // storage blocked
     }
-  }, [layer, ready]);
+    return () => {
+      alive = false;
+    };
+  }, [layer, ready, lang]);
 
   // Metro lines and stations (labels in the app language).
   useEffect(() => {
@@ -276,6 +363,36 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
     if (item && !item.point!.exact) {
       area.current = L.circle([item.point!.lat, item.point!.lng], { radius: 350, color: KIND_COLOR[item.kind], weight: 1.5, fillOpacity: 0.12, interactive: false }).addTo(map.current);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, key, ready]);
+
+  // Redraw the cluster bubbles in the new language (without moving the map).
+  useEffect(() => {
+    if (ready) cluster.current?.refreshClusters();
+  }, [labels.from, ready]);
+
+  // The tapped flat's shops, schools, parks… appear around it (only that flat's, so the map stays clean).
+  useEffect(() => {
+    const L = lib.current;
+    if (!ready || !L || !map.current) return;
+    places.current?.remove();
+    places.current = null;
+    const item = points.find((i) => i.ref === selected);
+    if (!item?.nearby) return;
+    let alive = true;
+    fetchNearby(item.ref).then((data) => {
+      if (!alive || !data || !map.current) return;
+      const group = L.layerGroup();
+      for (const p of data.places) {
+        L.marker([p.lat, p.lng], { pane: "places", interactive: false, icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="pl">${placeHtml(p.kind, false, 24)}</div>` }) }).addTo(group);
+      }
+      places.current = group.addTo(map.current);
+      // Close enough that the places spread out instead of piling on the pin.
+      if (map.current.getZoom() < 15) map.current.flyTo([item.point!.lat, item.point!.lng], 15, { duration: 0.6 });
+    });
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, key, ready]);
 
