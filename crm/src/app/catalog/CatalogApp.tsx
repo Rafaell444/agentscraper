@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEAL_LABEL, FEATURES, PETS, placeName, priceText, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
+import { DEAL_LABEL, FEATURES, LEASE_TERMS, PETS, PROPERTY_TYPES, TBILISI_DISTRICTS, placeName, priceText, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
 import { mapView } from "@/lib/map";
 import { METRO, METRO_LINE_COLOR, metroName } from "@/lib/metro";
 import { Gallery } from "@/app/s/[token]/Gallery";
@@ -282,7 +282,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [setTab]);
 
   const changeLang = (value: Lang) => {
     setLang(value);
@@ -471,8 +471,11 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
                   {t.back}
                 </button>
               ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src="/brand-logo.jpg" alt="" className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm ring-2 ring-[var(--bg)] [transform:scale(1)]" />
+                // The logo file has a light square around the badge: zoom in so only the circle shows.
+                <span className="h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-md ring-2 ring-white">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/brand-logo.jpg" alt="Tbilisi Buy & Rent" className="h-full w-full scale-[1.22] object-cover" />
+                </span>
               )}
               <span className="min-w-0 flex-1 truncate text-base font-extrabold tracking-tight text-[var(--text)]">{agency}</span>
               {tab === "list" || tab === "map" ? (
@@ -613,7 +616,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
               <div className="rounded-2xl bg-[var(--bg)] p-4">
                 <h2 className="text-lg font-bold">{t.findTitle}</h2>
                 <p className="mt-1 text-sm text-[var(--hint)]">{t.findText}</p>
-                <LeadForm kind="search" lang={lang} t={t} districts={districts} deals={deals} defaultDeal={filters.deal} onDone={() => setTab("list")} />
+                <LeadForm kind="search" lang={lang} t={t} districts={districts} defaultDeal={filters.deal} onDone={() => setTab("list")} />
               </div>
             </main>
           ) : null}
@@ -787,8 +790,10 @@ function Home({ items, deals, lang, t, recent, searchProps, onOpen, onBrowse, on
   return (
     <main className="space-y-5 px-3 pb-4 pt-1">
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[var(--navy)] via-[#1d4f8c] to-[#4f8cc9] p-4 text-white shadow-[0_10px_30px_rgba(14,42,77,0.3)]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand-logo.jpg" alt="" className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full object-cover opacity-25 mix-blend-luminosity" />
+        <span className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 overflow-hidden rounded-full opacity-30">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand-logo.jpg" alt="" className="h-full w-full scale-[1.22] object-cover" />
+        </span>
         <div className="relative text-xl font-extrabold">👋 {t.hello(name)}</div>
         <div className="relative mt-0.5 text-sm text-white/85">{t.homeSub(items.length)}</div>
         <form onSubmit={(e) => { e.preventDefault(); onQuery(q.trim()); }} className="relative mt-3 flex items-center gap-2 rounded-2xl bg-white px-3 text-gray-900 shadow-md">
@@ -877,14 +882,6 @@ function Pill({ active, label, onClick, plain = false }: { active: boolean; labe
     >
       {label}
       {plain ? null : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-70"><path d="m6 9 6 6 6-6" /></svg>}
-    </button>
-  );
-}
-
-function QuickChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={() => { haptic("select"); onClick(); }} className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-sm font-medium ${active ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--text)]"}`}>
-      {children}
     </button>
   );
 }
@@ -1347,7 +1344,31 @@ function FilterPanel({ only, deals = [], onDeal, filters, setFilters, districts,
   );
 }
 
-function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal, onDone }: {
+type Criteria = {
+  deal: DealKind; types: string[]; budgetMin: string; budgetMax: string; rooms: number | null; bedrooms: number | null; bathrooms: number | null;
+  areaMin: string; areaMax: string; districts: string[]; nearMetro: boolean; metro: string[]; notFirstFloor: boolean; notLastFloor: boolean;
+  features: string[]; pets: boolean; term: string; moveIn: string;
+};
+const EMPTY_CRITERIA: Criteria = {
+  deal: "rent", types: [], budgetMin: "", budgetMax: "", rooms: null, bedrooms: null, bathrooms: null, areaMin: "", areaMax: "",
+  districts: [], nearMetro: false, metro: [], notFirstFloor: false, notLastFloor: false, features: [], pets: false, term: "", moveIn: "",
+};
+
+/** "Rooms from: [1+] [2+] [3+] …" — tap again to clear. */
+function CountRow({ label, value, options, onChange }: { label: string; value: number | null; options: number[]; onChange: (v: number | null) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-28 shrink-0 text-xs font-medium text-[var(--hint)]">{label}</span>
+      <div className="flex flex-1 gap-1.5">
+        {options.map((n) => (
+          <button key={n} type="button" onClick={() => onChange(value === n ? null : n)} className={`h-9 flex-1 rounded-xl border text-sm font-semibold ${value === n ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>{n}+</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LeadForm({ kind, item, lang, t, districts = [], defaultDeal, onDone }: {
   kind: "viewing" | "question" | "search"; item?: CatalogItem; lang: Lang; t: Dict; districts?: string[]; deals?: DealKind[]; defaultDeal?: DealKind; onDone: () => void;
 }) {
   const app = tg();
@@ -1356,12 +1377,15 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
   const [phone, setPhone] = useState("");
   const [when, setWhen] = useState("");
   const [message, setMessage] = useState("");
-  const [deal, setDeal] = useState<DealKind>(defaultDeal ?? "rent");
-  const [budget, setBudget] = useState("");
-  const [rooms, setRooms] = useState<number | null>(null);
-  const [areas, setAreas] = useState<string[]>([]);
-  const [moveIn, setMoveIn] = useState("");
-  const [pets, setPets] = useState(false);
+  const [c, setC] = useState<Criteria>(() => ({ ...EMPTY_CRITERIA, deal: defaultDeal ?? "rent" }));
+  const set = <K extends keyof Criteria>(key: K, value: Criteria[K]) => { haptic("select"); setC((cur) => ({ ...cur, [key]: value })); };
+  const toggleList = (key: "types" | "districts" | "metro" | "features", value: string) =>
+    set(key, c[key].includes(value) ? c[key].filter((x) => x !== value) : [...c[key], value]);
+  const [more, setMore] = useState(false);
+  const [allDistricts, setAllDistricts] = useState(false);
+  const [stationsOpen, setStationsOpen] = useState(false);
+  // Every Tbilisi district, the ones with listings first.
+  const districtList = [...new Set([...districts, ...TBILISI_DISTRICTS])];
   const [alerts, setAlerts] = useState(true);
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState("");
@@ -1385,7 +1409,7 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
     setState("sending");
     // Alerts need the user's permission for the bot to write to them.
     const allowed = kind === "search" && alerts && app?.requestWriteAccess ? await new Promise<boolean>((resolve) => app.requestWriteAccess!((ok) => resolve(ok))) : false;
-    const parts = [when ? `${t.when} ${when}` : "", pets ? "🐾 pets" : "", message].filter(Boolean);
+    const parts = [when ? `${t.when} ${when}` : "", message].filter(Boolean);
     try {
       const response = await fetch("/api/catalog/lead", {
         method: "POST",
@@ -1398,7 +1422,28 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
           message: parts.join("\n"),
           lang,
           initData: app?.initData ?? "",
-          prefs: kind === "search" ? { deal, budgetMax: num(budget) ?? undefined, roomsMin: rooms ?? undefined, areas, moveIn: moveIn || undefined, pets } : undefined,
+          prefs: kind === "search"
+            ? {
+                deal: c.deal,
+                types: c.types,
+                budgetMin: num(c.budgetMin) ?? undefined,
+                budgetMax: num(c.budgetMax) ?? undefined,
+                roomsMin: c.rooms ?? undefined,
+                bedroomsMin: c.bedrooms ?? undefined,
+                bathroomsMin: c.bathrooms ?? undefined,
+                areaMin: num(c.areaMin) ?? undefined,
+                areaMax: num(c.areaMax) ?? undefined,
+                areas: c.districts,
+                nearMetro: c.nearMetro || undefined,
+                metro: c.metro,
+                notFirstFloor: c.notFirstFloor || undefined,
+                notLastFloor: c.notLastFloor || undefined,
+                features: c.features,
+                pets: c.pets || undefined,
+                leaseTerm: c.deal === "rent" && c.term ? c.term : undefined,
+                moveIn: c.moveIn || undefined,
+              }
+            : undefined,
           alerts: allowed,
         }),
       });
@@ -1427,35 +1472,106 @@ function LeadForm({ kind, item, lang, t, districts = [], deals = [], defaultDeal
     <form onSubmit={submit} className="mt-3 space-y-3" noValidate>
       {kind === "search" ? (
         <>
-          {deals.length > 1 ? (
+          {/* 1. What */}
+          <section className="space-y-3 rounded-2xl border border-[var(--line)] p-3">
+            <h3 className="text-sm font-bold">🏠 {t.critWhat}</h3>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["rent", "sale", "daily"] as DealKind[]).map((d) => (
+                <button key={d} type="button" onClick={() => set("deal", d)} className={`rounded-xl border py-2.5 text-sm font-semibold ${c.deal === d ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>{t[d]}</button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {deals.map((d) => <ChipToggle key={d} active={deal === d} onClick={() => setDeal(d)}>{t[d]}</ChipToggle>)}
+              {PROPERTY_TYPES.map((type) => <ChipToggle key={type} active={c.types.includes(type)} onClick={() => toggleList("types", type)}>{typeLabel(type, lang)}</ChipToggle>)}
             </div>
-          ) : null}
-          <div className="grid grid-cols-2 gap-2">
-            <label>
-              <span className="mb-1 block text-xs font-medium text-[var(--hint)]">{t.budget}</span>
-              <input inputMode="numeric" value={budget} onChange={(e) => setBudget(e.target.value)} className={box} />
-            </label>
-            <label>
-              <span className="mb-1 block text-xs font-medium text-[var(--hint)]">{t.moveIn}</span>
-              <input type="date" value={moveIn} onChange={(e) => setMoveIn(e.target.value)} className={box} />
-            </label>
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.roomsMin}</div>
-            <div className="flex gap-1.5">
-              {[1, 2, 3, 4].map((r) => <ChipToggle key={r} active={rooms === r} onClick={() => setRooms(rooms === r ? null : r)}>{r === 4 ? "4+" : `${r}+`}</ChipToggle>)}
-              {deal !== "sale" ? <ChipToggle active={pets} onClick={() => setPets(!pets)}>{t.petsOk}</ChipToggle> : null}
+            <CountRow label={t.roomsMin} value={c.rooms} options={[1, 2, 3, 4, 5]} onChange={(v) => set("rooms", v)} />
+            <CountRow label={t.bedroomsMin} value={c.bedrooms} options={[1, 2, 3, 4]} onChange={(v) => set("bedrooms", v)} />
+            <CountRow label={t.bathsMin} value={c.bathrooms} options={[1, 2, 3]} onChange={(v) => set("bathrooms", v)} />
+          </section>
+
+          {/* 2. Budget */}
+          <section className="space-y-2 rounded-2xl border border-[var(--line)] p-3">
+            <h3 className="text-sm font-bold">💰 {t.critBudget}</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <input inputMode="numeric" value={c.budgetMin} onChange={(e) => setC((cur) => ({ ...cur, budgetMin: e.target.value }))} placeholder={t.fromLabel} className={box} />
+              <input inputMode="numeric" value={c.budgetMax} onChange={(e) => setC((cur) => ({ ...cur, budgetMax: e.target.value }))} placeholder={t.toLabel} className={box} />
             </div>
-          </div>
-          {districts.length ? (
-            <div>
-              <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.districts}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {PRICE_PRESETS[c.deal].map(([min, max]) => (
+                <ChipToggle key={`${min}-${max}`} active={c.budgetMin === min && c.budgetMax === max} onClick={() => setC((cur) => (cur.budgetMin === min && cur.budgetMax === max ? { ...cur, budgetMin: "", budgetMax: "" } : { ...cur, budgetMin: min, budgetMax: max }))}>
+                  {priceRangeLabel(min, max)}
+                </ChipToggle>
+              ))}
+            </div>
+          </section>
+
+          {/* 3. Where */}
+          <section className="space-y-2 rounded-2xl border border-[var(--line)] p-3">
+            <h3 className="text-sm font-bold">📍 {t.critWhere}</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {(allDistricts ? districtList : districtList.slice(0, 10)).map((d) => <ChipToggle key={d} active={c.districts.includes(d)} onClick={() => toggleList("districts", d)}>{placeName(d, lang)}</ChipToggle>)}
+              {districtList.length > 10 ? (
+                <button type="button" onClick={() => setAllDistricts((v) => !v)} className="rounded-full px-3 py-1.5 text-sm font-semibold text-[var(--accent)]">{allDistricts ? t.showLess : t.showAll(districtList.length)}</button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--line)] pt-2">
+              <ChipToggle active={c.nearMetro} onClick={() => set("nearMetro", !c.nearMetro)}>{t.nearMetro}</ChipToggle>
+              <button type="button" onClick={() => setStationsOpen((v) => !v)} className="rounded-full px-3 py-1.5 text-sm font-semibold text-[var(--accent)]">
+                Ⓜ {t.chooseStations}{c.metro.length ? ` (${c.metro.length})` : ""} {stationsOpen ? "▴" : "▾"}
+              </button>
+            </div>
+            {stationsOpen ? (
               <div className="flex flex-wrap gap-1.5">
-                {districts.map((d) => <ChipToggle key={d} active={areas.includes(d)} onClick={() => setAreas(areas.includes(d) ? areas.filter((x) => x !== d) : [...areas, d])}>{placeName(d, lang)}</ChipToggle>)}
+                {METRO.map((st) => (
+                  <ChipToggle key={st.id} active={c.metro.includes(st.id)} onClick={() => toggleList("metro", st.id)}>
+                    <span className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: METRO_LINE_COLOR[st.lines[0]] }} />
+                    {st.name[lang]}
+                  </ChipToggle>
+                ))}
               </div>
-            </div>
+            ) : null}
+          </section>
+
+          {/* 4. More (folded) */}
+          <button type="button" onClick={() => { haptic("tap"); setMore((v) => !v); }} className="flex w-full items-center justify-between rounded-2xl bg-[var(--bg2)] px-3 py-3 text-sm font-semibold">
+            <span>⚙️ {more ? t.lessCriteria : t.moreCriteria}</span>
+            <span className="text-[var(--hint)]">{more ? "▴" : "▾"}</span>
+          </button>
+          {more ? (
+            <section className="space-y-3 rounded-2xl border border-[var(--line)] p-3">
+              <div>
+                <div className="mb-1 text-xs font-medium text-[var(--hint)]">{t.areaRange}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input inputMode="numeric" value={c.areaMin} onChange={(e) => setC((cur) => ({ ...cur, areaMin: e.target.value }))} placeholder={t.fromLabel} className={box} />
+                  <input inputMode="numeric" value={c.areaMax} onChange={(e) => setC((cur) => ({ ...cur, areaMax: e.target.value }))} placeholder={t.toLabel} className={box} />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.floor}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  <ChipToggle active={c.notFirstFloor} onClick={() => set("notFirstFloor", !c.notFirstFloor)}>{t.notFirstFloor}</ChipToggle>
+                  <ChipToggle active={c.notLastFloor} onClick={() => set("notLastFloor", !c.notLastFloor)}>{t.notLastFloor}</ChipToggle>
+                </div>
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.features}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {c.deal !== "sale" ? <ChipToggle active={c.pets} onClick={() => set("pets", !c.pets)}>{t.petsOk}</ChipToggle> : null}
+                  {FEATURES.map((f) => <ChipToggle key={f.key} active={c.features.includes(f.key)} onClick={() => toggleList("features", f.key)}>{f.emoji} {f[lang]}</ChipToggle>)}
+                </div>
+              </div>
+              {c.deal === "rent" ? (
+                <div>
+                  <div className="mb-1.5 text-xs font-medium text-[var(--hint)]">{t.stayTerm}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {LEASE_TERMS.map((term) => <ChipToggle key={term} active={c.term === term} onClick={() => set("term", c.term === term ? "" : term)}>{termText(term, lang)}</ChipToggle>)}
+                  </div>
+                </div>
+              ) : null}
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-[var(--hint)]">{t.moveIn}</span>
+                <input type="date" value={c.moveIn} onChange={(e) => setC((cur) => ({ ...cur, moveIn: e.target.value }))} className={box} />
+              </label>
+            </section>
           ) : null}
         </>
       ) : null}

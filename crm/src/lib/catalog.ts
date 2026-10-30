@@ -85,6 +85,14 @@ const TYPE_LABEL: Record<string, Record<Lang, string>> = {
   "კომერციული ფართი": { ka: "კომერციული ფართი", en: "Commercial", ru: "Коммерческая" },
   "სასტუმრო": { ka: "სასტუმრო", en: "Hotel", ru: "Гостиница" },
 };
+export const PROPERTY_TYPES = Object.keys(TYPE_LABEL);
+
+/** Tbilisi districts offered in "find me a flat" (Georgian keys of PLACES). */
+export const TBILISI_DISTRICTS = [
+  "ვაკე", "საბურთალო", "ვერა", "მთაწმინდა", "სოლოლაკი", "ძველი თბილისი", "ავლაბარი", "ჩუღურეთი", "დიდუბე", "დიღომი", "დიდი დიღომი",
+  "დიღმის მასივი", "ნაძალადევი", "გლდანი", "ისანი", "სამგორი", "ვარკეთილი", "ნავთლუღი", "კრწანისი", "ორთაჭალა", "ბაგები", "ლისი", "კუს ტბა", "წყნეთი",
+];
+
 export function typeLabel(type: string | null | undefined, lang: Lang): string {
   if (!type) return TYPE_LABEL["ბინა"][lang];
   return TYPE_LABEL[type]?.[lang] ?? type;

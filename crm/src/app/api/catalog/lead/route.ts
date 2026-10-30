@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import { phoneDigits } from "@/lib/phones";
-import { asLang, headline, priceText, dealKind, DEAL_LABEL } from "@/lib/catalog";
+import { asLang, headline, priceText, dealKind } from "@/lib/catalog";
 import { notifyRecipients, verifyInitData } from "@/lib/telegram";
+import { cleanPrefs, prefsSummary } from "@/lib/clientAlerts";
 
 // Requests from the mini app.  Each one becomes (or updates) a client in the
 // CRM, and the agency phones get a Telegram message right away.
@@ -14,7 +15,7 @@ type Body = {
   message?: string;
   lang?: string;
   initData?: string;
-  prefs?: { deal?: string; budgetMax?: number; roomsMin?: number; areas?: string[]; moveIn?: string; pets?: boolean };
+  prefs?: Record<string, unknown> & { moveIn?: string };
   alerts?: boolean;
 };
 
@@ -45,12 +46,15 @@ export async function POST(request: Request) {
   if (recent >= 6) return Response.json({ ok: false, error: "too many" }, { status: 429 });
 
   const post = body.ref ? await prisma.sharedPost.findFirst({ where: { refNo: Number(body.ref), catalog: true } }) : null;
-  const prefs = body.prefs ?? {};
-  const areas = (prefs.areas ?? []).map((a) => clip(a, 40)).filter(Boolean).slice(0, 10);
-  const moveIn = prefs.moveIn && !Number.isNaN(Date.parse(prefs.moveIn)) ? new Date(prefs.moveIn) : null;
+  const prefs = cleanPrefs(body.prefs);
+  const areas = prefs.areas ?? [];
+  const moveInRaw = body.prefs?.moveIn;
+  const moveIn = typeof moveInRaw === "string" && !Number.isNaN(Date.parse(moveInRaw)) ? new Date(moveInRaw) : null;
+  const criteria = kind === "search" ? [prefsSummary(prefs), moveIn ? `შესვლა ${moveIn.toISOString().slice(0, 10)}` : ""].filter(Boolean).join(" · ") : "";
   const noteLine = [
     `${new Date().toISOString().slice(0, 10)} · Telegram აპი · ${KIND_LABEL[kind]}`,
     post ? `ბინა #${post.refNo}: ${headline(post, "ka")}` : "",
+    criteria ? `🔎 ${criteria}` : "",
     message,
   ].filter(Boolean).join("\n");
 
@@ -77,8 +81,8 @@ export async function POST(request: Request) {
           messenger: username ?? (tgUserId ? `tg:${tgUserId}` : null),
           language: lang,
           dealType,
-          budgetMax: prefs.budgetMax && prefs.budgetMax > 0 ? Math.min(prefs.budgetMax, 1e9) : null,
-          roomsMin: prefs.roomsMin && prefs.roomsMin > 0 ? Math.min(Math.round(prefs.roomsMin), 20) : null,
+          budgetMax: prefs.budgetMax ?? null,
+          roomsMin: prefs.roomsMin ?? null,
           areas: areas.length ? areas.join(", ") : null,
           moveIn,
           notes: noteLine,
@@ -100,7 +104,7 @@ export async function POST(request: Request) {
       message: message || null,
       ...(kind === "search"
         ? {
-            prefs: JSON.stringify({ deal: ["rent", "sale", "daily"].includes(prefs.deal ?? "") ? prefs.deal : undefined, budgetMax: prefs.budgetMax && prefs.budgetMax > 0 ? prefs.budgetMax : undefined, roomsMin: prefs.roomsMin && prefs.roomsMin > 0 ? Math.round(prefs.roomsMin) : undefined, areas, pets: prefs.pets || undefined }),
+            prefs: JSON.stringify(prefs),
             // Only a Telegram user who allowed the bot to write can get alerts.
             alerts: Boolean(body.alerts && tgUserId),
           }
@@ -122,7 +126,7 @@ export async function POST(request: Request) {
     `👤 ${name} · ${contact}`,
     post ? `🏠 #${post.refNo} ${headline(post, "ka")} · ${priceText(post.price, post.currency, dealKind(post.dealType), "ka")}` : "",
     kind === "search"
-      ? [prefs.deal ? DEAL_LABEL[prefs.deal === "sale" ? "sale" : "rent"].ka : "", prefs.budgetMax ? `ბიუჯეტი $${prefs.budgetMax}` : "", prefs.roomsMin ? `${prefs.roomsMin}+ ოთახი` : "", areas.join(", "), moveIn ? `შესვლა ${moveIn.toISOString().slice(0, 10)}` : ""].filter(Boolean).join(" · ")
+      ? criteria
       : "",
     message ? `💬 ${message}` : "",
     kind === "search" && body.alerts && tgUserId ? "🔔 ახალ ბინებზე შეტყობინებები ჩართო" : "",

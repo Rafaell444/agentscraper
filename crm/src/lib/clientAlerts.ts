@@ -1,7 +1,8 @@
 import { prisma } from "./db";
 import { getSettings } from "./settings";
 import { shareBase } from "./shareUrl";
-import { asLang, dealKind, headline, metroLine, placeName, priceText, priceUsd, type Lang } from "./catalog";
+import { DEAL_LABEL, FEATURES, asLang, dealKind, featureList, headline, metroLine, placeName, priceText, priceUsd, termText, typeLabel, type Lang } from "./catalog";
+import { metroName, metroNearby } from "./metro";
 import { catalogLink } from "./channel";
 import { callVerbose } from "./telegram";
 
@@ -9,7 +10,74 @@ import { callVerbose } from "./telegram";
 // whose saved request matches it gets a bot message with a button that opens
 // the flat.  Each client gets each flat once; /stop turns alerts off.
 
-export type SearchPrefs = { deal?: string; budgetMax?: number; roomsMin?: number; areas?: string[]; pets?: boolean };
+export type SearchPrefs = {
+  deal?: string;
+  types?: string[];
+  budgetMin?: number;
+  budgetMax?: number;
+  roomsMin?: number;
+  bedroomsMin?: number;
+  bathroomsMin?: number;
+  areaMin?: number;
+  areaMax?: number;
+  areas?: string[];
+  nearMetro?: boolean;
+  metro?: string[];
+  notFirstFloor?: boolean;
+  notLastFloor?: boolean;
+  features?: string[];
+  pets?: boolean;
+  leaseTerm?: string;
+};
+
+const positive = (value: unknown, max = 1e9) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.min(value, max) : undefined);
+const strings = (value: unknown, max = 30) => (Array.isArray(value) ? value.map((v) => String(v).replace(/[<>]/g, "").trim().slice(0, 60)).filter(Boolean).slice(0, max) : undefined);
+
+/** Keep only well-formed criteria from the mini app request. */
+export function cleanPrefs(raw: unknown): SearchPrefs {
+  const p = (raw ?? {}) as Record<string, unknown>;
+  const list = (v: unknown) => { const l = strings(v); return l?.length ? l : undefined; };
+  return {
+    deal: ["rent", "sale", "daily"].includes(String(p.deal)) ? String(p.deal) : undefined,
+    types: list(p.types),
+    budgetMin: positive(p.budgetMin),
+    budgetMax: positive(p.budgetMax),
+    roomsMin: positive(p.roomsMin, 20) && Math.round(positive(p.roomsMin, 20)!),
+    bedroomsMin: positive(p.bedroomsMin, 20) && Math.round(positive(p.bedroomsMin, 20)!),
+    bathroomsMin: positive(p.bathroomsMin, 20) && Math.round(positive(p.bathroomsMin, 20)!),
+    areaMin: positive(p.areaMin, 100000),
+    areaMax: positive(p.areaMax, 100000),
+    areas: list(p.areas),
+    nearMetro: p.nearMetro === true || undefined,
+    metro: list(p.metro),
+    notFirstFloor: p.notFirstFloor === true || undefined,
+    notLastFloor: p.notLastFloor === true || undefined,
+    features: list(p.features)?.filter((k) => FEATURES.some((f) => f.key === k)),
+    pets: p.pets === true || undefined,
+    leaseTerm: typeof p.leaseTerm === "string" && /^\d+\+$/.test(p.leaseTerm) ? p.leaseTerm : undefined,
+  };
+}
+
+/** The request in one Georgian line for agents (CRM notes, Telegram). */
+export function prefsSummary(p: SearchPrefs): string {
+  const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+  return [
+    p.deal ? DEAL_LABEL[p.deal === "sale" ? "sale" : p.deal === "daily" ? "daily" : "rent"].ka : "",
+    p.types?.length ? p.types.map((type) => typeLabel(type, "ka")).join("/") : "",
+    p.budgetMin && p.budgetMax ? `${money(p.budgetMin)}–${money(p.budgetMax)}` : p.budgetMax ? `მდე ${money(p.budgetMax)}` : p.budgetMin ? `${money(p.budgetMin)}-დან` : "",
+    p.roomsMin ? `${p.roomsMin}+ ოთახი` : "",
+    p.bedroomsMin ? `${p.bedroomsMin}+ საძინებელი` : "",
+    p.bathroomsMin ? `${p.bathroomsMin}+ სველი წერტ.` : "",
+    p.areaMin || p.areaMax ? `${p.areaMin ?? ""}–${p.areaMax ?? ""} მ²` : "",
+    p.areas?.length ? p.areas.join(", ") : "",
+    p.metro?.length ? `მეტრო: ${p.metro.map((id) => metroName(id, "ka")).join(", ")}` : p.nearMetro ? "მეტროსთან" : "",
+    p.notFirstFloor ? "არა 1-ლი სართ." : "",
+    p.notLastFloor ? "არა ბოლო სართ." : "",
+    p.features?.length ? p.features.map((k) => FEATURES.find((f) => f.key === k)?.ka ?? k).join(", ") : "",
+    p.pets ? "🐾 ცხოველით" : "",
+    p.leaseTerm ? `ვადა: ${termText(p.leaseTerm, "ka")}` : "",
+  ].filter(Boolean).join(" · ");
+}
 
 const MAX_AGE_DAYS = 90;
 
@@ -29,20 +97,41 @@ function parsePrefs(value: string | null): SearchPrefs | null {
   }
 }
 
-type Flat = { dealType: string | null; price: number | null; currency: string; rooms: number | null; district: string | null; location: string | null; pets: string | null };
+type Flat = {
+  dealType: string | null; propertyType: string | null; price: number | null; currency: string; rooms: number | null; bedrooms: number | null; bathrooms: number | null;
+  area: number | null; floor: number | null; totalFloors: number | null; district: string | null; location: string | null; pets: string | null;
+  features: string; leaseTerm: string | null; lat: number | null; lng: number | null;
+};
 
+/** Budget, rooms, place and metro must be met; extras the flat does not state (bedrooms, area, floor…) do not rule it out. */
 export function prefsMatch(prefs: SearchPrefs, flat: Flat): boolean {
   if (prefs.deal && prefs.deal !== dealKind(flat.dealType)) return false;
-  if (prefs.budgetMax) {
-    const usd = priceUsd(flat.price, flat.currency);
-    if (usd == null || usd > prefs.budgetMax) return false;
-  }
+  if (prefs.types?.length && !prefs.types.includes(flat.propertyType || "ბინა")) return false;
+  const usd = priceUsd(flat.price, flat.currency);
+  if (prefs.budgetMax && (usd == null || usd > prefs.budgetMax)) return false;
+  if (prefs.budgetMin && usd != null && usd < prefs.budgetMin) return false;
   if (prefs.roomsMin && (flat.rooms == null || flat.rooms < prefs.roomsMin)) return false;
+  if (prefs.bedroomsMin && flat.bedrooms != null && flat.bedrooms < prefs.bedroomsMin) return false;
+  if (prefs.bathroomsMin && flat.bathrooms != null && flat.bathrooms < prefs.bathroomsMin) return false;
+  if (prefs.areaMin && flat.area != null && flat.area < prefs.areaMin) return false;
+  if (prefs.areaMax && flat.area != null && flat.area > prefs.areaMax) return false;
   if (prefs.areas?.length) {
     const place = `${flat.district ?? ""} ${flat.location ?? ""}`;
     if (!prefs.areas.some((area) => place.includes(area))) return false;
   }
+  if (prefs.nearMetro || prefs.metro?.length) {
+    const near = metroNearby(flat.lat, flat.lng, 15);
+    if (prefs.metro?.length ? !near.some((m) => prefs.metro!.includes(m.id)) : !near.some((m) => m.minutes <= 10)) return false;
+  }
+  if (prefs.notFirstFloor && flat.floor === 1) return false;
+  if (prefs.notLastFloor && flat.floor != null && flat.totalFloors != null && flat.floor >= flat.totalFloors) return false;
+  if (prefs.features?.length) {
+    const has = featureList(flat.features);
+    if (!prefs.features.every((k) => has.includes(k))) return false;
+  }
   if (prefs.pets && flat.pets !== "yes" && flat.pets !== "ask") return false;
+  // The client's planned stay must reach the flat's minimum lease ("6+" flat, "3+" stay → no).
+  if (prefs.leaseTerm && flat.leaseTerm && parseInt(flat.leaseTerm) > parseInt(prefs.leaseTerm)) return false;
   return true;
 }
 
