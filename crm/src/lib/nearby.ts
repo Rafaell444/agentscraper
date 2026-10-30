@@ -2,6 +2,7 @@
 // (Nominatim search).  Looked up once per flat and kept for 30 days in
 // SharedPost.nearby; the 10-minute cron fills it in ahead of visitors.
 
+import { after } from "next/server";
 import { prisma } from "./db";
 import { publicPoint, publicWhere } from "./catalog";
 
@@ -143,4 +144,12 @@ export async function warmNearby(budgetMs = 100000): Promise<number> {
     }
   }
   return done;
+}
+
+/** Look up places right after the response (flat added to the app, pin moved), so the first client already sees them. */
+export function queueNearby(postId: string) {
+  after(async () => {
+    const post = await prisma.sharedPost.findUnique({ where: { id: postId }, select: { refNo: true } });
+    if (post?.refNo) await nearbyFor(post.refNo).catch(() => undefined);
+  });
 }

@@ -508,6 +508,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
 
   return (
     <div
+      data-catalog-root
       className={`min-h-screen bg-[var(--bg2)] text-[var(--text)] ${ready ? "" : "invisible"}`}
       style={
         {

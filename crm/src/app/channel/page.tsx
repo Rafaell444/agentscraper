@@ -14,6 +14,8 @@ import { connectBot, postWelcome, setLeadStatus } from "./actions";
 import { CatalogStatsView } from "./Stats";
 
 export const dynamic = "force-dynamic";
+// Server actions here also look up nearby places after responding (~12 s).
+export const maxDuration = 60;
 
 const KIND = { viewing: "🗓 ჩვენება", question: "❓ კითხვა", search: "🔎 მომიძებნეთ" } as Record<string, string>;
 

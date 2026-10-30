@@ -20,6 +20,8 @@ import { setAvailability, showInApp, takeOffApp, takeOffBoth, takeOffChannel } f
 import { ImportWaiter } from "./ImportWaiter";
 
 export const dynamic = "force-dynamic";
+// Server actions here also look up nearby places after responding (~12 s).
+export const maxDuration = 60;
 
 const DEALS = ["ქირავდება", "იყიდება", "ქირავდება დღიურად", "გირავდება"];
 const TYPES = ["ბინა", "კერძო სახლი", "აგარაკი", "მიწის ნაკვეთი", "კომერციული ფართი", "სასტუმრო"];

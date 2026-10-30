@@ -8,6 +8,7 @@ import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
 import { ensureRefNo, publishToChannel, refreshChannelPost, removeFromChannel } from "@/lib/channel";
 import { alertMatchingClients } from "@/lib/clientAlerts";
+import { queueNearby } from "@/lib/nearby";
 import { parseTbilisi } from "@/lib/schedule";
 import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, requestCollectorFetch, type PostDraft } from "@/lib/sharedPosts";
 
@@ -165,6 +166,8 @@ export async function updatePost(formData: FormData) {
   } else {
     await refreshChannelPost(id);
   }
+  // Places near the flat for the mini app (a no-op when they are saved for this pin already).
+  queueNearby(id);
   revalidatePath(`/shared/${id}`);
   revalidatePath("/shared");
   revalidatePath("/channel");

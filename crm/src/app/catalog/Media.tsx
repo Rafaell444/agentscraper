@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CatalogItem, Lang } from "@/lib/catalog";
 import type { Dict } from "./i18n";
 import { loadLeaflet } from "./MapView";
@@ -318,20 +319,172 @@ function ZoomImage({ src, active, onZoom, onDrag, onClose }: { src: string; acti
 
 type Place = { kind: string; name: Record<Lang, string>; lat: number; lng: number; minutes: number };
 type Nearby = { center: { lat: number; lng: number }; places: Place[] };
+type Point = { lat: number; lng: number };
 
 const PLACE_EMOJI: Record<string, string> = { supermarket: "🛒", school: "🏫", kindergarten: "🧸", park: "🌳", cafe: "☕", pharmacy: "💊", gym: "🏋️" };
 const PLACE_COLOR: Record<string, string> = { supermarket: "#16a34a", school: "#2563eb", kindergarten: "#db2777", park: "#15803d", cafe: "#b45309", pharmacy: "#dc2626", gym: "#7c3aed" };
+const NO_PLACES: Place[] = [];
+const KIND_ORDER = ["supermarket", "school", "kindergarten", "park", "cafe", "pharmacy", "gym"];
 
-/** "What's nearby": nearest place of each kind, and all of them on a small map. */
-export function NearbySection({ item, lang, t }: { item: CatalogItem; lang: Lang; t: Dict }) {
-  const [data, setData] = useState<Nearby | null | "loading" | "error">("loading");
-  const [kind, setKind] = useState<string | null>(null);
-  const mapBox = useRef<HTMLDivElement>(null);
+const homeHtml = `<div style="width:36px;height:36px;border-radius:50%;background:#1d4f8c;border:3px solid #fff;box-shadow:0 0 0 7px rgba(29,79,140,.22),0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:17px;transform:translate(-50%,-50%)">🏠</div>`;
+const placeHtml = (kind: string, on: boolean) =>
+  `<div style="width:${on ? 34 : 28}px;height:${on ? 34 : 28}px;border-radius:50%;background:${on ? PLACE_COLOR[kind] : "#fff"};border:2px solid ${PLACE_COLOR[kind] ?? "#555"};box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:${on ? 16 : 14}px;transform:translate(-50%,-50%);transition:all .15s">${PLACE_EMOJI[kind] ?? "•"}</div>`;
+
+/**
+ * The flat and the places around it.  As a preview (interactive=false) it does
+ * not catch the finger, so the page scrolls over it; full screen it pans,
+ * pinch-zooms and has zoom buttons.
+ */
+function PlacesMap({ center, exact, places, selected, interactive, onSelect, recenter = 0 }: {
+  center: Point; exact: boolean; places: Place[]; selected?: Place | null; interactive: boolean; onSelect?: (p: Place | null) => void; recenter?: number;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const map = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const layer = useRef<any>(null);
+  const [ready, setReady] = useState(false);
+  const selectRef = useRef(onSelect);
+  selectRef.current = onSelect;
 
   useEffect(() => {
+    let cancelled = false;
+    loadLeaflet().then((L) => {
+      if (cancelled || !box.current) return;
+      const m = L.map(box.current, {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: interactive,
+        touchZoom: interactive,
+        doubleClickZoom: interactive,
+        scrollWheelZoom: interactive,
+        boxZoom: false,
+        keyboard: interactive,
+        tap: interactive,
+      });
+      if (interactive) L.control.zoom({ position: "bottomright" }).addTo(m);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(m);
+      L.marker([center.lat, center.lng], { icon: L.divIcon({ className: "", html: homeHtml, iconSize: [0, 0] }), zIndexOffset: 1000, interactive: false }).addTo(m);
+      if (!exact) L.circle([center.lat, center.lng], { radius: 300, color: "#1d4f8c", weight: 1, fillOpacity: 0.08, interactive: false }).addTo(m);
+      if (interactive) m.on("click", () => selectRef.current?.(null));
+      m.setView([center.lat, center.lng], 15);
+      layer.current = L.layerGroup().addTo(m);
+      map.current = m;
+      setReady(true);
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      map.current?.remove();
+      map.current = null;
+    };
+  }, [center.lat, center.lng, exact, interactive]);
+
+  // Markers for the places shown; the view fits them (and the flat).
+  useEffect(() => {
+    const L = (window as unknown as { L?: { divIcon: (o: object) => unknown; marker: (ll: number[], o: object) => { on: (e: string, f: () => void) => { addTo: (g: unknown) => void }; addTo: (g: unknown) => void } } }).L;
+    if (!ready || !L || !layer.current) return;
+    layer.current.clearLayers();
+    for (const p of places) {
+      const on = selected === p;
+      const marker = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", html: placeHtml(p.kind, on), iconSize: [0, 0] }), zIndexOffset: on ? 900 : 0, interactive });
+      if (interactive) marker.on("click", () => selectRef.current?.(p)).addTo(layer.current);
+      else marker.addTo(layer.current);
+    }
+  }, [ready, places, selected, interactive]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    map.current.invalidateSize();
+    const bounds = [[center.lat, center.lng], ...places.map((p) => [p.lat, p.lng])];
+    if (bounds.length > 1) map.current.fitBounds(bounds, { padding: [36, 36], maxZoom: 16, animate: interactive });
+    else map.current.setView([center.lat, center.lng], 15);
+    // Fit again only when the set of places changes, not on selection.
+  }, [ready, places, recenter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (ready && selected && map.current) map.current.panTo([selected.lat, selected.lng], { animate: true });
+  }, [ready, selected]);
+
+  // isolate: Leaflet's panes (z-index 400+) stay inside this box instead of covering overlays.
+  return <div ref={box} className="isolate h-full w-full" />;
+}
+
+/** Full-screen map: kind chips on top, the tapped place in a card at the bottom. Back closes it. */
+function MapScreen({ center, exact, places, kinds, startKind, lang, t, onClose }: {
+  center: Point; exact: boolean; places: Place[]; kinds: string[]; startKind: string | null; lang: Lang; t: Dict; onClose: () => void;
+}) {
+  const [kind, setKind] = useState<string | null>(startKind);
+  const [selected, setSelected] = useState<Place | null>(null);
+  const [recenter, setRecenter] = useState(0);
+  const shown = useMemo(() => (kind ? places.filter((p) => p.kind === kind) : places), [places, kind]);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[var(--bg)]" role="dialog" aria-modal="true">
+      <div className="space-y-2 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-sm">
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onClose} className="flex h-9 items-center gap-1 rounded-full bg-[var(--bg2)] pl-2 pr-3 text-sm font-semibold text-[var(--accent)] active:scale-95">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+            {t.back}
+          </button>
+          <span className="min-w-0 flex-1 truncate text-sm font-bold">{t.nearbyTitle}</span>
+        </div>
+        {kinds.length ? (
+          <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {[null, ...kinds].map((k) => (
+              <button
+                key={k ?? "all"}
+                type="button"
+                onClick={() => { haptic("select"); setKind(k); setSelected(null); }}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${kind === k ? "bg-[var(--accent)] text-white" : "bg-[var(--bg2)] text-[var(--text)]"}`}
+              >
+                {k ? `${PLACE_EMOJI[k]} ${t.places[k]}` : `${t.all} · ${places.length}`}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div className="relative min-h-0 flex-1">
+        <PlacesMap center={center} exact={exact} places={shown} selected={selected} interactive onSelect={setSelected} recenter={recenter} />
+        <button
+          type="button"
+          onClick={() => { haptic("tap"); setSelected(null); setRecenter((n) => n + 1); }}
+          aria-label={t.thisFlat}
+          className="absolute left-3 top-3 z-[500] flex items-center gap-1.5 rounded-full bg-[var(--bg)] px-3 py-2 text-xs font-semibold shadow-md active:scale-95"
+        >
+          🏠 {t.thisFlat}
+        </button>
+        {selected ? (
+          <div className="absolute inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[500] flex items-center gap-3 rounded-2xl bg-[var(--bg)] p-3 pr-14 shadow-lg">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl" style={{ background: `${PLACE_COLOR[selected.kind]}22` }}>{PLACE_EMOJI[selected.kind]}</span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">{selected.name[lang] || t.places[selected.kind]}</span>
+              <span className="block text-xs text-[var(--hint)]">{t.places[selected.kind]} · {t.walkMin(selected.minutes)}</span>
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** "What's nearby": tiles per kind (sent with the listing, so they show at once) and a preview map that opens full screen. */
+export function NearbySection({ item, lang, t }: { item: CatalogItem; lang: Lang; t: Dict }) {
+  const [data, setData] = useState<Nearby | "loading" | "error">("loading");
+  const [full, setFull] = useState<string | null | false>(false);
+
+  useEffect(() => {
+    if (!item.point) return;
     let alive = true;
     setData("loading");
-    // A flat not looked up yet takes ~11 s; after 30 s show just the map.
+    // Saved lookups come back in a moment; a flat never looked up takes ~12 s, so give up after 30 s.
     fetch(`/api/catalog/nearby?ref=${item.ref}`, { signal: AbortSignal.timeout(30000) })
       .then((r) => r.json())
       .then((json) => alive && setData(json.ok ? { center: json.center, places: json.places } : "error"))
@@ -339,81 +492,64 @@ export function NearbySection({ item, lang, t }: { item: CatalogItem; lang: Lang
     return () => {
       alive = false;
     };
-  }, [item.ref]);
+  }, [item.ref, item.point]);
 
-  const places = data && typeof data === "object" ? data.places : [];
-  const shown = kind ? places.filter((p) => p.kind === kind) : places;
-
-  // Without OpenStreetMap places (lookup failed) the map still shows where the flat is.
-  const center = data && typeof data === "object" ? data.center : item.point;
+  // Shown inside the app root (it carries the colour variables), above the listing page.
+  // Back (ours, Telegram's or the phone's) closes the full-screen map first.
+  const openFull = (k: string | null) => {
+    haptic("tap");
+    history.pushState({ ...(history.state ?? {}), nearbyMap: 1 }, "");
+    setFull(k);
+  };
   useEffect(() => {
-    if (!center || !mapBox.current) return;
-    let map: { remove: () => void } | null = null;
-    let cancelled = false;
-    loadLeaflet().then((L) => {
-      if (cancelled || !mapBox.current) return;
-      const m = L.map(mapBox.current, { zoomControl: false, attributionControl: false, scrollWheelZoom: false, dragging: true, tap: true });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(m);
-      const home = L.divIcon({ className: "", html: `<div style="width:34px;height:34px;border-radius:50%;background:#1d4f8c;border:3px solid #fff;box-shadow:0 0 0 6px rgba(29,79,140,.25),0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:16px;transform:translate(-50%,-50%)">🏠</div>`, iconSize: [0, 0] });
-      L.marker([center.lat, center.lng], { icon: home, zIndexOffset: 1000 }).addTo(m);
-      if (!item.point?.exact) L.circle([center.lat, center.lng], { radius: 300, color: "#1d4f8c", weight: 1, fillOpacity: 0.08 }).addTo(m);
-      const bounds = [[center.lat, center.lng]];
-      for (const p of shown) {
-        const icon = L.divIcon({ className: "", html: `<div style="width:26px;height:26px;border-radius:50%;background:#fff;border:2px solid ${PLACE_COLOR[p.kind] ?? "#555"};box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:13px;transform:translate(-50%,-50%)">${PLACE_EMOJI[p.kind] ?? "•"}</div>`, iconSize: [0, 0] });
-        L.marker([p.lat, p.lng], { icon }).addTo(m).bindPopup(`<b>${escapeHtml(p.name[lang] || t.places[p.kind])}</b><br>${t.places[p.kind]} · ${t.walkMin(p.minutes)}`);
-        bounds.push([p.lat, p.lng]);
-      }
-      if (bounds.length > 1) m.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
-      else m.setView([center.lat, center.lng], 15);
-      map = m;
-    }).catch(() => undefined);
-    return () => {
-      cancelled = true;
-      map?.remove();
+    if (full === false) return;
+    const onPop = (event: PopStateEvent) => {
+      if (!(event.state as { nearbyMap?: number } | null)?.nearbyMap) setFull(false);
     };
-    // shown changes with kind; the map is rebuilt for each filter.
-  }, [data, kind, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [full]);
 
   if (!item.point) return null;
-  const kinds = [...new Set(places.map((p) => p.kind))];
+  const places = typeof data === "object" ? data.places : NO_PLACES;
+  const center = typeof data === "object" ? data.center : item.point;
+  // Tiles: from the lookup once it is here, before that from the summary sent with the listing.
+  const tiles = places.length
+    ? KIND_ORDER.filter((k) => places.some((p) => p.kind === k)).map((k) => {
+        const list = places.filter((p) => p.kind === k);
+        return { kind: k, count: list.length, minutes: Math.min(...list.map((p) => p.minutes)) };
+      })
+    : [...(item.nearby ?? [])].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
+  const waiting = data === "loading" && !item.nearby;
 
   return (
     <section className="overflow-hidden rounded-2xl bg-[var(--bg)]">
       <div className="px-4 pt-3">
         <h2 className="text-sm font-semibold">📍 {t.location} · {t.nearbyTitle}</h2>
-        {data === "loading" ? <p className="mt-1 text-xs text-[var(--hint)]">{t.nearbyLoading}</p> : null}
-        {data && typeof data === "object" && !places.length ? <p className="mt-1 text-xs text-[var(--hint)]">{t.nearbyNone}</p> : null}
+        {waiting ? <p className="mt-1 text-xs text-[var(--hint)]">{t.nearbyLoading}</p> : null}
+        {typeof data === "object" && !places.length ? <p className="mt-1 text-xs text-[var(--hint)]">{t.nearbyNone}</p> : null}
       </div>
-      {kinds.length ? (
-        <>
-          <div className="mt-2 grid grid-cols-2 gap-1.5 px-3">
-            {kinds.map((k) => {
-              const nearest = places.filter((p) => p.kind === k).sort((a, b) => a.minutes - b.minutes)[0];
-              const count = places.filter((p) => p.kind === k).length;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => { haptic("select"); setKind(kind === k ? null : k); }}
-                  className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition ${kind === k ? "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] ring-1 ring-[var(--accent)]" : "bg-[var(--bg2)]"}`}
-                >
-                  <span className="text-lg">{PLACE_EMOJI[k]}</span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs font-semibold">{t.places[k]}{count > 1 ? ` · ${count}` : ""}</span>
-                    <span className="block truncate text-[11px] text-[var(--hint)]">{t.walkMin(nearest.minutes)}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>
+      {tiles.length ? (
+        <div className="mt-2 grid grid-cols-2 gap-1.5 px-3">
+          {tiles.map((tile) => (
+            <button key={tile.kind} type="button" onClick={() => openFull(tile.kind)} className="flex items-center gap-2 rounded-xl bg-[var(--bg2)] px-2.5 py-2 text-left active:scale-[0.98]">
+              <span className="text-lg">{PLACE_EMOJI[tile.kind]}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold">{t.places[tile.kind]}{tile.count > 1 ? ` · ${tile.count}` : ""}</span>
+                <span className="block truncate text-[11px] text-[var(--hint)]">{t.walkMin(tile.minutes)}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       ) : null}
-      <div ref={mapBox} className="mt-3 h-56 w-full" />
-      <p className="px-4 py-2 text-[11px] text-[var(--hint)]">{[item.point.exact ? "" : t.approxNote, kinds.length ? t.nearbyNote : ""].filter(Boolean).join(" · ")}</p>
+      <button type="button" onClick={() => openFull(null)} className="relative isolate mt-3 block h-52 w-full" aria-label={t.openMap}>
+        <PlacesMap center={center} exact={Boolean(item.point.exact)} places={places} interactive={false} />
+        <span className="pointer-events-none absolute bottom-3 right-3 z-[500] flex items-center gap-1.5 rounded-full bg-[var(--bg)] px-3 py-1.5 text-xs font-semibold text-[var(--accent)] shadow-md">⤢ {t.openMap}</span>
+      </button>
+      <p className="px-4 py-2 text-[11px] text-[var(--hint)]">{[item.point.exact ? "" : t.approxNote, tiles.length ? t.nearbyNote : ""].filter(Boolean).join(" · ")}</p>
+      {full !== false ? (
+        createPortal(<MapScreen center={center} exact={Boolean(item.point.exact)} places={places} kinds={tiles.map((x) => x.kind)} startKind={full} lang={lang} t={t} onClose={() => history.back()} />, (document.querySelector("[data-catalog-root]") as HTMLElement | null) ?? document.body)
+      ) : null}
     </section>
   );
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

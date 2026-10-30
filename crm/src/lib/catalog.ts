@@ -333,9 +333,32 @@ export type CatalogItem = {
   tour: string | null;
   /** Rented or sold in the last 30 days: shown with a label, no requests. */
   closed: boolean;
+  /** Places near the flat, nearest first per kind (looked up in the background, lib/nearby); null until then. */
+  nearby: { kind: string; minutes: number; count: number }[] | null;
   createdAt: string;
   views: number;
 };
+
+/** Count and nearest walk per kind from the saved lookup, if it is for the current map point. */
+function nearbySummary(post: Pick<SharedPost, "nearby" | "lat" | "lng" | "mapMode">): CatalogItem["nearby"] {
+  const point = publicPoint(post.lat, post.lng, post.mapMode);
+  if (!post.nearby || !point) return null;
+  try {
+    const saved = JSON.parse(post.nearby) as { center: { lat: number; lng: number }; places: { kind: string; minutes: number }[] };
+    if (Math.abs(saved.center.lat - point.lat) > 1e-6 || Math.abs(saved.center.lng - point.lng) > 1e-6) return null;
+    const kinds = new Map<string, { kind: string; minutes: number; count: number }>();
+    for (const p of saved.places) {
+      const k = kinds.get(p.kind);
+      if (k) {
+        k.count += 1;
+        k.minutes = Math.min(k.minutes, p.minutes);
+      } else kinds.set(p.kind, { kind: p.kind, minutes: p.minutes, count: 1 });
+    }
+    return [...kinds.values()];
+  } catch {
+    return null;
+  }
+}
 
 export function toCatalogItem(post: SharedPost & { photos: { id: string; kind: string }[] }): CatalogItem {
   return {
@@ -366,6 +389,7 @@ export function toCatalogItem(post: SharedPost & { photos: { id: string; kind: s
     video: videoEmbed(post.videoUrl),
     tour: tourEmbed(post.tourUrl),
     closed: CLOSED.includes(post.availability),
+    nearby: nearbySummary(post),
     createdAt: post.channelPostedAt?.toISOString() ?? post.updatedAt.toISOString(),
     views: post.catalogViews,
   };

@@ -9,6 +9,7 @@ import { shareBase } from "@/lib/shareUrl";
 import { AVAILABILITY, asLang } from "@/lib/catalog";
 import { ensureRefNo, publishToChannel, publishWelcome, refreshChannelPost, removeFromChannel } from "@/lib/channel";
 import { alertMatchingClients } from "@/lib/clientAlerts";
+import { queueNearby } from "@/lib/nearby";
 import { callVerbose, webhookSecret } from "@/lib/telegram";
 
 function back(id: string, result: { ok: boolean; message?: string; error?: string }): never {
@@ -53,6 +54,7 @@ export async function showInApp(formData: FormData) {
   await ensureRefNo(id);
   await refreshChannelPost(id);
   const alerted = await alertMatchingClients(id).catch(() => 0);
+  queueNearby(id);
   back(id, { ok: true, message: `👁 მინი აპში ისევ ჩანს${alerted ? `. 🔔 ${alerted} კლიენტს ეცნობა` : ""}` });
 }
 

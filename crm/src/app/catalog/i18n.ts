@@ -147,6 +147,8 @@ const ka = {
   findSimilar: "მომიძებნეთ მსგავსი",
   closedRow: "✅ ახლახან გაქირავდა და გაიყიდა",
   shareSent: "გაზიარდა",
+  openMap: "რუკის გახსნა",
+  thisFlat: "ეს ბინა",
 };
 
 export type Dict = typeof ka;
@@ -298,6 +300,8 @@ const en: Dict = {
   findSimilar: "Find me a similar one",
   closedRow: "✅ Recently rented and sold",
   shareSent: "Shared",
+  openMap: "Open map",
+  thisFlat: "This flat",
 };
 
 const ru: Dict = {
@@ -447,6 +451,8 @@ const ru: Dict = {
   findSimilar: "Подобрать похожую",
   closedRow: "✅ Недавно сданы и проданы",
   shareSent: "Отправлено",
+  openMap: "Открыть карту",
+  thisFlat: "Эта квартира",
 };
 
 export const DICT: Record<Lang, Dict> = { ka, en, ru };
