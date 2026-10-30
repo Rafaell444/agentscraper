@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
-import { PUBLIC_AVAILABILITY, toCatalogItem } from "@/lib/catalog";
+import { publicWhere, toCatalogItem } from "@/lib/catalog";
 import { catalogLink, managerLink } from "@/lib/channel";
 import { shareBase } from "@/lib/shareUrl";
 import { CatalogApp } from "./CatalogApp";
@@ -22,15 +22,16 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, maxi
 export default async function CatalogPage() {
   const [posts, settings] = await Promise.all([
     prisma.sharedPost.findMany({
-      where: { catalog: true, availability: { in: PUBLIC_AVAILABILITY }, refNo: { not: null } },
+      where: publicWhere(),
       orderBy: [{ channelPostedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }],
       take: 1000,
-      include: { photos: { orderBy: [{ position: "asc" }, { id: "asc" }], select: { id: true } } },
+      include: { photos: { orderBy: [{ position: "asc" }, { id: "asc" }], select: { id: true, kind: true } } },
     }),
     getSettings(),
   ]);
   const base = await shareBase(settings.public_base_url);
-  const linkTemplate = catalogLink(settings, base, 987654321).replace("987654321", "{ref}");
+  // {ref} and {lang} are filled in by the app; _s marks the link as shared by a friend (stats).
+  const linkTemplate = catalogLink(settings, base, 987654321, "en", "s").replace("987654321", "{ref}").replace("_en_s", "_{lang}_s").replace("lang=en", "lang={lang}");
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-sync-scripts */}

@@ -32,7 +32,7 @@ function addCss(href: string) {
   document.head.appendChild(css);
 }
 
-function loadLeaflet(): Promise<Lf> {
+export function loadLeaflet(): Promise<Lf> {
   const w = window as unknown as { L?: Lf };
   if (w.L?.markerClusterGroup) return Promise.resolve(w.L);
   if (!loading) {

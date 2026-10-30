@@ -172,7 +172,7 @@ export async function alertMatchingClients(postId: string): Promise<number> {
       "",
       `<i>${TEXT.stop[lang]}</i>`,
     ].filter((line, i, all) => line !== "" || all[i - 1] !== "").join("\n");
-    const reply_markup = { inline_keyboard: [[{ text: TEXT.open[lang], url: catalogLink(settings, base, post.refNo, lang) }]] };
+    const reply_markup = { inline_keyboard: [[{ text: TEXT.open[lang], url: catalogLink(settings, base, post.refNo, lang, "a") }]] };
     const photo = post.photos[0] && base.startsWith("https://") ? `${base}/api/catalog/photo/${post.photos[0].id}` : null;
     let result = photo ? await callVerbose("sendPhoto", { chat_id: chatId, photo, caption, parse_mode: "HTML", reply_markup }) : null;
     if (!result?.ok) result = await callVerbose("sendMessage", { chat_id: chatId, text: caption, parse_mode: "HTML", reply_markup, link_preview_options: { is_disabled: true } });

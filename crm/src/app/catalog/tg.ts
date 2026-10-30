@@ -3,7 +3,7 @@
 
 export type TgWebApp = {
   initData: string;
-  initDataUnsafe?: { start_param?: string; user?: { first_name?: string; last_name?: string; language_code?: string } };
+  initDataUnsafe?: { start_param?: string; user?: { id?: number; first_name?: string; last_name?: string; language_code?: string } };
   colorScheme?: "light" | "dark";
   version?: string;
   ready: () => void;
@@ -16,6 +16,8 @@ export type TgWebApp = {
   openTelegramLink?: (url: string) => void;
   openLink?: (url: string) => void;
   requestWriteAccess?: (cb: (ok: boolean) => void) => void;
+  /** Bot API 8.0: share a message prepared by the bot (savePreparedInlineMessage). */
+  shareMessage?: (id: string, cb?: (sent: boolean) => void) => void;
   requestContact?: (cb: (ok: boolean, res?: { responseUnsafe?: { contact?: { phone_number?: string } } }) => void) => void;
   BackButton?: { show: () => void; hide: () => void; onClick: (cb: () => void) => void; offClick: (cb: () => void) => void };
   HapticFeedback?: { impactOccurred: (s: "light" | "medium") => void; notificationOccurred: (s: "success" | "error") => void; selectionChanged: () => void };

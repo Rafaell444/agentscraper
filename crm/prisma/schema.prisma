@@ -324,9 +324,18 @@ model SharedPost {
   scheduleAppAt     DateTime? @map("schedule_app_at")
   scheduleTgAt      DateTime? @map("schedule_tg_at")
   catalogViews      Int       @default(0) @map("catalog_views")
+  // Mini app extras: a video (YouTube / mp4 link) and a 3D tour (Matterport, Kuula…).
+  videoUrl          String?   @map("video_url")
+  tourUrl           String?   @map("tour_url")
+  // When the flat was rented / sold: it stays in the app with a label for 30 days.
+  closedAt          DateTime? @map("closed_at")
+  // Nearby shops, schools, parks… from OpenStreetMap (JSON), refreshed monthly.
+  nearby            String?
+  nearbyAt          DateTime? @map("nearby_at")
 
-  photos       SharedPostPhoto[]
-  catalogLeads CatalogLead[]
+  photos        SharedPostPhoto[]
+  catalogLeads  CatalogLead[]
+  catalogEvents CatalogEvent[]
 
   @@index([catalog, availability])
   @@index([refNo])
@@ -342,6 +351,7 @@ model SharedPostPhoto {
   postId   String     @map("post_id")
   post     SharedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   position Int        @default(0)
+  kind     String     @default("photo") // photo | plan (floor plan)
   mime     String
   data     Bytes
 
@@ -512,10 +522,26 @@ model CatalogLead {
   prefs      String?
   alerts     Boolean     @default(false)
   alertedRefs String     @default("") @map("alerted_refs") // refs already sent, comma separated
+  source     String? // where the client came from: channel_en, channel_ru, alert, share, web, bot
   createdAt  DateTime    @default(now()) @map("created_at")
 
   @@index([status, createdAt])
   @@index([tgUserId])
   @@index([alerts])
   @@map("catalog_leads")
+}
+
+// One mini app action, for the stats page: open (from a link), view, save,
+// share, lead.  source: channel_en | channel_ru | alert | share | web | bot.
+model CatalogEvent {
+  id        String      @id @default(cuid())
+  postId    String?     @map("post_id")
+  post      SharedPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+  kind      String
+  source    String
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([postId, kind])
+  @@map("catalog_events")
 }

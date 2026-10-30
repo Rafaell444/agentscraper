@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEAL_LABEL, FEATURES, LEASE_TERMS, PETS, PROPERTY_TYPES, TBILISI_DISTRICTS, placeName, priceText, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
-import { mapView } from "@/lib/map";
 import { METRO, METRO_LINE_COLOR, metroName } from "@/lib/metro";
-import { Gallery } from "@/app/s/[token]/Gallery";
+import { MediaGallery, NearbySection } from "./Media";
 import { DICT, type Dict } from "./i18n";
 import { MapView, shortPrice } from "./MapView";
 import { haptic, openTelegram, tg } from "./tg";
@@ -107,8 +106,11 @@ function useFavorites() {
       }
     });
   }, []);
+  const favsRef = useRef(favs);
+  favsRef.current = favs;
   const toggle = useCallback((ref: number) => {
     haptic("tap");
+    if (!favsRef.current.includes(ref)) track("save", ref);
     setFavs((current) => {
       const next = current.includes(ref) ? current.filter((r) => r !== ref) : [ref, ...current];
       const json = JSON.stringify(next.slice(0, 200));
@@ -185,11 +187,52 @@ function describeSearch(search: SavedSearch, lang: Lang, t: Dict): string {
   ].filter(Boolean).join(" · ");
 }
 
-/** Language a channel link asks for: start param "p1001_ru" / "home_en", or ?lang= on the web. */
+/** Language a channel link asks for: start param "p1001_ru_c" / "home_en", or ?lang= on the web. */
 function linkLang(): Lang | null {
   const start = tg()?.initDataUnsafe?.start_param ?? new URLSearchParams(location.search).get("tgWebAppStartParam") ?? "";
-  const value = start.match(/_(ka|en|ru)$/)?.[1] ?? new URLSearchParams(location.search).get("lang");
+  const value = start.match(/_(ka|en|ru)(_|$)/)?.[1] ?? new URLSearchParams(location.search).get("lang");
   return value === "ka" || value === "en" || value === "ru" ? value : null;
+}
+
+/** Where this visit came from, for the CRM stats page (lib/catalogEvents SOURCES). */
+function visitSource(): string {
+  const params = new URLSearchParams(location.search);
+  const start = tg()?.initDataUnsafe?.start_param ?? params.get("tgWebAppStartParam") ?? "";
+  const src = start.match(/_([casw])$/)?.[1] ?? params.get("src");
+  const lang = start.match(/_(ka|en|ru)(_|$)/)?.[1] ?? params.get("lang") ?? "en";
+  if (src === "a") return "alert";
+  if (src === "s") return "share";
+  if (src === "w") return "site";
+  // Older channel posts carry no marker: a start param with a language came from a channel.
+  if (src === "c" || /_(ka|en|ru)$/.test(start)) return `channel_${lang}`;
+  return tg() ? "bot" : "web";
+}
+
+let visit = "web";
+function track(kind: "open" | "view" | "save" | "share", ref?: number | null) {
+  fetch("/api/catalog/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, ref: ref ?? undefined, source: visit }), keepalive: true }).catch(() => undefined);
+}
+
+/** Average sale price per m² (USD) by district, when at least 3 flats there have both. */
+function areaAverages(items: CatalogItem[]): Map<string, number> {
+  const sums = new Map<string, { total: number; n: number }>();
+  for (const i of items) {
+    if (i.kind !== "sale" || !i.district || !i.usd || !i.area || i.area < 15) continue;
+    const s = sums.get(i.district) ?? { total: 0, n: 0 };
+    s.total += i.usd / i.area;
+    s.n += 1;
+    sums.set(i.district, s);
+  }
+  return new Map([...sums].filter(([, s]) => s.n >= 3).map(([d, s]) => [d, s.total / s.n]));
+}
+
+/** "Good price": a sale flat at least 10% below its district's average per m². */
+export function goodPrice(item: CatalogItem, averages: Map<string, number>): number | null {
+  if (item.kind !== "sale" || item.closed || !item.district || !item.usd || !item.area) return null;
+  const avg = averages.get(item.district);
+  if (!avg) return null;
+  const pct = Math.round((1 - item.usd / item.area / avg) * 100);
+  return pct >= 10 ? pct : null;
 }
 
 function detectLang(): Lang {
@@ -205,7 +248,11 @@ function detectLang(): Lang {
   return code === "ka" || code === "ru" ? code : code === "uk" || code === "be" || code === "kk" ? "ru" : "en";
 }
 
-export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { items: CatalogItem[]; agency: string; manager: string | null; phone: string | null; linkTemplate: string }) {
+export function CatalogApp({ items: allItems, agency, manager, phone, linkTemplate }: { items: CatalogItem[]; agency: string; manager: string | null; phone: string | null; linkTemplate: string }) {
+  // Rented / sold flats only show on Home ("recently rented"), in their own page and in Saved.
+  const items = useMemo(() => allItems.filter((i) => !i.closed), [allItems]);
+  const closedItems = useMemo(() => allItems.filter((i) => i.closed), [allItems]);
+  const averages = useMemo(() => areaAverages(allItems), [allItems]);
   const [lang, setLang] = useState<Lang>("en");
   const t = DICT[lang];
   const deals = useMemo(() => (["rent", "sale", "daily"] as DealKind[]).filter((d) => items.some((i) => i.kind === d)), [items]);
@@ -272,6 +319,17 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     const fromUrl = new URLSearchParams(location.search).get("p");
     if (/^map(_|$)/.test(start) || new URLSearchParams(location.search).get("tab") === "map") setTab("map");
     const ref = Number(fromUrl ?? start.match(/^p(\d+)(_|$)/)?.[1] ?? 0);
+    visit = visitSource();
+    // One "open" per visit; with a flat it is a click on that flat's link (channel, alert, share).
+    try {
+      if (!sessionStorage.getItem("catalog_open")) {
+        sessionStorage.setItem("catalog_open", "1");
+        track("open", ref || null);
+      }
+    } catch {
+      track("open", ref || null);
+    }
+    if (ref) track("view", ref);
     if (ref) {
       setOpenRef(ref);
       history.replaceState({ p: ref }, "", `?p=${ref}`);
@@ -300,7 +358,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     history.pushState({ p: ref }, "", `?p=${ref}`);
     window.scrollTo({ top: 0 });
     setRecent((list) => [ref, ...list.filter((r) => r !== ref)].slice(0, 20));
-    fetch("/api/catalog/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ref }) }).catch(() => undefined);
+    track("view", ref);
   }, [setRecent]);
 
   // Back: sheet → listing → search → previous tab → Home.
@@ -349,10 +407,28 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
   }, [items, filters.deal]);
   const activeCount = [filters.type, filters.districts.length, filters.priceMin || filters.priceMax, filters.rooms.length, filters.areaMin, filters.pets, filters.features.length, filters.nearMetro, filters.metro.length].filter(Boolean).length;
 
-  const share = (item: CatalogItem) => {
-    const link = linkTemplate.replace("{ref}", String(item.ref));
+  // In Telegram the bot prepares a card (photo, price, Open button) for Telegram's chat picker;
+  // older clients and the web get the plain link.
+  const share = async (item: CatalogItem) => {
+    haptic("tap");
+    track("share", item.ref);
+    const link = linkTemplate.replace("{ref}", String(item.ref)).replace("{lang}", lang);
     const text = `${title(item, lang)} · ${priceText(item.price, item.currency, item.kind, lang)}`;
-    if (tg()) openTelegram(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+    const app = tg();
+    if (app?.shareMessage) {
+      const prepared = await fetch("/api/catalog/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ref: item.ref, lang, initData: app.initData }) })
+        .then((r) => r.json() as Promise<{ ok: boolean; id?: string }>)
+        .catch(() => null);
+      if (prepared?.ok && prepared.id) {
+        try {
+          app.shareMessage(prepared.id, (sent) => sent && setToast(t.shareSent));
+          return;
+        } catch {
+          // fall back to the link below
+        }
+      }
+    }
+    if (app) openTelegram(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
     else if (navigator.share) navigator.share({ url: link, text }).catch(() => undefined);
     else navigator.clipboard?.writeText(link).then(() => setToast(t.linkCopied));
   };
@@ -405,6 +481,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
         message: describeSearch(search, lang, t),
         prefs: { deal: f.deal, budgetMax: num(f.priceMax) ?? undefined, roomsMin: f.rooms.length ? Math.min(...f.rooms) : undefined, areas: f.districts, pets: f.pets || undefined },
         alerts: true,
+        source: visit,
       }),
     }).catch(() => null);
     if (response?.ok) {
@@ -424,10 +501,10 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     onRemove: removeSearch,
     onNotify: notifySearch,
   };
-  const recentItems = recent.map((ref) => items.find((i) => i.ref === ref)).filter(Boolean) as CatalogItem[];
+  const recentItems = recent.map((ref) => allItems.find((i) => i.ref === ref)).filter(Boolean) as CatalogItem[];
 
-  const openItemData = openRef ? items.find((i) => i.ref === openRef) ?? null : null;
-  const savedItems = items.filter((i) => favs.includes(i.ref));
+  const openItemData = openRef ? allItems.find((i) => i.ref === openRef) ?? null : null;
+  const savedItems = allItems.filter((i) => favs.includes(i.ref));
 
   return (
     <div
@@ -459,6 +536,8 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
           onViewing={(ref) => setSheet({ kind: "viewing", ref })}
           onAsk={manager ? askManager : () => openItemData && setSheet({ kind: "question", ref: openItemData.ref })}
           onShare={share}
+          onFindSimilar={(item) => { setOpenRef(null); history.replaceState(null, "", location.pathname); setFilters({ ...emptyFilters(item.kind), districts: item.district ? [item.district] : [] }); setTab("request"); }}
+          averages={averages}
           phone={phone}
         />
       ) : (
@@ -539,6 +618,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
           {tab === "home" ? (
             <Home
               items={items}
+              closed={closedItems}
               deals={deals}
               lang={lang}
               t={t}
@@ -571,7 +651,7 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
               ) : (
                 <>
                   {results.slice(0, limit).map((item) => (
-                    <Card key={item.ref} item={item} lang={lang} t={t} fav={favs.includes(item.ref)} onFav={toggle} onOpen={openItem} />
+                    <Card key={item.ref} item={item} lang={lang} t={t} fav={favs.includes(item.ref)} onFav={toggle} onOpen={openItem} good={goodPrice(item, averages)} />
                   ))}
                   {results.length > limit ? <More onMore={() => setLimit((l) => l + PAGE)} /> : null}
                 </>
@@ -602,11 +682,11 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
           {tab === "saved" ? (
             <main className="space-y-3 px-3 pt-1">
               {searches.length ? <SearchList {...searchProps} /> : null}
-              {recentItems.length ? <Row title={t.recentRow} items={recentItems} lang={lang} onOpen={openItem} /> : null}
+              {recentItems.length ? <Row title={t.recentRow} items={recentItems} lang={lang} onOpen={openItem} t={t} /> : null}
               {savedItems.length === 0 ? (
                 <div className="rounded-2xl bg-[var(--bg)] p-8 text-center text-sm text-[var(--hint)]">♡<br />{t.savedEmpty}</div>
               ) : (
-                savedItems.map((item) => <Card key={item.ref} item={item} lang={lang} t={t} fav onFav={toggle} onOpen={openItem} />)
+                savedItems.map((item) => <Card key={item.ref} item={item} lang={lang} t={t} fav onFav={toggle} onOpen={openItem} good={goodPrice(item, averages)} />)
               )}
             </main>
           ) : null}
@@ -688,11 +768,23 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
   );
 }
 
-function MiniCard({ item, lang, onOpen }: { item: CatalogItem; lang: Lang; onOpen: (ref: number) => void }) {
+function ClosedRibbon({ item, t }: { item: CatalogItem; t: Dict }) {
+  if (!item.closed) return null;
+  return (
+    <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/35">
+      <span className="-rotate-6 rounded-lg border-2 border-white bg-[#0e2a4d]/90 px-3 py-1 text-sm font-black uppercase tracking-wider text-white shadow-lg">✓ {item.kind === "sale" ? t.sold : t.rented}</span>
+    </span>
+  );
+}
+
+function MiniCard({ item, lang, onOpen, t }: { item: CatalogItem; lang: Lang; onOpen: (ref: number) => void; t?: Dict }) {
   return (
     <button type="button" onClick={() => onOpen(item.ref)} className="w-40 shrink-0 snap-start overflow-hidden rounded-2xl bg-[var(--bg)] text-left shadow-sm">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      {item.photos[0] ? <img src={item.photos[0]} alt="" loading="lazy" className="h-28 w-full object-cover" /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
+      <div className="relative">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {item.photos[0] ? <img src={item.photos[0]} alt="" loading="lazy" className={`h-28 w-full object-cover ${item.closed ? "grayscale-[60%]" : ""}`} /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
+        {t ? <ClosedRibbon item={item} t={t} /> : null}
+      </div>
       <div className="p-2">
         <div className="text-sm font-bold">{shortPrice(item)}{item.kind === "rent" ? (lang === "ru" ? "/мес" : lang === "ka" ? "/თვე" : "/mo") : ""}</div>
         <div className="truncate text-xs text-[var(--hint)]">{title(item, lang)}{item.district ? ` · ${placeName(item.district, lang)}` : ""}</div>
@@ -701,7 +793,7 @@ function MiniCard({ item, lang, onOpen }: { item: CatalogItem; lang: Lang; onOpe
   );
 }
 
-function Row({ title: heading, items, lang, onOpen, onMore, more }: { title: string; items: CatalogItem[]; lang: Lang; onOpen: (ref: number) => void; onMore?: () => void; more?: string }) {
+function Row({ title: heading, items, lang, onOpen, onMore, more, t }: { title: string; items: CatalogItem[]; lang: Lang; onOpen: (ref: number) => void; onMore?: () => void; more?: string; t?: Dict }) {
   if (!items.length) return null;
   return (
     <section>
@@ -710,7 +802,7 @@ function Row({ title: heading, items, lang, onOpen, onMore, more }: { title: str
         {onMore ? <button type="button" onClick={onMore} className="text-xs font-semibold text-[var(--accent)]">{more} ›</button> : null}
       </div>
       <div className="-mx-3 flex snap-x gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {items.map((item) => <MiniCard key={item.ref} item={item} lang={lang} onOpen={onOpen} />)}
+        {items.map((item) => <MiniCard key={item.ref} item={item} lang={lang} onOpen={onOpen} t={t} />)}
       </div>
     </section>
   );
@@ -761,8 +853,8 @@ function SearchList({ searches, t, describe, countOf, freshOf, onOpen, onRemove,
 
 const DEAL_EMOJI: Record<DealKind, string> = { rent: "🏠", sale: "🔑", daily: "📅" };
 
-function Home({ items, deals, lang, t, recent, searchProps, onOpen, onBrowse, onQuery, onMap, onRequest }: {
-  items: CatalogItem[]; deals: DealKind[]; lang: Lang; t: Dict; recent: CatalogItem[]; searchProps: SearchProps;
+function Home({ items, closed, deals, lang, t, recent, searchProps, onOpen, onBrowse, onQuery, onMap, onRequest }: {
+  items: CatalogItem[]; closed: CatalogItem[]; deals: DealKind[]; lang: Lang; t: Dict; recent: CatalogItem[]; searchProps: SearchProps;
   onOpen: (ref: number) => void; onBrowse: (patch: Partial<Filters> & { deal: DealKind }) => void; onQuery: (q: string) => void; onMap: () => void; onRequest: () => void;
 }) {
   const [q, setQ] = useState("");
@@ -833,9 +925,10 @@ function Home({ items, deals, lang, t, recent, searchProps, onOpen, onBrowse, on
       </section>
 
       {searchProps.searches.length ? <SearchList {...searchProps} /> : null}
-      <Row title={t.recentRow} items={recent.slice(0, 10)} lang={lang} onOpen={onOpen} />
+      <Row title={t.recentRow} items={recent.slice(0, 10)} lang={lang} onOpen={onOpen} t={t} />
       <Row title={t.newRow} items={newest} lang={lang} onOpen={onOpen} onMore={() => onBrowse({ deal: main })} more={t.seeAll} />
       {popular.length >= 3 ? <Row title={t.popularRow} items={popular} lang={lang} onOpen={onOpen} /> : null}
+      {closed.length ? <Row title={t.closedRow} items={closed.slice(0, 10)} lang={lang} onOpen={onOpen} t={t} /> : null}
 
       {districts.length > 1 ? (
         <section>
@@ -989,7 +1082,7 @@ function MetroBadge({ item, lang, t, small = false, all = false }: { item: Catal
   );
 }
 
-function Card({ item, lang, t, fav, onFav, onOpen, compact = false }: { item: CatalogItem; lang: Lang; t: Dict; fav: boolean; onFav: (ref: number) => void; onOpen: (ref: number) => void; compact?: boolean }) {
+function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null }: { item: CatalogItem; lang: Lang; t: Dict; fav: boolean; onFav: (ref: number) => void; onOpen: (ref: number) => void; compact?: boolean; good?: number | null }) {
   const place = placeName(item.location || item.district, lang);
   if (compact) {
     return (
@@ -1010,9 +1103,12 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false }: { item: Ca
     <article className="overflow-hidden rounded-2xl bg-[var(--bg)] shadow-sm">
       <div className="relative" onClick={() => onOpen(item.ref)}>
         <PhotoStrip photos={item.photos} t={t} height="h-56" />
+        <ClosedRibbon item={item} t={t} />
         <div className="absolute left-2 top-2 flex gap-1">
-          {isNew(item) ? <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[11px] font-bold text-white">{t.isNew}</span> : null}
+          {isNew(item) && !item.closed ? <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[11px] font-bold text-white">{t.isNew}</span> : null}
           {item.availability === "reserved" ? <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">{t.reserved}</span> : null}
+          {good ? <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-bold text-white">💎 {t.goodPrice} −{good}%</span> : null}
+          {item.video || item.tour ? <span className="rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold text-white">{item.video ? "🎬" : ""}{item.tour ? "🧭" : ""}</span> : null}
         </div>
         <div className="absolute right-2 top-2">
           <Heart on={fav} onClick={() => onFav(item.ref)} />
@@ -1046,9 +1142,10 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false }: { item: Ca
   );
 }
 
-function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, onAsk, onShare, phone }: {
+function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, onAsk, onShare, onFindSimilar, averages, phone }: {
   item: CatalogItem | null; items: CatalogItem[]; lang: Lang; t: Dict; fav: boolean; onFav: (ref: number) => void; onOpen: (ref: number) => void; onBack: () => void;
-  onViewing: (ref: number) => void; onAsk: (item?: CatalogItem) => void; onShare: (item: CatalogItem) => void; phone: string | null;
+  onViewing: (ref: number) => void; onAsk: (item?: CatalogItem) => void; onShare: (item: CatalogItem) => void; onFindSimilar: (item: CatalogItem) => void;
+  averages: Map<string, number>; phone: string | null;
 }) {
   const inTelegram = Boolean(tg());
   if (!item) {
@@ -1064,12 +1161,13 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
     );
   }
   const place = placeName(item.location || item.district, lang);
-  const map = item.point ? mapView(item.point.lat, item.point.lng, item.point.exact ? "exact" : "approx") : null;
-  const perM2 = item.kind === "sale" && item.price && item.area ? Math.round(item.price / item.area) : null;
+  const perM2 = item.kind === "sale" && item.usd && item.area ? Math.round(item.usd / item.area) : null;
+  const avgM2 = item.kind === "sale" && item.district ? averages.get(item.district) ?? null : null;
+  const good = goodPrice(item, averages);
   const description = item.description[lang];
   // Same deal; scored by district, price within 25%, same rooms and a shared metro station.
   const similar = items
-    .filter((i) => i.ref !== item.ref && i.kind === item.kind)
+    .filter((i) => i.ref !== item.ref && i.kind === item.kind && !i.closed)
     .map((i) => {
       let score = 0;
       if (item.district && i.district === item.district) score += 3;
@@ -1089,6 +1187,7 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
     [t.area, item.area ? `${item.area} ${m2(lang)}` : null],
     [t.floor, item.floor ? `${item.floor}${item.totalFloors ? ` / ${item.totalFloors}` : ""}` : null],
     [t.perM2, perM2 ? `$${perM2.toLocaleString("en-US")}` : null],
+    [t.areaAvg(placeName(item.district, lang)), avgM2 ? `$${Math.round(avgM2).toLocaleString("en-US")}` : null],
     [t.term, item.kind === "rent" && item.leaseTerm ? termText(item.leaseTerm, lang) : null],
     [t.condition, item.condition && lang === "ka" ? item.condition : null],
     [t.type, typeLabel(item.type, lang)],
@@ -1097,7 +1196,8 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
   return (
     <div className="pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
       <div className="relative">
-        <Gallery urls={item.photos} />
+        <MediaGallery key={item.ref} item={item} t={t} />
+        {item.closed ? <ClosedRibbon item={item} t={t} /> : null}
         <div className="absolute inset-x-2 top-[max(0.5rem,env(safe-area-inset-top))] flex justify-between">
           <button type="button" onClick={onBack} className="flex h-9 items-center gap-1 rounded-full bg-black/50 pl-2 pr-3 text-sm font-semibold text-white backdrop-blur active:scale-95" aria-label={t.back}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
@@ -1118,8 +1218,14 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
             <span className="font-mono">#{item.ref}</span>
             <span>· {DEAL_LABEL[item.kind][lang]}</span>
             {item.availability === "reserved" ? <span className="rounded-full bg-amber-500 px-2 py-0.5 font-bold text-white">{t.reserved}</span> : null}
+            {item.closed ? <span className="rounded-full bg-[#0e2a4d] px-2 py-0.5 font-bold text-white">✓ {item.kind === "sale" ? t.sold : t.rented}</span> : null}
           </div>
-          <div className="text-2xl font-bold">{priceText(item.price, item.currency, item.kind, lang)}</div>
+          <div className={`text-2xl font-bold ${item.closed ? "text-[var(--hint)] line-through decoration-2" : ""}`}>{priceText(item.price, item.currency, item.kind, lang)}</div>
+          {good ? (
+            <div className="inline-flex items-center gap-1.5 rounded-xl bg-[color-mix(in_srgb,#059669_14%,var(--bg))] px-2.5 py-1.5 text-xs font-semibold text-[color-mix(in_srgb,#059669_75%,var(--text))]">
+              💎 {t.goodPrice} · {t.goodPriceHint(good, placeName(item.district, lang))}
+            </div>
+          ) : null}
           <h1 className="text-base font-semibold">{title(item, lang)}{item.area ? `, ${item.area} ${m2(lang)}` : ""}</h1>
           {place ? <div className="text-sm text-[var(--hint)]">📍 {place}</div> : null}
           <MetroBadge item={item} lang={lang} t={t} all />
@@ -1152,13 +1258,14 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
           </section>
         ) : null}
 
-        {map ? (
-          <section className="overflow-hidden rounded-2xl bg-[var(--bg)]">
-            <h2 className="px-4 pt-3 text-sm font-semibold">{t.location}</h2>
-            <iframe title="map" src={map.embedUrl} className="mt-2 h-56 w-full border-0" loading="lazy" referrerPolicy="no-referrer" />
-            {!map.exact ? <p className="px-4 py-2 text-xs text-[var(--hint)]">{t.approxNote}</p> : null}
+        {item.closed ? (
+          <section className="rounded-2xl bg-[color-mix(in_srgb,var(--accent)_10%,var(--bg))] p-4 text-sm">
+            <p>{t.closedNote}</p>
+            <button type="button" onClick={() => { haptic("tap"); onFindSimilar(item); }} className="mt-3 w-full rounded-xl bg-[var(--accent)] py-3 font-semibold text-white">🔎 {t.findSimilar}</button>
           </section>
         ) : null}
+
+        <NearbySection item={item} lang={lang} t={t} />
 
         {similar.length ? (
           <section>
@@ -1180,7 +1287,11 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t border-[var(--line)] bg-[var(--bg)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <button type="button" onClick={() => { haptic("tap"); onViewing(item.ref); }} className="flex-1 rounded-xl bg-[var(--accent)] py-3 text-sm font-semibold text-white">{t.requestViewing}</button>
+        {item.closed ? (
+          <button type="button" onClick={() => { haptic("tap"); onFindSimilar(item); }} className="flex-1 rounded-xl bg-[var(--accent)] py-3 text-sm font-semibold text-white">🔎 {t.findSimilar}</button>
+        ) : (
+          <button type="button" onClick={() => { haptic("tap"); onViewing(item.ref); }} className="flex-1 rounded-xl bg-[var(--accent)] py-3 text-sm font-semibold text-white">{t.requestViewing}</button>
+        )}
         <button type="button" onClick={() => onAsk(item)} className="rounded-xl bg-[var(--bg2)] px-4 py-3 text-sm font-semibold" aria-label={t.ask}>💬</button>
         {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="rounded-xl bg-[var(--bg2)] px-4 py-3 text-sm font-semibold" aria-label={t.call}>📞</a> : null}
       </div>
@@ -1445,6 +1556,7 @@ function LeadForm({ kind, item, lang, t, districts = [], defaultDeal, onDone }: 
               }
             : undefined,
           alerts: allowed,
+          source: visit,
         }),
       });
       if (!response.ok) throw new Error(String(response.status));

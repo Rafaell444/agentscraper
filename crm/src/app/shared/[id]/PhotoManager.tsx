@@ -3,9 +3,9 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { resizeImage } from "@/lib/resizeImage";
-import { deletePhoto, movePhoto } from "../actions";
+import { deletePhoto, movePhoto, setPhotoKind } from "../actions";
 
-export function PhotoManager({ postId, token, photoIds }: { postId: string; token: string; photoIds: string[] }) {
+export function PhotoManager({ postId, token, photoIds, planIds = [] }: { postId: string; token: string; photoIds: string[]; planIds?: string[] }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState("");
@@ -45,10 +45,11 @@ export function PhotoManager({ postId, token, photoIds }: { postId: string; toke
           <div key={id} className="relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/s/${token}/photo/${id}`} alt="" className="h-32 w-full object-cover" loading="lazy" />
-            {index === 0 ? <span className="absolute left-1 top-1 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">მთავარი</span> : null}
+            {planIds.includes(id) ? <span className="absolute left-1 top-1 rounded bg-indigo-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">📐 გეგმა</span> : index === 0 ? <span className="absolute left-1 top-1 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">მთავარი</span> : null}
             <div className="flex items-center justify-between gap-1 p-1">
               <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm px-2" disabled={index === 0 || busy} onClick={() => act(() => movePhoto(id, -1))} aria-label="მარცხნივ">◀</button>
               <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm px-2" disabled={index === photoIds.length - 1 || busy} onClick={() => act(() => movePhoto(id, 1))} aria-label="მარჯვნივ">▶</button>
+              <button type="button" className={`ui-btn ui-btn-sm px-2 ${planIds.includes(id) ? "ui-btn-primary" : "ui-btn-ghost"}`} disabled={busy} onClick={() => act(() => setPhotoKind(id, planIds.includes(id) ? "photo" : "plan"))} title="სართულის გეგმა (აპში ცალკე ჩანართში ჩანს)" aria-label="გეგმა">📐</button>
               <button
                 type="button"
                 className="ui-btn ui-btn-danger ui-btn-sm px-2"
@@ -69,7 +70,7 @@ export function PhotoManager({ postId, token, photoIds }: { postId: string; toke
         <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" disabled={Boolean(progress)} onClick={() => input.current?.click()}>
           + ფოტოების ატვირთვა
         </button>
-        {progress ? <span className="text-xs text-gray-600">{progress}</span> : <span className="text-[11px] text-gray-500">პირველი ფოტო მთავარია. ◀ ▶ — რიგის შეცვლა, ✕ — წაშლა (მაგ. ვოტერმარკიანი ან ზედმეტი ფოტო).</span>}
+        {progress ? <span className="text-xs text-gray-600">{progress}</span> : <span className="text-[11px] text-gray-500">პირველი ფოტო მთავარია. ◀ ▶ — რიგის შეცვლა, 📐 — სართულის გეგმა (აპში ცალკე ჩანართი „გეგმა“), ✕ — წაშლა.</span>}
       </div>
     </div>
   );

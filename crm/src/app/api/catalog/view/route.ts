@@ -1,10 +1,8 @@
-import { prisma } from "@/lib/db";
+import { asSource, recordEvent } from "@/lib/catalogEvents";
 
-/** Count a mini-app view of one listing. */
+/** Count a mini-app view of one listing (older app versions; new ones use /api/catalog/event). */
 export async function POST(request: Request) {
-  const { ref } = ((await request.json().catch(() => ({}))) ?? {}) as { ref?: number };
-  if (ref && Number.isInteger(ref)) {
-    await prisma.sharedPost.updateMany({ where: { refNo: ref, catalog: true }, data: { catalogViews: { increment: 1 } } });
-  }
+  const { ref, source } = ((await request.json().catch(() => ({}))) ?? {}) as { ref?: number; source?: string };
+  if (ref && Number.isInteger(ref)) await recordEvent("view", asSource(source), ref).catch(() => undefined);
   return Response.json({ ok: true });
 }

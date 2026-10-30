@@ -87,6 +87,11 @@ export async function createPostFromListing(formData: FormData) {
   redirect(`/shared/${post.id}`);
 }
 
+/** Only https links go to the mini app (it embeds them). */
+function httpsUrl(value: string | null): string | null {
+  return value && /^https:\/\/\S+$/.test(value) ? value.slice(0, 500) : null;
+}
+
 export async function updatePost(formData: FormData) {
   await requireUser();
   const id = String(formData.get("id") ?? "");
@@ -135,6 +140,8 @@ export async function updatePost(formData: FormData) {
       leaseTerm: text(formData, "leaseTerm"),
       descriptionEn: text(formData, "descriptionEn"),
       descriptionRu: text(formData, "descriptionRu"),
+      videoUrl: httpsUrl(text(formData, "videoUrl")),
+      tourUrl: httpsUrl(text(formData, "tourUrl")),
       // Scheduled publishing (a field left out keeps its time; publishing now clears it).
       ...(formData.has("scheduleAppAt") ? { scheduleAppAt: parseTbilisi(text(formData, "scheduleAppAt")) } : {}),
       ...(formData.has("scheduleTgAt") ? { scheduleTgAt: parseTbilisi(text(formData, "scheduleTgAt")) } : {}),
@@ -235,6 +242,13 @@ export async function deletePost(formData: FormData) {
 export async function deletePhoto(photoId: string) {
   await requireUser();
   const photo = await prisma.sharedPostPhoto.delete({ where: { id: photoId }, select: { postId: true } });
+  revalidatePath(`/shared/${photo.postId}`);
+}
+
+/** Mark a photo as a floor plan (shown in its own tab in the mini app) or back as a normal photo. */
+export async function setPhotoKind(photoId: string, kind: "photo" | "plan") {
+  await requireUser();
+  const photo = await prisma.sharedPostPhoto.update({ where: { id: photoId }, data: { kind: kind === "plan" ? "plan" : "photo" }, select: { postId: true } });
   revalidatePath(`/shared/${photo.postId}`);
 }
 

@@ -49,7 +49,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
       include: {
         client: { select: { id: true, name: true, phone: true, messenger: true } },
         createdBy: { select: { name: true } },
-        photos: { orderBy: [{ position: "asc" }, { id: "asc" }], select: { id: true } },
+        photos: { orderBy: [{ position: "asc" }, { id: "asc" }], select: { id: true, kind: true } },
       },
     }),
     prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] } }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 300 }),
@@ -92,6 +92,8 @@ export default async function SharedPostEditor({ params, searchParams }: { param
           <>
             <Link href="/shared" className="ui-btn ui-btn-ghost ui-btn-sm">← ყველა პოსტი</Link>
             <a href={`/s/${post.token}`} target="_blank" rel="noreferrer" className="ui-btn ui-btn-secondary ui-btn-sm">გადახედვა ↗</a>
+            <Link href={`/shared/${post.id}/contract`} className="ui-btn ui-btn-secondary ui-btn-sm">📄 ხელშეკრულება</Link>
+            {post.refNo && post.catalog ? <a href={`/flat/${post.refNo}`} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm">🌐 საიტზე ↗</a> : null}
           </>
         }
       />
@@ -299,6 +301,14 @@ export default async function SharedPostEditor({ params, searchParams }: { param
                 <textarea name="descriptionRu" defaultValue={post.descriptionRu ?? ""} rows={5} className="ui-field" />
               </Field>
             </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <Field label="🎬 ვიდეო (YouTube / Shorts ან .mp4 ბმული)">
+                <Input name="videoUrl" defaultValue={post.videoUrl ?? ""} placeholder="https://youtube.com/shorts/..." inputMode="url" />
+              </Field>
+              <Field label="🧭 3D ტური (Matterport, Kuula…)">
+                <Input name="tourUrl" defaultValue={post.tourUrl ?? ""} placeholder="https://my.matterport.com/show/?m=..." inputMode="url" />
+              </Field>
+            </div>
             <p className="mt-2 text-[11px] text-gray-500">აპი კლიენტს აჩვენებს მის ენაზე: ინგლისური/რუსული აღწერა თუ ცარიელია, ქართული გამოჩნდება. სათაური ავტომატურად იწერება სამივე ენაზე (ტიპი, ოთახები, უბანი). მისამართი („მდებარეობა“) და რუკა კატალოგშიც ზემოთ არჩეული წესით ჩანს.</p>
           </Card>
         </div>
@@ -357,7 +367,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
                 </form>
               ))}
             </div>
-            <p className="text-xs text-gray-500">„გაქირავდა“ / „გაიყიდა“ — ბინა აპიდან ქრება, არხის პოსტზე კი თავში ეწერება 🔴 სტატუსი.</p>
+            <p className="text-xs text-gray-500">„გაქირავდა“ / „გაიყიდა“ — ბინა აპში 30 დღე რჩება ნიშნით „გაქირავდა/გაიყიდა“ (მოთხოვნის ღილაკის გარეშე, აჩვენებს რომ საქმეს ვხურავთ), მერე ქრება. არხის პოსტზე თავში ეწერება 🔴 სტატუსი.</p>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-gray-200 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -419,7 +429,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
       ) : null}
 
       <Card title={`ფოტოები (${post.photos.length})`}>
-        <PhotoManager postId={post.id} token={post.token} photoIds={post.photos.map((p) => p.id)} />
+        <PhotoManager postId={post.id} token={post.token} photoIds={post.photos.map((p) => p.id)} planIds={post.photos.filter((p) => p.kind === "plan").map((p) => p.id)} />
       </Card>
 
       <Card title="სხვა">

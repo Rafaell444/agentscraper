@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { PUBLIC_AVAILABILITY } from "@/lib/catalog";
+import { isPublic as shownPublicly } from "@/lib/catalog";
 
 /** A photo of a catalog listing: public while the listing is in the catalog
  * (CRM users always see it).  Cached by the CDN — photos never change in
@@ -9,10 +9,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const photo = await prisma.sharedPostPhoto.findUnique({
     where: { id },
-    select: { mime: true, data: true, post: { select: { catalog: true, availability: true } } },
+    select: { mime: true, data: true, post: { select: { catalog: true, availability: true, closedAt: true } } },
   });
   if (!photo) return new Response("Not found", { status: 404 });
-  const isPublic = photo.post.catalog && PUBLIC_AVAILABILITY.includes(photo.post.availability);
+  const isPublic = shownPublicly(photo.post);
   if (!isPublic && !(await getSession())) return new Response("Not found", { status: 404 });
   return new Response(Buffer.from(photo.data), {
     headers: {

@@ -71,7 +71,11 @@ export async function setAvailability(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const value = String(formData.get("availability") ?? "");
   if (!id || !(value in AVAILABILITY)) return;
-  await prisma.sharedPost.update({ where: { id }, data: { availability: value } });
+  // Rented / sold: keep the flat in the app with a label for 30 days (closedAt), counted from the first change.
+  const before = await prisma.sharedPost.findUnique({ where: { id }, select: { availability: true, closedAt: true } });
+  const closed = value === "rented" || value === "sold";
+  const closedAt = closed ? (before?.closedAt && (before.availability === "rented" || before.availability === "sold") ? before.closedAt : new Date()) : null;
+  await prisma.sharedPost.update({ where: { id }, data: { availability: value, closedAt } });
   await refreshChannelPost(id);
   back(id, { ok: true, message: `სტატუსი: ${AVAILABILITY[value].label}` });
 }

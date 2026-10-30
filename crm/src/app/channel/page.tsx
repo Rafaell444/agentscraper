@@ -11,6 +11,7 @@ import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { connectBot, postWelcome, setLeadStatus } from "./actions";
+import { CatalogStatsView } from "./Stats";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,9 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
   );
 }
 
-export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string }> }) {
+export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string }> }) {
   const user = await requireUser();
-  const { bot, tab = "leads", welcome } = await searchParams;
+  const { bot, tab = "leads", welcome, days } = await searchParams;
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
   const [username, hook, leads, posts, newLeads] = await Promise.all([
@@ -123,8 +124,8 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
                     <textarea name="text" rows={12} defaultValue={c.post?.text ?? defaults.text} className="ui-field h-auto py-2 text-sm" />
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                       რუკის ბმული ტექსტისთვის:
-                      <code className="break-all rounded bg-gray-100 px-1.5 py-0.5">{mapLink(settings, base, c.lang)}</code>
-                      <CopyButton value={mapLink(settings, base, c.lang)} className="ui-btn ui-btn-ghost ui-btn-sm" />
+                      <code className="break-all rounded bg-gray-100 px-1.5 py-0.5">{mapLink(settings, base, c.lang, "c")}</code>
+                      <CopyButton value={mapLink(settings, base, c.lang, "c")} className="ui-btn ui-btn-ghost ui-btn-sm" />
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="block text-xs text-gray-600">ღილაკის ტექსტი<input name="button" defaultValue={c.post?.button ?? defaults.button} className="ui-field mt-1" /></label>
@@ -145,13 +146,15 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
 
       <div className="flex flex-wrap items-center gap-2">
         <Tabs
-          items={[{ value: "leads", label: "ახალი მოთხოვნები", count: newLeads }, { value: "done", label: "დამუშავებული" }, { value: "listings", label: `კატალოგი (${posts.length})` }]}
+          items={[{ value: "leads", label: "ახალი მოთხოვნები", count: newLeads }, { value: "done", label: "დამუშავებული" }, { value: "listings", label: `კატალოგი (${posts.length})` }, { value: "stats", label: "📊 სტატისტიკა" }]}
           current={tab}
           hrefFor={(value) => `/channel?tab=${value}`}
         />
       </div>
 
-      {tab === "listings" ? (
+      {tab === "stats" ? (
+        <CatalogStatsView days={[7, 30, 90].includes(Number(days)) ? Number(days) : 30} />
+      ) : tab === "listings" ? (
         <Card title="კატალოგის ბინები">
           {posts.length === 0 ? (
             <EmptyState title="კატალოგი ცარიელია" hint="პოსტების ტაბში გახსენი პოსტი → „სად გამოვაქვეყნოთ“ → 📱 მინი აპი / 📣 Telegram / ორივეგან" />

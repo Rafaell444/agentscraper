@@ -3,6 +3,7 @@ import { phoneDigits } from "@/lib/phones";
 import { asLang, headline, priceText, dealKind } from "@/lib/catalog";
 import { notifyRecipients, verifyInitData } from "@/lib/telegram";
 import { cleanPrefs, prefsSummary } from "@/lib/clientAlerts";
+import { SOURCE_LABEL, asSource } from "@/lib/catalogEvents";
 
 // Requests from the mini app.  Each one becomes (or updates) a client in the
 // CRM, and the agency phones get a Telegram message right away.
@@ -17,6 +18,7 @@ type Body = {
   initData?: string;
   prefs?: Record<string, unknown> & { moveIn?: string };
   alerts?: boolean;
+  source?: string;
 };
 
 const KIND_LABEL: Record<string, string> = { viewing: "🗓 ჩვენების მოთხოვნა", question: "❓ კითხვა", search: "🔎 „მომიძებნეთ ბინა“" };
@@ -38,6 +40,7 @@ export async function POST(request: Request) {
   const lang = asLang(body.lang ?? tgUser?.language_code);
   const tgUserId = tgUser ? String(tgUser.id) : null;
   const username = tgUser?.username ? `@${tgUser.username}` : null;
+  const source = asSource(body.source);
 
   // A few requests per hour per person is plenty.
   const recent = await prisma.catalogLead.count({
@@ -102,6 +105,7 @@ export async function POST(request: Request) {
       tgUsername: username,
       lang,
       message: message || null,
+      source,
       ...(kind === "search"
         ? {
             prefs: JSON.stringify(prefs),
@@ -111,6 +115,8 @@ export async function POST(request: Request) {
         : {}),
     },
   });
+
+  await prisma.catalogEvent.create({ data: { kind: "lead", source, postId: post?.id ?? null } });
 
   // CRM bell for admins and the agent who owns the listing.
   const users = await prisma.user.findMany({ where: { active: true, OR: [{ role: "admin" }, ...(post ? [{ id: post.createdById }] : [])] }, select: { id: true } });
@@ -130,7 +136,7 @@ export async function POST(request: Request) {
       : "",
     message ? `💬 ${message}` : "",
     kind === "search" && body.alerts && tgUserId ? "🔔 ახალ ბინებზე შეტყობინებები ჩართო" : "",
-    `🌐 ენა: ${lang}`,
+    `🌐 ენა: ${lang} · მოვიდა: ${SOURCE_LABEL[source] ?? source}`,
   ].filter(Boolean);
   await notifyRecipients(lines.join("\n"));
 

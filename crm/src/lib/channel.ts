@@ -15,31 +15,35 @@ export function managerLink(value: string): string | null {
 /** Link that opens one listing (ref) or the whole catalog: the Telegram mini
  * app when mini_app_link is set, else the web page.  With lang the app opens
  * in that language (channel posts link to their own language). */
-export function catalogLink(settings: { mini_app_link: string }, base: string, ref?: number | null, lang?: Lang): string {
-  return appLink(settings, base, ref ? `p${ref}` : "home", lang);
+/** src marks where the link was posted, for the stats page: c channel, a bot alert, s share, w website. */
+export type LinkSource = "c" | "a" | "s" | "w";
+
+export function catalogLink(settings: { mini_app_link: string }, base: string, ref?: number | null, lang?: Lang, src?: LinkSource): string {
+  return appLink(settings, base, ref ? `p${ref}` : "home", lang, src);
 }
 
 /** Link that opens the catalog straight on the map tab. */
-export function mapLink(settings: { mini_app_link: string }, base: string, lang?: Lang): string {
-  return appLink(settings, base, "map", lang);
+export function mapLink(settings: { mini_app_link: string }, base: string, lang?: Lang, src?: LinkSource): string {
+  return appLink(settings, base, "map", lang, src);
 }
 
-// The mini app reads start params like "p1001_ru", "home_en", "map_ru";
-// the web page reads ?p=, ?tab=map and ?lang=.
-function appLink(settings: { mini_app_link: string }, base: string, start: string, lang?: Lang): string {
+// The mini app reads start params like "p1001_ru_c", "home_en", "map_ru";
+// the web page reads ?p=, ?tab=map, ?lang= and ?src=.
+function appLink(settings: { mini_app_link: string }, base: string, start: string, lang?: Lang, src?: LinkSource): string {
   const app = settings.mini_app_link.trim();
-  if (app) return `${app}${app.includes("?") ? "&" : "?"}startapp=${start}${lang ? `_${lang}` : ""}`;
+  if (app) return `${app}${app.includes("?") ? "&" : "?"}startapp=${start}${lang ? `_${lang}` : ""}${src ? `_${src}` : ""}`;
   const query = new URLSearchParams();
   if (start.startsWith("p")) query.set("p", start.slice(1));
   if (start === "map") query.set("tab", "map");
   if (lang) query.set("lang", lang);
+  if (src) query.set("src", src);
   return `${base}/catalog${query.size ? `?${query}` : ""}`;
 }
 
 export async function captionLinks(ref: number | null, lang?: Lang, inCatalog = true): Promise<CaptionLinks> {
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
-  return { details: inCatalog ? catalogLink(settings, base, ref, lang) : null, catalog: catalogLink(settings, base, null, lang), manager: managerLink(settings.catalog_manager) };
+  return { details: inCatalog ? catalogLink(settings, base, ref, lang, "c") : null, catalog: catalogLink(settings, base, null, lang, "c"), manager: managerLink(settings.catalog_manager) };
 }
 
 export async function ensureRefNo(postId: string): Promise<number> {
@@ -200,7 +204,7 @@ export async function publishWelcome(input: { lang: Lang; text: string; button: 
   if (!text) return { ok: false, error: "ტექსტი ცარიელია." };
   const base = await shareBase(settings.public_base_url);
   const button = input.button.trim() || WELCOME_DEFAULTS[input.lang === "ru" ? "ru" : "en"].button;
-  const reply_markup = { inline_keyboard: [[{ text: button, url: catalogLink(settings, base, null, input.lang) }]] };
+  const reply_markup = { inline_keyboard: [[{ text: button, url: catalogLink(settings, base, null, input.lang, "c") }]] };
   const html = welcomeHtml(text);
   const visible = text.split("**").join("").length; // Telegram counts the caption without markup
   const photo = input.photo && input.photo.size > 0 ? input.photo : null;

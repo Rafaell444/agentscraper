@@ -18,8 +18,45 @@ export const AVAILABILITY: Record<string, { label: string; cls: string; public: 
   rented: { label: "გაქირავდა", cls: "bg-gray-200 text-gray-700", public: { ka: "გაქირავდა", en: "Rented", ru: "Сдана" } },
   sold: { label: "გაიყიდა", cls: "bg-gray-200 text-gray-700", public: { ka: "გაიყიდა", en: "Sold", ru: "Продана" } },
 };
-/** Shown in the mini app; rented/sold ones disappear from it. */
+/** Open for requests in the mini app. */
 export const PUBLIC_AVAILABILITY = ["available", "reserved"];
+/** Rented / sold flats stay in the app this many days with a label: it shows the agency closes deals. */
+export const CLOSED_SHOWN_DAYS = 30;
+const CLOSED = ["rented", "sold"];
+
+/** Prisma filter for flats the public sees (mini app, website, photos). */
+export function publicWhere() {
+  return {
+    catalog: true,
+    refNo: { not: null },
+    OR: [{ availability: { in: PUBLIC_AVAILABILITY } }, { availability: { in: CLOSED }, closedAt: { gte: new Date(Date.now() - CLOSED_SHOWN_DAYS * 86400_000) } }],
+  };
+}
+
+export function isPublic(post: { catalog: boolean; availability: string; closedAt: Date | null }): boolean {
+  if (!post.catalog) return false;
+  if (PUBLIC_AVAILABILITY.includes(post.availability)) return true;
+  return CLOSED.includes(post.availability) && post.closedAt != null && post.closedAt.getTime() > Date.now() - CLOSED_SHOWN_DAYS * 86400_000;
+}
+
+/** A video link the mini app can play: YouTube (also Shorts) as an embed, a direct .mp4 / .webm as a video. */
+export function videoEmbed(url: string | null | undefined): { kind: "iframe" | "video"; src: string; vertical: boolean } | null {
+  if (!url) return null;
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/);
+  if (yt) return { kind: "iframe", src: `https://www.youtube.com/embed/${yt[1]}?playsinline=1&rel=0`, vertical: url.includes("/shorts/") };
+  const vimeo = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeo) return { kind: "iframe", src: `https://player.vimeo.com/video/${vimeo[1]}`, vertical: false };
+  if (/^https:\/\/\S+\.(mp4|webm|mov)(\?\S*)?$/i.test(url)) return { kind: "video", src: url, vertical: true };
+  return null;
+}
+
+/** 3D tours (Matterport, Kuula, any https page that allows embedding). */
+export function tourEmbed(url: string | null | undefined): string | null {
+  if (!url || !/^https:\/\//.test(url)) return null;
+  const mp = url.match(/my\.matterport\.com\/show\/?\?m=(\w+)/);
+  if (mp) return `https://my.matterport.com/show/?m=${mp[1]}&play=1`;
+  return url;
+}
 
 export const FEATURES: { key: string; emoji: string; ka: string; en: string; ru: string }[] = [
   { key: "ac", emoji: "❄️", ka: "კონდიციონერი", en: "Air conditioning", ru: "Кондиционер" },
@@ -290,11 +327,17 @@ export type CatalogItem = {
   /** Metro stations within 20 minutes on foot, nearest first. */
   metro: MetroNear[];
   photos: string[];
+  /** Floor plans (photos marked "plan" in the CRM). */
+  plans: string[];
+  video: { kind: "iframe" | "video"; src: string; vertical: boolean } | null;
+  tour: string | null;
+  /** Rented or sold in the last 30 days: shown with a label, no requests. */
+  closed: boolean;
   createdAt: string;
   views: number;
 };
 
-export function toCatalogItem(post: SharedPost & { photos: { id: string }[] }): CatalogItem {
+export function toCatalogItem(post: SharedPost & { photos: { id: string; kind: string }[] }): CatalogItem {
   return {
     ref: post.refNo ?? 0,
     kind: dealKind(post.dealType),
@@ -318,7 +361,11 @@ export function toCatalogItem(post: SharedPost & { photos: { id: string }[] }): 
     description: { ka: descriptionFor(post, "ka"), en: descriptionFor(post, "en"), ru: descriptionFor(post, "ru") },
     point: publicPoint(post.lat, post.lng, post.mapMode),
     metro: post.mapMode === "off" ? [] : metroNearby(post.lat, post.lng),
-    photos: post.photos.map((p) => `/api/catalog/photo/${p.id}`),
+    photos: post.photos.filter((p) => p.kind !== "plan").map((p) => `/api/catalog/photo/${p.id}`),
+    plans: post.photos.filter((p) => p.kind === "plan").map((p) => `/api/catalog/photo/${p.id}`),
+    video: videoEmbed(post.videoUrl),
+    tour: tourEmbed(post.tourUrl),
+    closed: CLOSED.includes(post.availability),
     createdAt: post.channelPostedAt?.toISOString() ?? post.updatedAt.toISOString(),
     views: post.catalogViews,
   };
