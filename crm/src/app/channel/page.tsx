@@ -10,7 +10,9 @@ import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { connectBot, postWelcome, setLeadStatus } from "./actions";
+import { connectBot, disableScheduler, enableScheduler, postWelcome, setLeadStatus } from "./actions";
+import { dbCronStatus } from "@/lib/dbCron";
+import { lastScheduleRun } from "@/lib/schedule";
 import { CatalogStatsView } from "./Stats";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +33,11 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
   );
 }
 
-export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string }> }) {
+export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string; scheduler?: string }> }) {
   const user = await requireUser();
-  const { bot, tab = "leads", welcome, days } = await searchParams;
+  const { bot, tab = "leads", welcome, days, scheduler } = await searchParams;
+  const [cron, lastRun] = await Promise.all([dbCronStatus(), lastScheduleRun()]);
+  const schedulerMsg = scheduler ? { ok: scheduler.startsWith("ok"), text: scheduler.replace(/^(ok|err):/, "") } : null;
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
   const [username, hook, leads, posts, newLeads] = await Promise.all([
@@ -101,6 +105,39 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
           <CopyButton value={appUrl} className="ui-btn ui-btn-ghost ui-btn-sm" />
         </div>
       </Card>
+
+      {user.role === "admin" ? (
+        <Card title="⏰ ავტომატური გამოქვეყნება (დაგეგმილი პოსტები)">
+          <div id="scheduler" className="space-y-2 text-sm">
+            {schedulerMsg ? <p className={`rounded-lg px-3 py-2 text-xs ${schedulerMsg.ok ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>{schedulerMsg.text}</p> : null}
+            {cron.kind === "on" ? (
+              <p className="text-gray-700">
+                ✅ <b>ჩართულია</b> — ბაზა ყოველ 10 წუთში ამოწმებს დაგეგმილ პოსტებს.
+                {cron.lastRun ? <span className="text-gray-500"> ბოლო: {fmtDate(cron.lastRun, true)}{cron.lastStatus && cron.lastStatus !== "succeeded" ? ` (${cron.lastStatus})` : ""}</span> : null}
+              </p>
+            ) : cron.kind === "off" ? (
+              <p className="text-gray-700">⚠️ <b>გამორთულია.</b> GitHub-ის ტაიმერი ხშირად საათობით აგვიანებს ან საერთოდ არ ეშვება, ამიტომ ჩართე ბაზის (Supabase) ტაიმერი — ერთი დაჭერით.</p>
+            ) : (
+              <p className="text-gray-500">ბაზის ტაიმერი აქ მიუწვდომელია ({cron.reason}).</p>
+            )}
+            <p className="text-xs text-gray-500">
+              პუბლიკაციის შემმოწმებელი ბოლოს გაეშვა: {lastRun ? fmtDate(lastRun, true) : "ჯერ არასდროს"}. სარეზერვოდ, როცა ვინმე CRM-ს ან მინი აპს ხსნის, ვადაგასული პოსტებიც ქვეყნდება.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {cron.kind !== "unsupported" ? (
+                <form action={enableScheduler}>
+                  <SubmitButton pending="ირთვება…" className="ui-btn ui-btn-primary ui-btn-sm">{cron.kind === "on" ? "↻ თავიდან დაყენება" : "▶ ჩართვა"}</SubmitButton>
+                </form>
+              ) : null}
+              {cron.kind === "on" ? (
+                <form action={disableScheduler}>
+                  <SubmitButton pending="…" className="ui-btn ui-btn-ghost ui-btn-sm">გამორთვა</SubmitButton>
+                </form>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {user.role === "admin" && welcomes.length ? (
         <Card title="მისასალმებელი პოსტი „Open App“ ღილაკით">

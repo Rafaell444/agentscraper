@@ -5,7 +5,7 @@ Used by the GitHub workflows:
 * ``python ops_alert.py --failed "Collector"`` from a step with ``if: failure()``
   sends "⚠️ Collector failed" with a link to the run;
 * ``python ops_alert.py --check`` (every collector run) looks for silent
-  problems: the scheduled-post publisher not running for over an hour, or no
+  problems: scheduled posts more than 30 minutes late, or no
   new listing saved for 6 hours.
 
 Messages go to every connected Telegram recipient (CRM → Telegram tab).  The
@@ -15,6 +15,7 @@ same problem is reported at most once every 3 hours.
 from __future__ import annotations
 
 import argparse
+import html
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -90,14 +91,21 @@ def send(db: storage.Database, token: str, key: str, text: str) -> int:
 
 def check(db: storage.Database, token: str) -> None:
     now = datetime.now(timezone.utc)
-    last_run = parse_time(setting(db, "schedule_last_run"))
-    # Only once the publisher has been set up (it has run at least once).
-    if last_run and now - last_run > timedelta(hours=1):
-        minutes = int((now - last_run).total_seconds() // 60)
+    # Only a real problem counts: a post whose publishing time passed 30+ minutes ago.
+    # (A quiet publisher with nothing to publish is fine.)
+    late = []
+    for title, app_at, tg_at in db.execute(
+        'SELECT "title", "schedule_app_at", "schedule_tg_at" FROM "shared_posts" '
+        'WHERE "schedule_app_at" IS NOT NULL OR "schedule_tg_at" IS NOT NULL'
+    ).fetchall():
+        due = [t for t in (parse_time(app_at), parse_time(tg_at)) if t]
+        if due and now - min(due) > timedelta(minutes=30):
+            late.append((title, int((now - min(due)).total_seconds() // 60)))
+    if late:
+        lines = "\n".join(f"• {html.escape(str(title))[:60]} — {minutes} წთ დაგვიანებით" for title, minutes in late[:5])
         send(db, token, "scheduler", (
-            "⚠️ <b>დაგეგმილი პოსტები არ ქვეყნდება</b>\n"
-            f"Publisher ბოლოს {minutes} წუთის წინ გაეშვა (უნდა ეშვებოდეს ყოველ 10 წთ-ში).\n"
-            "GitHub → Actions → „Publish scheduled posts“ — შეამოწმე, ჩართულია თუ არა და რა შეცდომაა."
+            f"⚠️ <b>დაგეგმილი პოსტები არ გამოქვეყნდა ({len(late)})</b>\n{lines}\n"
+            "CRM → „არხი და აპი“ → „⏰ ავტომატური გამოქვეყნება“ — შეამოწმე, რომ ჩართულია."
         ))
     row = db.execute('SELECT MAX("collected_at") FROM "listings"').fetchone()
     newest = parse_time(row[0] if row else None)

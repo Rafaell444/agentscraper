@@ -17,7 +17,7 @@ type Sort = "new" | "priceAsc" | "priceDesc" | "area";
 type Tab = "home" | "list" | "map" | "saved" | "request";
 type SavedSearch = { id: string; filters: Filters; query: string; seen: number; notify?: boolean };
 type Facet = "deal" | "price" | "rooms" | "district" | "metro";
-type Sheet = null | "filters" | "budget" | { facet: Facet } | { kind: "viewing" | "question"; ref: number };
+type Sheet = null | "filters" | "budget" | "currency" | { facet: Facet } | { kind: "viewing" | "question"; ref: number };
 
 // One-tap price ranges per deal type, in USD.
 const PRICE_PRESETS: Record<DealKind, [string, string][]> = {
@@ -254,7 +254,7 @@ function detectLang(): Lang {
   return code === "ka" || code === "ru" ? code : code === "uk" || code === "be" || code === "kk" ? "ru" : "en";
 }
 
-export function CatalogApp({ items: allItems, agency, manager, phone, linkTemplate, rates }: { items: CatalogItem[]; agency: string; manager: string | null; phone: string | null; linkTemplate: string; rates: Rates }) {
+export function CatalogApp({ items: allItems, agency, manager, phone, linkTemplate, rates }: { items: CatalogItem[]; agency: string; manager: string | null; phone: string | null; linkTemplate: string; rates: Rates & { date?: string | null; source?: string } }) {
   // Currency switch: "" = as listed; the choice is remembered on this device.
   const [currency, setCurrency] = useState<Currency | "">("");
   useEffect(() => {
@@ -601,15 +601,15 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
                 </button>
               ) : null}
-              <label className="relative flex h-10 shrink-0 items-center rounded-xl bg-[var(--bg)] px-2.5 text-sm font-bold text-[var(--accent)]" aria-label={t.currency}>
-                {currency ? CURRENCY_SIGN[currency] : "$₾"}
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="ml-0.5 opacity-60"><path d="m6 9 6 6 6-6" /></svg>
-                {/* Native picker: compact and familiar on phones. */}
-                <select value={currency} onChange={(e) => changeCurrency(e.target.value as Currency | "")} className="absolute inset-0 cursor-pointer opacity-0">
-                  <option value="">{t.asListed}</option>
-                  {CURRENCIES.map((c) => <option key={c} value={c}>{CURRENCY_SIGN[c]} {c}</option>)}
-                </select>
-              </label>
+              <button
+                type="button"
+                onClick={() => { haptic("tap"); setSheet("currency"); }}
+                aria-label={t.currency}
+                className={`flex h-10 shrink-0 items-center gap-0.5 rounded-xl px-2.5 text-sm font-bold shadow-sm active:scale-95 ${currency ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--accent)]"}`}
+              >
+                {currency ? CURRENCY_SIGN[currency] : <span className="text-xs">$₾</span>}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="opacity-70"><path d="m6 9 6 6 6-6" /></svg>
+              </button>
               <div className="flex rounded-lg bg-[var(--bg)] p-0.5 text-xs font-semibold">
                 {(["ka", "en", "ru"] as Lang[]).map((l) => (
                   <button key={l} type="button" onClick={() => changeLang(l)} className={`min-h-9 rounded-md px-2.5 py-1.5 ${lang === l ? "bg-[var(--accent)] text-white" : "text-[var(--hint)]"}`}>{l.toUpperCase()}</button>
@@ -803,6 +803,11 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
           <FilterPanel only={sheet.facet} deals={deals} onDeal={(d) => { setFilters(emptyFilters(d)); setSheet(null); }} filters={filters} setFilters={setFilters} districts={districts} lang={lang} t={t} items={items} count={results.length} onReset={() => setFilters(emptyFilters(filters.deal))} onApply={() => { haptic("tap"); setSheet(null); }} />
         </BottomSheet>
       ) : null}
+      {sheet === "currency" ? (
+        <BottomSheet onClose={() => setSheet(null)}>
+          <CurrencySheet value={currency} rates={rates} lang={lang} t={t} onPick={(c) => { changeCurrency(c); setSheet(null); }} />
+        </BottomSheet>
+      ) : null}
       {sheet === "budget" ? (
         <BottomSheet onClose={() => setSheet(null)}>
           <BudgetCalculator items={allItems} lang={lang} currency={currency} rates={rates} onBrowse={(patch) => { setSheet(null); browse(patch); }} />
@@ -829,6 +834,48 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
       ) : null}
 
       {toast ? <div className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit rounded-full bg-black/80 px-4 py-2 text-sm text-white">{toast}</div> : null}
+    </div>
+  );
+}
+
+const CURRENCY_NAME: Record<Currency, Record<Lang, string>> = {
+  USD: { en: "US dollar", ru: "Доллар США", ka: "აშშ დოლარი" },
+  GEL: { en: "Georgian lari", ru: "Грузинский лари", ka: "ქართული ლარი" },
+  EUR: { en: "Euro", ru: "Евро", ka: "ევრო" },
+  RUB: { en: "Russian ruble", ru: "Российский рубль", ka: "რუსული რუბლი" },
+};
+
+/** Currency picker: as listed, or every price converted at today's rate. */
+function CurrencySheet({ value, rates, lang, t, onPick }: { value: Currency | ""; rates: Rates & { date?: string | null; source?: string }; lang: Lang; t: Dict; onPick: (c: Currency | "") => void }) {
+  // "1 $ = 2.60 ₾"; for the lari itself "1 ₾ = $0.38".
+  const rateLine = (c: Currency) =>
+    c === "GEL" ? `1 ₾ = $${(1 / rates.USD).toFixed(2)}` : c === "RUB" ? `100 ₽ = ${(rates.RUB * 100).toFixed(2)} ₾` : `1 ${CURRENCY_SIGN[c]} = ${rates[c].toFixed(2)} ₾`;
+  const row = (key: Currency | "", sign: React.ReactNode, name: string, note: string) => {
+    const on = value === key;
+    return (
+      <button
+        key={key || "listed"}
+        type="button"
+        onClick={() => { haptic("select"); onPick(key); }}
+        className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition active:scale-[0.99] ${on ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]" : "border-[var(--line)]"}`}
+      >
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold ${on ? "bg-[var(--accent)] text-white" : "bg-[var(--bg2)] text-[var(--text)]"}`}>{sign}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">{name}</span>
+          <span className="block truncate text-xs text-[var(--hint)]">{note}</span>
+        </span>
+        {on ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--accent)]"><path d="M20 6 9 17l-5-5" /></svg>
+        ) : null}
+      </button>
+    );
+  };
+  return (
+    <div className="space-y-2">
+      <h2 className="mb-1 text-lg font-bold">{t.currency}</h2>
+      {row("", <span className="text-xs">$₾</span>, t.asListed, t.asListedHint)}
+      {CURRENCIES.map((c) => row(c, CURRENCY_SIGN[c], CURRENCY_NAME[c][lang], rateLine(c)))}
+      <p className="px-1 pt-1 text-[11px] text-[var(--hint)]">{t.ratesNote(rates.source === "nbg" ? t.nbg : "open.er-api.com", rates.date ? shortDate(rates.date, lang) : "")}</p>
     </div>
   );
 }

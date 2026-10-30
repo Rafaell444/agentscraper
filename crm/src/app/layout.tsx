@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { after } from "next/server";
+import { runSchedulesIfStale } from "@/lib/dbCron";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { getSession } from "@/lib/auth";
@@ -21,6 +23,8 @@ export const viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Backup for the publisher timer: any page view publishes overdue scheduled posts (after the response).
+  after(() => runSchedulesIfStale().catch(() => undefined));
   const session = await getSession();
   const pathname = (await headers()).get("x-pathname") ?? "";
   // The mini app draws its own full-screen layout.

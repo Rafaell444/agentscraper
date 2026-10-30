@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin, requireUser } from "@/lib/auth";
+import { disableDbCron, enableDbCron } from "@/lib/dbCron";
 import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
 import { AVAILABILITY, asLang } from "@/lib/catalog";
@@ -134,4 +135,21 @@ export async function postWelcome(formData: FormData) {
   revalidatePath("/channel");
   const text = result.ok ? `ok:${result.message}` : `err:${result.error}`;
   redirect(`/channel?welcome=${encodeURIComponent(text)}#welcome`);
+}
+
+/** Let the database (Supabase pg_cron) call the publisher every 10 minutes. */
+export async function enableScheduler() {
+  await requireAdmin();
+  const settings = await getSettings();
+  const base = await shareBase(settings.public_base_url);
+  const result = await enableDbCron(base);
+  revalidatePath("/channel");
+  redirect(`/channel?scheduler=${encodeURIComponent(result.ok ? "ok:ჩართულია: ბაზა ყოველ 10 წუთში გამოაქვეყნებს დაგეგმილ პოსტებს." : `err:${result.error}`)}#scheduler`);
+}
+
+export async function disableScheduler() {
+  await requireAdmin();
+  await disableDbCron();
+  revalidatePath("/channel");
+  redirect(`/channel?scheduler=${encodeURIComponent("ok:ბაზის ტაიმერი გამოირთო.")}#scheduler`);
 }

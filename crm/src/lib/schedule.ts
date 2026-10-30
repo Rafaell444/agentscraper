@@ -4,8 +4,8 @@ import { alertMatchingClients } from "./clientAlerts";
 import { notifyRecipients } from "./telegram";
 
 // Scheduled publishing: a post can carry a time for the mini app and a time
-// for the Telegram channels.  /api/cron/publish (called every ~10 minutes by
-// GitHub Actions) publishes whatever is due.  Times are entered in Tbilisi time.
+// for the Telegram channels.  /api/cron/publish (called every 10 minutes by
+// the database timer, lib/dbCron; GitHub Actions as a spare) publishes whatever is due.  Times are entered in Tbilisi time.
 
 const TBILISI_OFFSET = 4 * 3600_000; // UTC+4 all year, no daylight saving
 
