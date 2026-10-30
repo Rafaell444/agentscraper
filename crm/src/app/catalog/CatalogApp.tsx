@@ -801,7 +801,7 @@ function Row({ title: heading, items, lang, onOpen, onMore, more, t }: { title: 
         <h2 className="text-sm font-bold">{heading}</h2>
         {onMore ? <button type="button" onClick={onMore} className="text-xs font-semibold text-[var(--accent)]">{more} ›</button> : null}
       </div>
-      <div className="-mx-3 flex snap-x gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-3 flex snap-x scroll-px-3 gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {items.map((item) => <MiniCard key={item.ref} item={item} lang={lang} onOpen={onOpen} t={t} />)}
       </div>
     </section>
@@ -1270,7 +1270,7 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
         {similar.length ? (
           <section>
             <h2 className="mb-2 px-1 text-sm font-semibold">{t.similar}</h2>
-            <div className="-mx-3 flex snap-x gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="-mx-3 flex snap-x scroll-px-3 gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {similar.map((s) => (
                 <button key={s.ref} type="button" onClick={() => onOpen(s.ref)} className="w-44 shrink-0 snap-start overflow-hidden rounded-2xl bg-[var(--bg)] text-left">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
