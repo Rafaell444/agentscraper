@@ -329,6 +329,10 @@ model SharedPost {
   tourUrl           String?   @map("tour_url")
   // When the flat was rented / sold: it stays in the app with a label for 30 days.
   closedAt          DateTime? @map("closed_at")
+  // An agent saw the flat in person ("✓ Checked by our agent" in the mini app).
+  verifiedAt        DateTime? @map("verified_at")
+  // First time it went into the mini app ("listed 2 h ago").
+  catalogAt         DateTime? @map("catalog_at")
   // Nearby shops, schools, parks… from OpenStreetMap (JSON), refreshed monthly.
   nearby            String?
   nearbyAt          DateTime? @map("nearby_at")

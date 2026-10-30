@@ -151,6 +151,21 @@ const ka = {
   thisFlat: "ეს ბინა",
   minShort: "წთ",
   searchArea: "ამ არეალში ძებნა",
+  currency: "ვალუტა",
+  budgetCard: "თბილისში გადმოდიხარ?",
+  budgetCardText: "თვიური ბიუჯეტი: ქირა, კომუნალური, საკვები და ვიზის წესები",
+  asListed: "როგორც განცხადებაშია",
+  listedPrice: "განცხადებაში",
+  checked: "შემოწმებულია ჩვენი აგენტის მიერ",
+  checkedShort: "შემოწმებული",
+  checkedOn: (d: string) => `შემოწმდა ${d}`,
+  listed: (when: string) => `დაემატა ${when}`,
+  ago: (ms: number) => {
+    const m = Math.round(ms / 60000), h = Math.round(ms / 3600000), d = Math.round(ms / 86400000);
+    return m < 5 ? "ახლახან" : m < 60 ? `${m} წთ-ის წინ` : h < 24 ? `${h} სთ-ის წინ` : d <= 1 ? "გუშინ" : d < 30 ? `${d} დღის წინ` : `${Math.round(d / 30)} თვის წინ`;
+  },
+  safeTitle: "უსაფრთხო ქირა ჩვენთან",
+  safeText: "ჩვენ არასდროს ვითხოვთ ფულს ბინის ნახვამდე. იხდი მხოლოდ მას შემდეგ, რაც ბინას ნახავ და ხელშეკრულებას მოაწერ ხელს.",
   thisArea: "ეს არეალი",
   nearFilter: (n: number) => `ახლოს (${n} წთ-მდე ფეხით)`,
 };
@@ -308,6 +323,21 @@ const en: Dict = {
   thisFlat: "This flat",
   minShort: "min",
   searchArea: "Search this area",
+  currency: "Currency",
+  budgetCard: "Moving to Tbilisi?",
+  budgetCardText: "Your monthly budget: rent, bills, food — and visa rules",
+  asListed: "As listed",
+  listedPrice: "Listed price",
+  checked: "Checked by our agent",
+  checkedShort: "Checked",
+  checkedOn: (d: string) => `checked ${d}`,
+  listed: (when: string) => `Listed ${when}`,
+  ago: (ms: number) => {
+    const m = Math.round(ms / 60000), h = Math.round(ms / 3600000), d = Math.round(ms / 86400000);
+    return m < 5 ? "just now" : m < 60 ? `${m} min ago` : h < 24 ? `${h} h ago` : d <= 1 ? "yesterday" : d < 30 ? `${d} days ago` : `${Math.round(d / 30)} mo ago`;
+  },
+  safeTitle: "Safe renting with us",
+  safeText: "We never ask for money before a viewing. You pay only after you have seen the flat and signed the contract.",
   thisArea: "This area",
   nearFilter: (n: number) => `Nearby (up to ${n} min walk)`,
 };
@@ -463,6 +493,21 @@ const ru: Dict = {
   thisFlat: "Эта квартира",
   minShort: "мин",
   searchArea: "Искать в этой области",
+  currency: "Валюта",
+  budgetCard: "Переезжаете в Тбилиси?",
+  budgetCardText: "Бюджет на месяц: аренда, коммуналка, еда и визовые правила",
+  asListed: "Как в объявлении",
+  listedPrice: "В объявлении",
+  checked: "Проверено нашим агентом",
+  checkedShort: "Проверено",
+  checkedOn: (d: string) => `проверено ${d}`,
+  listed: (when: string) => `Добавлено ${when}`,
+  ago: (ms: number) => {
+    const m = Math.round(ms / 60000), h = Math.round(ms / 3600000), d = Math.round(ms / 86400000);
+    return m < 5 ? "только что" : m < 60 ? `${m} мин назад` : h < 24 ? `${h} ч назад` : d <= 1 ? "вчера" : d < 30 ? `${d} дн. назад` : `${Math.round(d / 30)} мес. назад`;
+  },
+  safeTitle: "Безопасная аренда с нами",
+  safeText: "Мы никогда не просим деньги до просмотра. Вы платите только после того, как увидели квартиру и подписали договор.",
   thisArea: "Эта область",
   nearFilter: (n: number) => `Рядом (до ${n} мин пешком)`,
 };

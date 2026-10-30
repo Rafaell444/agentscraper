@@ -82,6 +82,16 @@ export async function setAvailability(formData: FormData) {
   back(id, { ok: true, message: `სტატუსი: ${AVAILABILITY[value].label}` });
 }
 
+/** "✓ Checked by our agent": an agent saw the flat today (or the mark is removed). */
+export async function setVerified(formData: FormData) {
+  await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const on = formData.get("on") === "1";
+  await prisma.sharedPost.update({ where: { id }, data: { verifiedAt: on ? new Date() : null } });
+  back(id, { ok: true, message: on ? "✓ მონიშნულია: აგენტმა ნახა ბინა (აპში ჩანს „შემოწმებულია“)" : "შემოწმების ნიშანი მოიხსნა" });
+}
+
 /** Point the bot at this CRM: webhook for /start and the menu button that opens the mini app. */
 export async function connectBot() {
   await requireAdmin();

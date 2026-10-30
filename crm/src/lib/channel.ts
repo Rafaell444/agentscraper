@@ -3,6 +3,7 @@ import { getSettings } from "./settings";
 import { shareBase } from "./shareUrl";
 import { asLang, channelCaption, type CaptionLinks, type Lang } from "./catalog";
 import { callVerbose, deleteMessages, editPostCaption, postAlbum } from "./telegram";
+import { watermark } from "./watermark";
 
 // Posting catalog listings to the agency's Telegram channel.  The bot must be
 // an admin of the channel (telegram_channel setting).
@@ -47,6 +48,8 @@ export async function captionLinks(ref: number | null, lang?: Lang, inCatalog = 
 }
 
 export async function ensureRefNo(postId: string): Promise<number> {
+  // Called whenever a flat goes public; the first time is its "listed" date in the app.
+  await prisma.sharedPost.updateMany({ where: { id: postId, catalogAt: null }, data: { catalogAt: new Date() } });
   const post = await prisma.sharedPost.findUniqueOrThrow({ where: { id: postId }, select: { refNo: true } });
   if (post.refNo) return post.refNo;
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -116,7 +119,10 @@ export async function publishToChannel(postId: string, onlyExisting = false): Pr
       continue;
     }
     if (onlyExisting) continue;
-    photos ??= await prisma.sharedPostPhoto.findMany({ where: { postId }, orderBy: [{ position: "asc" }, { id: "asc" }], take: 10, select: { mime: true, data: true } });
+    // Watermarked once, then the same album goes to every channel.
+    photos ??= await Promise.all(
+      (await prisma.sharedPostPhoto.findMany({ where: { postId }, orderBy: [{ position: "asc" }, { id: "asc" }], take: 10, select: { mime: true, data: true } })).map((p) => watermark(p.data)),
+    );
     const sent = await postAlbum(target.chat, caption, photos);
     if (!sent.ok) {
       errors.push(`${CHANNEL_FLAG[target.lang]}: ${sent.error}`);

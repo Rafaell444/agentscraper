@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { DEAL_LABEL, FEATURES, PETS, dealKind, headline, isPublic, placeName, priceText, termText, toCatalogItem, typeLabel, type Lang } from "@/lib/catalog";
+import { DEAL_LABEL, FEATURES, PETS, photoUrl, dealKind, headline, isPublic, placeName, priceText, termText, toCatalogItem, typeLabel, type Lang } from "@/lib/catalog";
 import { catalogLink, managerLink } from "@/lib/channel";
 import { metroName } from "@/lib/metro";
 import { mapView } from "@/lib/map";
@@ -194,7 +194,7 @@ export default async function FlatPage({ params, searchParams }: Props) {
               <li key={p.id}>
                 <Link href={`/flat/${p.refNo}${lang === "en" ? "" : `?lang=${lang}`}`} className="block overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200 hover:shadow-md">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {p.photos[0] ? <img src={`/api/catalog/photo/${p.photos[0].id}`} alt={headline(p, lang)} loading="lazy" className="h-32 w-full object-cover" /> : <div className="flex h-32 items-center justify-center bg-gray-100 text-2xl">🏠</div>}
+                  {p.photos[0] ? <img src={photoUrl(p.photos[0].id)} alt={headline(p, lang)} loading="lazy" className="h-32 w-full object-cover" /> : <div className="flex h-32 items-center justify-center bg-gray-100 text-2xl">🏠</div>}
                   <div className="p-2">
                     <div className="text-sm font-bold">{priceText(p.price, p.currency, dealKind(p.dealType), lang)}</div>
                     <div className="truncate text-xs text-gray-600">{headline(p, lang)}</div>

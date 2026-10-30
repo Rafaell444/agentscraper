@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEAL_LABEL, FEATURES, LEASE_TERMS, PETS, PROPERTY_TYPES, TBILISI_DISTRICTS, placeName, priceText, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
+import { CURRENCIES, CURRENCY_SIGN, DEAL_LABEL, FEATURES, type Currency, type Rates, LEASE_TERMS, PETS, PROPERTY_TYPES, TBILISI_DISTRICTS, placeName, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
 import { METRO, METRO_LINE_COLOR, metroName } from "@/lib/metro";
 import { MediaGallery, NearbySection } from "./Media";
 import { DICT, type Dict } from "./i18n";
 import { MapView, shortPrice, type Bounds } from "./MapView";
 import { haptic, openTelegram, tg } from "./tg";
+import { money, moneyShort, original, setShownCurrency } from "./money";
+import { BudgetCalculator } from "./Budget";
 import { KIND_ORDER, NEAR_MINUTES, PLACE_EMOJI } from "./places";
 
 // near: place kinds (lib/nearby) within NEAR_MINUTES on foot; optional so older saved searches still load.
@@ -15,7 +17,7 @@ type Sort = "new" | "priceAsc" | "priceDesc" | "area";
 type Tab = "home" | "list" | "map" | "saved" | "request";
 type SavedSearch = { id: string; filters: Filters; query: string; seen: number; notify?: boolean };
 type Facet = "deal" | "price" | "rooms" | "district" | "metro";
-type Sheet = null | "filters" | { facet: Facet } | { kind: "viewing" | "question"; ref: number };
+type Sheet = null | "filters" | "budget" | { facet: Facet } | { kind: "viewing" | "question"; ref: number };
 
 // One-tap price ranges per deal type, in USD.
 const PRICE_PRESETS: Record<DealKind, [string, string][]> = {
@@ -252,7 +254,27 @@ function detectLang(): Lang {
   return code === "ka" || code === "ru" ? code : code === "uk" || code === "be" || code === "kk" ? "ru" : "en";
 }
 
-export function CatalogApp({ items: allItems, agency, manager, phone, linkTemplate }: { items: CatalogItem[]; agency: string; manager: string | null; phone: string | null; linkTemplate: string }) {
+export function CatalogApp({ items: allItems, agency, manager, phone, linkTemplate, rates }: { items: CatalogItem[]; agency: string; manager: string | null; phone: string | null; linkTemplate: string; rates: Rates }) {
+  // Currency switch: "" = as listed; the choice is remembered on this device.
+  const [currency, setCurrency] = useState<Currency | "">("");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("catalog_currency") as Currency | null;
+      if (saved && CURRENCIES.includes(saved)) setCurrency(saved);
+    } catch {
+      // storage blocked
+    }
+  }, []);
+  setShownCurrency(currency, rates);
+  const changeCurrency = (value: Currency | "") => {
+    haptic("select");
+    setCurrency(value);
+    try {
+      localStorage.setItem("catalog_currency", value);
+    } catch {
+      // storage blocked
+    }
+  };
   // Rented / sold flats only show on Home ("recently rented"), in their own page and in Saved.
   const items = useMemo(() => allItems.filter((i) => !i.closed), [allItems]);
   const closedItems = useMemo(() => allItems.filter((i) => i.closed), [allItems]);
@@ -428,7 +450,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
     haptic("tap");
     track("share", item.ref);
     const link = linkTemplate.replace("{ref}", String(item.ref)).replace("{lang}", lang);
-    const text = `${title(item, lang)} · ${priceText(item.price, item.currency, item.kind, lang)}`;
+    const text = `${title(item, lang)} · ${money(item, lang)}`;
     const app = tg();
     if (app?.shareMessage) {
       const prepared = await fetch("/api/catalog/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ref: item.ref, lang, initData: app.initData }) })
@@ -449,7 +471,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
   };
   const askManager = (item?: CatalogItem) => {
     if (!manager) return;
-    const text = item ? `#${item.ref} — ${title(item, lang)}, ${priceText(item.price, item.currency, item.kind, lang)}` : "";
+    const text = item ? `#${item.ref} — ${title(item, lang)}, ${money(item, lang)}` : "";
     openTelegram(text ? `${manager}?text=${encodeURIComponent(text)}` : manager);
   };
 
@@ -572,12 +594,22 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
                   <img src="/brand-logo.jpg" alt="Tbilisi Buy & Rent" className="h-full w-full scale-[1.22] object-cover" />
                 </span>
               )}
-              <span className="min-w-0 flex-1 truncate text-base font-extrabold tracking-tight text-[var(--text)]">{agency}</span>
+              {/* Next to Back the name would be squeezed to "T…"; the Back button says enough there. */}
+              <span className={`min-w-0 flex-1 truncate text-base font-extrabold tracking-tight text-[var(--text)] ${canGoBack ? "invisible" : ""}`}>{agency}</span>
               {tab === "list" || tab === "map" ? (
                 <button type="button" aria-label={t.search} onClick={() => { haptic("tap"); setSearching(true); }} className={`flex h-10 w-10 items-center justify-center rounded-xl ${query ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--text)]"}`}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
                 </button>
               ) : null}
+              <label className="relative flex h-10 shrink-0 items-center rounded-xl bg-[var(--bg)] px-2.5 text-sm font-bold text-[var(--accent)]" aria-label={t.currency}>
+                {currency ? CURRENCY_SIGN[currency] : "$₾"}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="ml-0.5 opacity-60"><path d="m6 9 6 6 6-6" /></svg>
+                {/* Native picker: compact and familiar on phones. */}
+                <select value={currency} onChange={(e) => changeCurrency(e.target.value as Currency | "")} className="absolute inset-0 cursor-pointer opacity-0">
+                  <option value="">{t.asListed}</option>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{CURRENCY_SIGN[c]} {c}</option>)}
+                </select>
+              </label>
               <div className="flex rounded-lg bg-[var(--bg)] p-0.5 text-xs font-semibold">
                 {(["ka", "en", "ru"] as Lang[]).map((l) => (
                   <button key={l} type="button" onClick={() => changeLang(l)} className={`min-h-9 rounded-md px-2.5 py-1.5 ${lang === l ? "bg-[var(--accent)] text-white" : "text-[var(--hint)]"}`}>{l.toUpperCase()}</button>
@@ -648,6 +680,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
               onQuery={(q) => { setFilters(emptyFilters(deals[0] ?? "rent")); setQuery(q); setTab("list"); }}
               onMap={() => { haptic("select"); setTab("map"); }}
               onRequest={() => { haptic("select"); setTab("request"); }}
+              onBudget={() => { haptic("tap"); setSheet("budget"); }}
             />
           ) : null}
 
@@ -688,6 +721,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
                 dark={tg()?.colorScheme === "dark"}
                 lang={lang}
                 fitKey={fitKey}
+                currency={currency}
                 onSearchArea={(b) => { haptic("success"); setArea(b); setMapSelected(null); }}
                 bottom={mapSelected ? 170 : 60}
               />
@@ -769,6 +803,11 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
           <FilterPanel only={sheet.facet} deals={deals} onDeal={(d) => { setFilters(emptyFilters(d)); setSheet(null); }} filters={filters} setFilters={setFilters} districts={districts} lang={lang} t={t} items={items} count={results.length} onReset={() => setFilters(emptyFilters(filters.deal))} onApply={() => { haptic("tap"); setSheet(null); }} />
         </BottomSheet>
       ) : null}
+      {sheet === "budget" ? (
+        <BottomSheet onClose={() => setSheet(null)}>
+          <BudgetCalculator items={allItems} lang={lang} currency={currency} rates={rates} onBrowse={(patch) => { setSheet(null); browse(patch); }} />
+        </BottomSheet>
+      ) : null}
       {sheet === "filters" ? (
         <BottomSheet onClose={() => setSheet(null)}>
           <FilterPanel filters={filters} setFilters={setFilters} districts={districts} lang={lang} t={t} items={items} count={results.length} onReset={() => setFilters(emptyFilters(filters.deal))} onApply={() => { haptic("tap"); setSheet(null); }} />
@@ -781,7 +820,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
             return (
               <>
                 <h2 className="text-lg font-bold">{sheet.kind === "viewing" ? t.requestViewing : t.ask}</h2>
-                {item ? <p className="mt-0.5 text-sm text-[var(--hint)]">#{item.ref} · {title(item, lang)} · {priceText(item.price, item.currency, item.kind, lang)}</p> : null}
+                {item ? <p className="mt-0.5 text-sm text-[var(--hint)]">#{item.ref} · {title(item, lang)} · {money(item, lang)}</p> : null}
                 <LeadForm kind={sheet.kind} item={item} lang={lang} t={t} onDone={() => setSheet(null)} />
               </>
             );
@@ -792,6 +831,17 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
       {toast ? <div className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit rounded-full bg-black/80 px-4 py-2 text-sm text-white">{toast}</div> : null}
     </div>
   );
+}
+
+/** "2 h ago", worked out after mount so the server and the browser render the same text. */
+function Ago({ iso, t }: { iso: string; t: Dict }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => setNow(Date.now()), []);
+  return now == null ? null : <>{t.ago(Math.max(0, now - Date.parse(iso)))}</>;
+}
+
+function shortDate(iso: string, lang: Lang): string {
+  return new Date(iso).toLocaleDateString(lang === "ka" ? "ka-GE" : lang === "ru" ? "ru-RU" : "en-GB", { day: "numeric", month: "short" });
 }
 
 function ClosedRibbon({ item, t }: { item: CatalogItem; t: Dict }) {
@@ -861,7 +911,7 @@ function MiniCard({ item, lang, onOpen, t }: { item: CatalogItem; lang: Lang; on
         {t ? <ClosedRibbon item={item} t={t} /> : null}
       </div>
       <div className="p-2">
-        <div className="text-sm font-bold">{shortPrice(item)}{item.kind === "rent" ? (lang === "ru" ? "/мес" : lang === "ka" ? "/თვე" : "/mo") : ""}</div>
+        <div className="text-sm font-bold">{moneyShort(item)}{item.kind === "rent" ? (lang === "ru" ? "/мес" : lang === "ka" ? "/თვე" : "/mo") : ""}</div>
         <div className="truncate text-xs text-[var(--hint)]">{title(item, lang)}{item.district ? ` · ${placeName(item.district, lang)}` : ""}</div>
       </div>
     </button>
@@ -928,9 +978,9 @@ function SearchList({ searches, t, describe, countOf, freshOf, onOpen, onRemove,
 
 const DEAL_EMOJI: Record<DealKind, string> = { rent: "🏠", sale: "🔑", daily: "📅" };
 
-function Home({ items, closed, deals, lang, t, recent, searchProps, onOpen, onBrowse, onQuery, onMap, onRequest }: {
+function Home({ items, closed, deals, lang, t, recent, searchProps, onOpen, onBrowse, onQuery, onMap, onRequest, onBudget }: {
   items: CatalogItem[]; closed: CatalogItem[]; deals: DealKind[]; lang: Lang; t: Dict; recent: CatalogItem[]; searchProps: SearchProps;
-  onOpen: (ref: number) => void; onBrowse: (patch: Partial<Filters> & { deal: DealKind }) => void; onQuery: (q: string) => void; onMap: () => void; onRequest: () => void;
+  onOpen: (ref: number) => void; onBrowse: (patch: Partial<Filters> & { deal: DealKind }) => void; onQuery: (q: string) => void; onMap: () => void; onRequest: () => void; onBudget: () => void;
 }) {
   const [q, setQ] = useState("");
   const name = tg()?.initDataUnsafe?.user?.first_name ?? "";
@@ -1020,7 +1070,7 @@ function Home({ items, closed, deals, lang, t, recent, searchProps, onOpen, onBr
                 <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
                 <span className="absolute inset-x-2.5 bottom-2 text-white">
                   <span className="block truncate text-sm font-bold">{placeName(d.district, lang)}</span>
-                  <span className="block text-[11px] text-white/85">{d.count}{d.cheapest ? ` · ${t.fromPrice(shortPrice(d.cheapest))}` : ""}</span>
+                  <span className="block text-[11px] text-white/85">{d.count}{d.cheapest ? ` · ${t.fromPrice(moneyShort(d.cheapest))}` : ""}</span>
                 </span>
               </button>
             ))}
@@ -1028,6 +1078,14 @@ function Home({ items, closed, deals, lang, t, recent, searchProps, onOpen, onBr
         </section>
       ) : null}
 
+      <button type="button" onClick={onBudget} className="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-[var(--navy)] to-[#1d4f8c] p-4 text-left text-white shadow-md active:scale-[0.99]">
+        <span className="text-3xl">🧮</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-bold">{t.budgetCard}</span>
+          <span className="block text-xs text-white/80">{t.budgetCardText}</span>
+        </span>
+        <span className="text-xl">›</span>
+      </button>
       <button type="button" onClick={onRequest} className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-[var(--accent)] bg-[var(--bg)] p-4 text-left">
         <span className="text-3xl">🔎</span>
         <span className="min-w-0 flex-1">
@@ -1174,9 +1232,9 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null 
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {item.photos[0] ? <img src={item.photos[0]} alt="" className="brand-ph h-20 w-24 shrink-0 rounded-xl object-cover" /> : <div className="flex h-20 w-24 shrink-0 items-center justify-center rounded-xl bg-[var(--bg2)] text-2xl">🏠</div>}
         <div className="min-w-0 flex-1 py-0.5">
-          <div className="text-base font-bold">{priceText(item.price, item.currency, item.kind, lang)}</div>
+          <div className="text-base font-bold">{money(item, lang)}</div>
           <div className="truncate text-sm">{title(item, lang)}{item.area ? ` · ${item.area} ${m2(lang)}` : ""}</div>
-          <div className="truncate text-xs text-[var(--hint)]">{place}</div>
+          <div className="truncate text-xs text-[var(--hint)]">{place}{place ? " · " : ""}<Ago iso={item.listedAt} t={t} /></div>
           <MetroBadge item={item} lang={lang} t={t} small />
           <NearbyLine item={item} t={t} />
         </div>
@@ -1193,6 +1251,7 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null 
           {isNew(item) && !item.closed ? <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[11px] font-bold text-white">{t.isNew}</span> : null}
           {item.availability === "reserved" ? <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">{t.reserved}</span> : null}
           {good ? <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-bold text-white">💎 {t.goodPrice} −{good}%</span> : null}
+          {item.verifiedAt ? <span className="rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-bold text-emerald-700 shadow-sm">✓ {t.checkedShort}</span> : null}
           {item.video || item.tour ? <span className="rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold text-white">{item.video ? "🎬" : ""}{item.tour ? "🧭" : ""}</span> : null}
         </div>
         <div className="absolute right-2 top-2">
@@ -1202,7 +1261,7 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null 
       </div>
       <button type="button" onClick={() => onOpen(item.ref)} className="block w-full space-y-2 p-3 text-left">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-xl font-bold">{priceText(item.price, item.currency, item.kind, lang)}</span>
+          <span className="text-xl font-bold">{money(item, lang)}</span>
           <span className="truncate text-sm text-[var(--hint)]">{title(item, lang)}</span>
         </div>
         <Facts item={item} lang={lang} t={t} />
@@ -1213,6 +1272,7 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null 
           </div>
         ) : null}
         <MetroBadge item={item} lang={lang} t={t} />
+        <div className="text-[11px] text-[var(--hint)]">🕒 <Ago iso={item.listedAt} t={t} /></div>
         {item.features.length || item.pets === "yes" ? (
           <div className="flex flex-wrap gap-1">
             {item.pets === "yes" ? <span className="rounded-full bg-[var(--bg2)] px-2 py-0.5 text-[11px]">🐾</span> : null}
@@ -1305,7 +1365,8 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
             {item.availability === "reserved" ? <span className="rounded-full bg-amber-500 px-2 py-0.5 font-bold text-white">{t.reserved}</span> : null}
             {item.closed ? <span className="rounded-full bg-[#0e2a4d] px-2 py-0.5 font-bold text-white">✓ {item.kind === "sale" ? t.sold : t.rented}</span> : null}
           </div>
-          <div className={`text-2xl font-bold ${item.closed ? "text-[var(--hint)] line-through decoration-2" : ""}`}>{priceText(item.price, item.currency, item.kind, lang)}</div>
+          <div className={`text-2xl font-bold ${item.closed ? "text-[var(--hint)] line-through decoration-2" : ""}`}>{money(item, lang)}</div>
+          {original(item, lang) ? <div className="-mt-1 text-xs text-[var(--hint)]">{t.listedPrice}: {original(item, lang)}</div> : null}
           {good ? (
             <div className="inline-flex items-center gap-1.5 rounded-xl bg-[color-mix(in_srgb,#059669_14%,var(--bg))] px-2.5 py-1.5 text-xs font-semibold text-[color-mix(in_srgb,#059669_75%,var(--text))]">
               💎 {t.goodPrice} · {t.goodPriceHint(good, placeName(item.district, lang))}
@@ -1314,6 +1375,15 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
           <h1 className="text-base font-semibold">{title(item, lang)}{item.area ? `, ${item.area} ${m2(lang)}` : ""}</h1>
           {place ? <div className="text-sm text-[var(--hint)]">📍 {place}</div> : null}
           <MetroBadge item={item} lang={lang} t={t} all />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
+            {item.verifiedAt ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/10 px-2 py-1 font-semibold text-emerald-700">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                {t.checked} · {shortDate(item.verifiedAt, lang)}
+              </span>
+            ) : null}
+            <span className="text-[var(--hint)]">🕒 {t.listed("")}<Ago iso={item.listedAt} t={t} /></span>
+          </div>
         </section>
 
         <section className="rounded-2xl bg-[var(--bg)] p-4">
@@ -1352,6 +1422,16 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
 
         <NearbySection item={item} lang={lang} t={t} />
 
+        {!item.closed ? (
+          <section className="flex gap-3 rounded-2xl bg-[var(--bg)] p-4">
+            <span className="text-2xl">🛡</span>
+            <div>
+              <h2 className="text-sm font-semibold">{t.safeTitle}</h2>
+              <p className="mt-0.5 text-xs leading-relaxed text-[var(--hint)]">{t.safeText}</p>
+            </div>
+          </section>
+        ) : null}
+
         {similar.length ? (
           <section>
             <h2 className="mb-2 px-1 text-sm font-semibold">{t.similar}</h2>
@@ -1361,7 +1441,7 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {s.photos[0] ? <img src={s.photos[0]} alt="" loading="lazy" className="brand-ph h-28 w-full object-cover" /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
                   <div className="p-2">
-                    <div className="text-sm font-bold">{shortPrice(s)}{s.kind === "rent" ? (lang === "ru" ? "/мес" : lang === "ka" ? "/თვე" : "/mo") : ""}</div>
+                    <div className="text-sm font-bold">{moneyShort(s)}{s.kind === "rent" ? (lang === "ru" ? "/мес" : lang === "ka" ? "/თვე" : "/mo") : ""}</div>
                     <div className="truncate text-xs text-[var(--hint)]">{title(s, lang)} · {placeName(s.district, lang)}</div>
                   </div>
                 </button>

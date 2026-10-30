@@ -1,7 +1,7 @@
 import { prisma } from "./db";
 import { getSettings } from "./settings";
 import { shareBase } from "./shareUrl";
-import { DEAL_LABEL, FEATURES, asLang, dealKind, featureList, headline, metroLine, placeName, priceText, priceUsd, termText, typeLabel, type Lang } from "./catalog";
+import { DEAL_LABEL, FEATURES, asLang, dealKind, featureList, headline, metroLine, photoUrl, placeName, priceText, priceUsd, termText, typeLabel, type Lang } from "./catalog";
 import { metroName, metroNearby } from "./metro";
 import { catalogLink } from "./channel";
 import { callVerbose } from "./telegram";
@@ -173,7 +173,7 @@ export async function alertMatchingClients(postId: string): Promise<number> {
       `<i>${TEXT.stop[lang]}</i>`,
     ].filter((line, i, all) => line !== "" || all[i - 1] !== "").join("\n");
     const reply_markup = { inline_keyboard: [[{ text: TEXT.open[lang], url: catalogLink(settings, base, post.refNo, lang, "a") }]] };
-    const photo = post.photos[0] && base.startsWith("https://") ? `${base}/api/catalog/photo/${post.photos[0].id}` : null;
+    const photo = post.photos[0] && base.startsWith("https://") ? `${base}${photoUrl(post.photos[0].id)}` : null;
     let result = photo ? await callVerbose("sendPhoto", { chat_id: chatId, photo, caption, parse_mode: "HTML", reply_markup }) : null;
     if (!result?.ok) result = await callVerbose("sendMessage", { chat_id: chatId, text: caption, parse_mode: "HTML", reply_markup, link_preview_options: { is_disabled: true } });
     if (!result.ok) {

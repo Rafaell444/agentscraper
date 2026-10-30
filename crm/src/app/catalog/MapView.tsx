@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { roomsLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
 import { METRO, METRO_LINE_COLOR, metroLine } from "@/lib/metro";
 import { fetchNearby, placeHtml } from "./places";
+import { moneyShort } from "./money";
 
 // Leaflet + marker clustering, loaded from a CDN only when the map tab opens.
 // Pins are photo "pills" coloured by deal type; nearby flats group into
@@ -74,7 +75,8 @@ function loadGl(): Promise<boolean> {
 /** Names in the reader's language; streets missing one fall back to the Latin spelling (en, ru) or the local name. */
 function nameIn(lang: Lang): unknown[] {
   if (lang === "ka") return ["coalesce", ["get", "name:ka"], ["get", "name"]];
-  if (lang === "ru") return ["coalesce", ["get", "name:ru"], ["get", "name:latin"], ["get", "name"]];
+  // Russian: a street without a Russian name reads better in English ("Chavchavadze Ave") than transliterated.
+  if (lang === "ru") return ["coalesce", ["get", "name:ru"], ["get", "name:en"], ["get", "name_en"], ["get", "name:latin"], ["get", "name"]];
   return ["coalesce", ["get", "name:en"], ["get", "name_en"], ["get", "name:latin"], ["get", "name"]];
 }
 
@@ -150,7 +152,7 @@ export type LayerKey = "streets" | "satellite" | "terrain" | "dark";
 // no key) drawn by MapLibre inside Leaflet, so street and district names
 // follow the app language. url / labels are the raster fallback (and the
 // picker preview) when WebGL or the vector map is not available.
-const LAYERS: Record<LayerKey, { url: string; max: number; attribution: string; labels?: string; vector?: VectorStyle; vectorLabels?: boolean }> = {
+const LAYERS: Record<LayerKey, { url: string; max: number; attribution: string; labels?: string; vector?: VectorStyle; vectorLabels?: boolean; relief?: boolean }> = {
   streets: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, attribution: "© OpenStreetMap", vector: "liberty" },
   satellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -159,7 +161,8 @@ const LAYERS: Record<LayerKey, { url: string; max: number; attribution: string; 
     labels: "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
     vectorLabels: true,
   },
-  terrain: { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", max: 17, attribution: "© OpenStreetMap © OpenTopoMap" },
+  // Terrain: the translated street map with hill shading multiplied over it (OpenTopoMap only as the fallback; its names are Georgian).
+  terrain: { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", max: 17, attribution: "© OpenStreetMap © OpenTopoMap", vector: "liberty", relief: true },
   dark: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
     max: 16,
@@ -174,7 +177,7 @@ function pinHtml(item: CatalogItem, active: boolean, lang: Lang): string {
   const thumb = photo ? `<i style="background-image:url('${photo}')"></i>` : `<i class="e">🏠</i>`;
   // Zoomed in close (.zoom-xl) the pin grows into a small photo card with rooms and m².
   const facts = [roomsLabel(item.rooms, lang), item.area ? `${item.area} m²` : ""].filter(Boolean).join(" · ");
-  return `<div class="mp${active ? " on" : ""}" style="--k:${KIND_COLOR[item.kind]}">${thumb}<span>${shortPrice(item)}${facts ? `<em>${facts}</em>` : ""}</span></div>`;
+  return `<div class="mp${active ? " on" : ""}" style="--k:${KIND_COLOR[item.kind]}">${thumb}<span>${moneyShort(item)}${facts ? `<em>${facts}</em>` : ""}</span></div>`;
 }
 
 export type MapLabels = { layers: Record<LayerKey, string>; locate: string; fit: string; from: string; metro: string; searchArea: string };
@@ -185,9 +188,9 @@ export type Bounds = { s: number; w: number; n: number; e: number };
  * not when "search this area" narrows the list.  bottom: px covered by the
  * cards at the bottom, so the selected pin is kept above them.
  */
-export function MapView({ items, selected, onSelect, labels, dark, lang, fitKey, onSearchArea, bottom = 190 }: {
+export function MapView({ items, selected, onSelect, labels, dark, lang, fitKey, onSearchArea, bottom = 190, currency = "" }: {
   items: CatalogItem[]; selected: number | null; onSelect: (ref: number | null) => void; labels: MapLabels; dark: boolean; lang: Lang;
-  fitKey: string; onSearchArea: (bounds: Bounds) => void; bottom?: number;
+  fitKey: string; currency?: string; onSearchArea: (bounds: Bounds) => void; bottom?: number;
 }) {
   // "Search this area" shows after the user (not the app) moves the map.
   const [moved, setMoved] = useState(false);
@@ -273,13 +276,16 @@ export function MapView({ items, selected, onSelect, labels, dark, lang, fitKey,
             return L.divIcon({
               className: "",
               iconSize: [0, 0],
-              html: `<div class="mc"><b style="width:${size}px;height:${size}px">${count}</b>${cheapest ? `<span>${fromLabel.current.replace("{p}", shortPrice(cheapest))}</span>` : ""}</div>`,
+              html: `<div class="mc"><b style="width:${size}px;height:${size}px">${count}</b>${cheapest ? `<span>${fromLabel.current.replace("{p}", moneyShort(cheapest))}</span>` : ""}</div>`,
             });
           },
         });
         m.addLayer(cluster.current);
         // Metro lines and stations sit under the listing pins.
         m.createPane("metro").style.zIndex = "450";
+        // Hill shading over the vector map (terrain layer): multiplied, so streets and names stay readable.
+        const reliefPane = m.createPane("relief");
+        Object.assign(reliefPane.style, { zIndex: "250", mixBlendMode: "multiply", opacity: "0.55", pointerEvents: "none" });
         // Places of the selected flat: above metro, under the listing pins.
         const placesPane = m.createPane("places");
         placesPane.style.zIndex = "500";
@@ -317,8 +323,9 @@ export function MapView({ items, selected, onSelect, labels, dark, lang, fitKey,
     };
     const raster = () => L.tileLayer(spec.url, { maxZoom: 19, maxNativeZoom: spec.max, attribution: spec.attribution, subdomains: "abc" });
     const rasterLabels = () => (spec.labels ? [L.tileLayer(spec.labels, { maxZoom: 19, maxNativeZoom: spec.max, pane: "overlayPane" })] : []);
+    const relief = () => (spec.relief ? [L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, maxNativeZoom: 16, pane: "relief", attribution: "© Esri" })] : []);
     if (spec.vector) {
-      vectorLayer(L, spec.vector, lang).then((gl) => alive && show(gl ? [gl] : [raster(), ...rasterLabels()]));
+      vectorLayer(L, spec.vector, lang).then((gl) => alive && show(gl ? [gl, ...relief()] : [raster(), ...rasterLabels()]));
     } else if (spec.vectorLabels) {
       vectorLayer(L, "liberty", lang, true).then((gl) => alive && show([raster(), ...(gl ? [gl] : rasterLabels())]));
     } else {
@@ -375,7 +382,7 @@ export function MapView({ items, selected, onSelect, labels, dark, lang, fitKey,
       fit();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, ready, fitKey, lang]);
+  }, [key, ready, fitKey, lang, currency]);
 
   // Highlight the selected pin; an approximate location gets a soft circle.
   useEffect(() => {
@@ -408,7 +415,7 @@ export function MapView({ items, selected, onSelect, labels, dark, lang, fitKey,
   // Redraw the cluster bubbles in the new language (without moving the map).
   useEffect(() => {
     if (ready) cluster.current?.refreshClusters();
-  }, [labels.from, ready]);
+  }, [labels.from, ready, currency]);
 
   // The tapped flat's shops, schools, parks… appear around it (only that flat's, so the map stays clean).
   useEffect(() => {

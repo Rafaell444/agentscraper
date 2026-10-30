@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { asLang, dealKind, headline, metroLine, placeName, priceText } from "@/lib/catalog";
+import { asLang, dealKind, headline, metroLine, photoUrl, placeName, priceText } from "@/lib/catalog";
 import { catalogLink } from "@/lib/channel";
 import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     `🆔 ${post.refNo}`,
   ].filter(Boolean).join("\n");
   const reply_markup = { inline_keyboard: [[{ text: OPEN[lang], url: catalogLink(settings, base, post.refNo, lang, "s") }]] };
-  const photo = post.photos[0] ? `${base}/api/catalog/photo/${post.photos[0].id}` : null;
+  const photo = post.photos[0] ? `${base}${photoUrl(post.photos[0].id)}` : null;
   const result = photo
     ? { type: "photo", id: `p${post.refNo}`, photo_url: photo, thumbnail_url: photo, caption, parse_mode: "HTML", reply_markup }
     : { type: "article", id: `p${post.refNo}`, title: headline(post, lang), input_message_content: { message_text: caption, parse_mode: "HTML" }, reply_markup };

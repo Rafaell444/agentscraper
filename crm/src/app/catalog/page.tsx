@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/settings";
 import { publicWhere, toCatalogItem } from "@/lib/catalog";
 import { catalogLink, managerLink } from "@/lib/channel";
 import { shareBase } from "@/lib/shareUrl";
+import { getRates } from "@/lib/rates";
 import { CatalogApp } from "./CatalogApp";
 
 // The Telegram mini app (also works as a normal web page).  Every listing is
@@ -20,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 1, viewportFit: "cover" };
 
 export default async function CatalogPage() {
-  const [posts, settings] = await Promise.all([
+  const [posts, settings, rates] = await Promise.all([
     prisma.sharedPost.findMany({
       where: publicWhere(),
       orderBy: [{ channelPostedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }],
@@ -28,6 +29,7 @@ export default async function CatalogPage() {
       include: { photos: { orderBy: [{ position: "asc" }, { id: "asc" }], select: { id: true, kind: true } } },
     }),
     getSettings(),
+    getRates(),
   ]);
   const base = await shareBase(settings.public_base_url);
   // {ref} and {lang} are filled in by the app; _s marks the link as shared by a friend (stats).
@@ -42,6 +44,7 @@ export default async function CatalogPage() {
         manager={managerLink(settings.catalog_manager)}
         phone={settings.agency_phone || null}
         linkTemplate={linkTemplate}
+        rates={rates}
       />
     </>
   );

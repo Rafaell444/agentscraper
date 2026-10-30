@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { CatalogItem, Lang } from "@/lib/catalog";
+import { placeName, type CatalogItem, type Lang } from "@/lib/catalog";
 import type { Dict } from "./i18n";
 import { loadLeaflet, vectorLayer } from "./MapView";
 import { haptic } from "./tg";
@@ -323,6 +323,17 @@ type Nearby = { center: { lat: number; lng: number }; places: Place[] };
 type Point = { lat: number; lng: number };
 
 const NO_PLACES: Place[] = [];
+const ZOOM_TITLES: Record<Lang, { zoomInTitle: string; zoomOutTitle: string }> = {
+  en: { zoomInTitle: "Zoom in", zoomOutTitle: "Zoom out" },
+  ru: { zoomInTitle: "Приблизить", zoomOutTitle: "Отдалить" },
+  ka: { zoomInTitle: "მიახლოება", zoomOutTitle: "დაშორება" },
+};
+
+/** The place name in the reader's script: a Georgian-only name is written in Latin / Cyrillic letters. */
+function placeLabel(p: Place, lang: Lang): string {
+  const name = p.name[lang] || p.name.ka;
+  return lang !== "ka" && /[Ⴀ-ჿ]/.test(name) ? placeName(name, lang) : name;
+}
 
 const homeHtml = `<div style="width:36px;height:36px;border-radius:50%;background:#1d4f8c;border:3px solid #fff;box-shadow:0 0 0 7px rgba(29,79,140,.22),0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:17px;transform:translate(-50%,-50%)">🏠</div>`;
 
@@ -359,7 +370,7 @@ function PlacesMap({ center, exact, places, selected, interactive, onSelect, rec
         keyboard: interactive,
         tap: interactive,
       });
-      if (interactive) L.control.zoom({ position: "bottomright" }).addTo(m);
+      if (interactive) L.control.zoom({ position: "bottomright", ...ZOOM_TITLES[lang] }).addTo(m);
       // Street names in the app language (vector map); OSM pictures if that is not available.
       vectorLayer(L, "liberty", lang).then((gl) => {
         if (cancelled) return;
@@ -466,7 +477,7 @@ function MapScreen({ center, exact, places, kinds, startKind, lang, t, onClose }
           <div className="absolute inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[500] flex items-center gap-3 rounded-2xl bg-[var(--bg)] p-3 pr-14 shadow-lg">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl" style={{ background: `${PLACE_COLOR[selected.kind]}22` }}>{PLACE_EMOJI[selected.kind]}</span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">{selected.name[lang] || t.places[selected.kind]}</span>
+              <span className="block truncate text-sm font-semibold">{placeLabel(selected, lang) || t.places[selected.kind]}</span>
               <span className="block text-xs text-[var(--hint)]">{t.places[selected.kind]} · {t.walkMin(selected.minutes)}</span>
             </span>
           </div>

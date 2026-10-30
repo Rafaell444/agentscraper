@@ -180,12 +180,25 @@ export function featureList(csv: string | null | undefined): string[] {
   return FEATURES.filter((f) => keys.has(f.key)).map((f) => f.key);
 }
 
+export const CURRENCIES = ["USD", "GEL", "EUR", "RUB"] as const;
+export type Currency = (typeof CURRENCIES)[number];
+export const CURRENCY_SIGN: Record<string, string> = { USD: "$", GEL: "₾", EUR: "€", RUB: "₽" };
+/** Lari per one unit of each currency (National Bank of Georgia, lib/rates). */
+export type Rates = Record<Currency, number>;
+export const FALLBACK_RATES: Rates = { USD: 2.6, GEL: 1, EUR: 2.9, RUB: 0.032 };
+
+export function convert(price: number, from: string, to: Currency, rates: Rates): number {
+  const gel = price * (rates[from as Currency] ?? 1);
+  return gel / rates[to];
+}
+
 export function priceText(price: number | null | undefined, currency: string, kind: DealKind, lang: Lang): string {
   if (price == null) return { ka: "ფასი შეთანხმებით", en: "Price on request", ru: "Цена по запросу" }[lang];
-  const sym = currency === "GEL" ? "₾" : "$";
+  const sym = CURRENCY_SIGN[currency] ?? "$";
   const n = Math.round(price).toLocaleString("en-US").replace(/,/g, " ");
   const per = kind === "rent" ? { ka: "/თვე", en: "/mo", ru: "/мес" }[lang] : kind === "daily" ? { ka: "/დღე", en: "/day", ru: "/сутки" }[lang] : "";
-  return currency === "GEL" ? `${n} ${sym}${per}` : `${sym}${n}${per}`;
+  // $ and € go before the number, ₾ and ₽ after it.
+  return currency === "GEL" || currency === "RUB" ? `${n} ${sym}${per}` : `${sym}${n}${per}`;
 }
 
 /** Price in USD for filters (GEL converted at an approximate rate). */
@@ -333,6 +346,10 @@ export type CatalogItem = {
   tour: string | null;
   /** Rented or sold in the last 30 days: shown with a label, no requests. */
   closed: boolean;
+  /** An agent saw the flat (ISO date), null if not checked. */
+  verifiedAt: string | null;
+  /** When it first went into the app (older posts: when posted to the channel or last saved). */
+  listedAt: string;
   /** Places near the flat, nearest first per kind (looked up in the background, lib/nearby); null until then. */
   nearby: { kind: string; minutes: number; count: number }[] | null;
   createdAt: string;
@@ -360,6 +377,12 @@ function nearbySummary(post: Pick<SharedPost, "nearby" | "lat" | "lng" | "mapMod
   }
 }
 
+/** Public photo URL; v= changes whenever the watermark changes, so caches fetch the new version. */
+export const PHOTO_VERSION = "w1";
+export function photoUrl(id: string): string {
+  return `/api/catalog/photo/${id}?v=${PHOTO_VERSION}`;
+}
+
 export function toCatalogItem(post: SharedPost & { photos: { id: string; kind: string }[] }): CatalogItem {
   return {
     ref: post.refNo ?? 0,
@@ -384,11 +407,13 @@ export function toCatalogItem(post: SharedPost & { photos: { id: string; kind: s
     description: { ka: descriptionFor(post, "ka"), en: descriptionFor(post, "en"), ru: descriptionFor(post, "ru") },
     point: publicPoint(post.lat, post.lng, post.mapMode),
     metro: post.mapMode === "off" ? [] : metroNearby(post.lat, post.lng),
-    photos: post.photos.filter((p) => p.kind !== "plan").map((p) => `/api/catalog/photo/${p.id}`),
-    plans: post.photos.filter((p) => p.kind === "plan").map((p) => `/api/catalog/photo/${p.id}`),
+    photos: post.photos.filter((p) => p.kind !== "plan").map((p) => photoUrl(p.id)),
+    plans: post.photos.filter((p) => p.kind === "plan").map((p) => photoUrl(p.id)),
     video: videoEmbed(post.videoUrl),
     tour: tourEmbed(post.tourUrl),
     closed: CLOSED.includes(post.availability),
+    verifiedAt: post.verifiedAt?.toISOString() ?? null,
+    listedAt: (post.catalogAt ?? post.channelPostedAt ?? post.createdAt).toISOString(),
     nearby: nearbySummary(post),
     createdAt: post.channelPostedAt?.toISOString() ?? post.updatedAt.toISOString(),
     views: post.catalogViews,

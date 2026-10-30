@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { dealKind, placeName, priceUsd, toCatalogItem, type Lang } from "@/lib/catalog";
+import { dealKind, photoUrl, placeName, priceUsd, toCatalogItem, type Lang } from "@/lib/catalog";
 import { catalogLink } from "@/lib/channel";
 import { AREA_INFO, areaSlug } from "@/lib/areas";
 import { METRO, METRO_LINE_COLOR, metroName } from "@/lib/metro";
@@ -46,7 +46,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     title,
     description,
     alternates: { canonical: lang === "en" ? url : `${url}?lang=${lang}`, languages: { en: url, ru: `${url}?lang=ru`, ka: `${url}?lang=ka` } },
-    openGraph: { title, description, url, type: "website", images: [{ url: photo ? `${base}/api/catalog/photo/${photo.id}` : `${base}/brand-logo.jpg` }] },
+    openGraph: { title, description, url, type: "website", images: [{ url: photo ? `${base}${photoUrl(photo.id)}` : `${base}/brand-logo.jpg` }] },
   };
 }
 

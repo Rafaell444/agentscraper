@@ -16,7 +16,7 @@ import { PhotoManager } from "./PhotoManager";
 import { filterOptions } from "@/lib/queries";
 import { AVAILABILITY, FEATURES, LEASE_TERMS, featureList, termText } from "@/lib/catalog";
 import { CHANNEL_FLAG, catalogLink, channelTargets, parseChannelIds } from "@/lib/channel";
-import { setAvailability, showInApp, takeOffApp, takeOffBoth, takeOffChannel } from "@/app/channel/actions";
+import { setAvailability, setVerified, showInApp, takeOffApp, takeOffBoth, takeOffChannel } from "@/app/channel/actions";
 import { ImportWaiter } from "./ImportWaiter";
 
 export const dynamic = "force-dynamic";
@@ -370,6 +370,12 @@ export default async function SharedPostEditor({ params, searchParams }: { param
               ))}
             </div>
             <p className="text-xs text-gray-500">„გაქირავდა“ / „გაიყიდა“ — ბინა აპში 30 დღე რჩება ნიშნით „გაქირავდა/გაიყიდა“ (მოთხოვნის ღილაკის გარეშე, აჩვენებს რომ საქმეს ვხურავთ), მერე ქრება. არხის პოსტზე თავში ეწერება 🔴 სტატუსი.</p>
+            <form action={setVerified} className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-2.5">
+              <input type="hidden" name="id" value={post.id} />
+              <input type="hidden" name="on" value={post.verifiedAt ? "0" : "1"} />
+              <span className="flex-1 text-xs text-emerald-900">{post.verifiedAt ? <>✓ <b>შემოწმებულია</b> — აგენტმა ნახა {fmtDate(post.verifiedAt)}. აპში ჩანს „შემოწმებულია აგენტის მიერ“.</> : <>აგენტმა ბინა ადგილზე ნახა? მონიშნე — აპში გამოჩნდება ✓ „შემოწმებულია აგენტის მიერ“ და თარიღი.</>}</span>
+              <SubmitButton pending="…" className={`ui-btn ui-btn-sm ${post.verifiedAt ? "ui-btn-ghost" : "ui-btn-primary"}`}>{post.verifiedAt ? "მოხსნა" : "✓ ვნახე, დღეს"}</SubmitButton>
+            </form>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-gray-200 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
