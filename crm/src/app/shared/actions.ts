@@ -8,6 +8,7 @@ import { logActivity } from "@/lib/activity";
 import { getSettings } from "@/lib/settings";
 import { ensureRefNo, publishToChannel, refreshChannelPost, removeFromChannel } from "@/lib/channel";
 import { alertMatchingClients } from "@/lib/clientAlerts";
+import { parseTbilisi } from "@/lib/schedule";
 import { defaultContact, downloadImages, draftFromListing, draftFromUrl, newToken, parseMapInput, replacePhones, requestCollectorFetch, type PostDraft } from "@/lib/sharedPosts";
 
 function text(formData: FormData, key: string): string | null {
@@ -134,6 +135,11 @@ export async function updatePost(formData: FormData) {
       leaseTerm: text(formData, "leaseTerm"),
       descriptionEn: text(formData, "descriptionEn"),
       descriptionRu: text(formData, "descriptionRu"),
+      // Scheduled publishing (a field left out keeps its time; publishing now clears it).
+      ...(formData.has("scheduleAppAt") ? { scheduleAppAt: parseTbilisi(text(formData, "scheduleAppAt")) } : {}),
+      ...(formData.has("scheduleTgAt") ? { scheduleTgAt: parseTbilisi(text(formData, "scheduleTgAt")) } : {}),
+      ...(target === "app" || target === "both" ? { scheduleAppAt: null } : {}),
+      ...(target === "tg" || target === "both" ? { scheduleTgAt: null } : {}),
     },
   });
   const notes: string[] = [];

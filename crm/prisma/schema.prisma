@@ -320,6 +320,9 @@ model SharedPost {
   channelMessageIds String?   @map("channel_message_ids") // comma-separated; first one carries the caption
   channelIsText     Boolean   @default(false) @map("channel_is_text")
   channelPostedAt   DateTime? @map("channel_posted_at")
+  // Automatic publishing: when the flat goes into the mini app / the Telegram channels.
+  scheduleAppAt     DateTime? @map("schedule_app_at")
+  scheduleTgAt      DateTime? @map("schedule_tg_at")
   catalogViews      Int       @default(0) @map("catalog_views")
 
   photos       SharedPostPhoto[]

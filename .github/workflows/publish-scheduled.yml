@@ -1,0 +1,27 @@
+name: Publish scheduled posts
+
+# Every 10 minutes: asks the CRM to publish posts whose scheduled time for the
+# mini app / Telegram channels has passed (crm/src/app/api/cron/publish).
+# GitHub may start scheduled runs a few minutes late.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: publish-scheduled
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Run due jobs
+        env:
+          CRM_URL: ${{ vars.CRM_URL || 'https://agenturicrm.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS --max-time 120 -H "Authorization: Bearer ${CRON_SECRET}" "${CRM_URL}/api/cron/publish"

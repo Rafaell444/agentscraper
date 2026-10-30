@@ -9,6 +9,7 @@ import { Card, EmptyState, Input, PageHeader, Select, Tabs } from "@/components/
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { importPost } from "./actions";
+import { fmtTbilisi } from "@/lib/schedule";
 
 export const dynamic = "force-dynamic";
 // Import downloads the photos of the source ad.
@@ -27,7 +28,7 @@ export default async function SharedPostsPage({ searchParams }: { searchParams: 
       orderBy: { createdAt: "desc" },
       take: 100,
       select: {
-        id: true, token: true, status: true, title: true, location: true, price: true, currency: true, views: true, lastViewedAt: true, createdAt: true,
+        id: true, token: true, status: true, title: true, location: true, price: true, currency: true, views: true, lastViewedAt: true, createdAt: true, catalog: true, channelMessageIds: true, scheduleAppAt: true, scheduleTgAt: true,
         client: { select: { id: true, name: true } },
         createdBy: { select: { name: true } },
         photos: { orderBy: { position: "asc" }, take: 1, select: { id: true } },
@@ -92,6 +93,9 @@ export default async function SharedPostsPage({ searchParams }: { searchParams: 
                 <div className="space-y-1.5 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
+                    {post.catalog ? <span className="text-[11px]" title="მინი აპშია">📱</span> : null}
+                    {post.channelMessageIds ? <span className="text-[11px]" title="Telegram არხშია">📣</span> : null}
+                    {post.scheduleAppAt || post.scheduleTgAt ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">⏰ {fmtTbilisi([post.scheduleAppAt, post.scheduleTgAt].filter((d): d is Date => Boolean(d)).sort((a, b) => a.getTime() - b.getTime())[0])}</span> : null}
                     <span className="text-[11px] text-gray-500">👁 {post.views}{post.lastViewedAt ? ` · ${fmtDate(post.lastViewedAt, true)}` : ""}</span>
                   </div>
                   <Link href={`/shared/${post.id}`} className="block text-sm font-semibold text-gray-900 hover:text-emerald-700">{post.title}</Link>

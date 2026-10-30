@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { fmtDate } from "@/lib/format";
+import { fmtTbilisi, lastScheduleRun, toTbilisiInput } from "@/lib/schedule";
 import { POST_STATUS, intlPhone } from "@/lib/sharedPosts";
 import { shareBase, shareLink } from "@/lib/shareUrl";
 import { mapView } from "@/lib/map";
@@ -56,6 +57,9 @@ export default async function SharedPostEditor({ params, searchParams }: { param
     filterOptions(""),
   ]);
   if (!post) notFound();
+  const lastRun = await lastScheduleRun();
+  // The publisher normally runs every ~10 minutes; over an hour means it is not set up or stopped.
+  const schedulerOk = Boolean(lastRun && Date.now() - lastRun.getTime() < 3600_000);
   const link = shareLink(await shareBase(settings.public_base_url), post.token);
   const st = POST_STATUS[post.status] ?? POST_STATUS.draft;
   const message = `${GREETING[post.lang] ?? GREETING.ka} ${link}`;
@@ -303,6 +307,8 @@ export default async function SharedPostEditor({ params, searchParams }: { param
           <div className="flex flex-wrap gap-2 text-xs font-semibold">
             <span className={`rounded-full px-2.5 py-1 ${post.catalog ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"}`}>📱 მინი აპი: {post.catalog ? "ჩანს" : "არ ჩანს"}</span>
             <span className={`rounded-full px-2.5 py-1 ${post.channelMessageIds ? "bg-sky-100 text-sky-800" : "bg-gray-100 text-gray-500"}`}>📣 Telegram: {post.channelMessageIds ? (Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ") : "არ არის"}</span>
+            {post.scheduleAppAt ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">⏰ 📱 აპში: {fmtTbilisi(post.scheduleAppAt)}</span> : null}
+            {post.scheduleTgAt ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">⏰ 📣 Telegram-ში: {fmtTbilisi(post.scheduleTgAt)}</span> : null}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <SubmitButton pending="ინახება…" formAction={saveToApp} className="ui-btn ui-btn-secondary">{post.catalog ? "📱 შენახვა (აპშია)" : "📱 მინი აპში დამატება"}</SubmitButton>
@@ -310,6 +316,24 @@ export default async function SharedPostEditor({ params, searchParams }: { param
             {!post.catalog || missing.length ? <SubmitButton pending="ქვეყნდება…" formAction={saveToBoth}>📱 + 📣 ორივეგან</SubmitButton> : null}
           </div>
           <p className="mt-2 text-[11px] text-gray-500">ღილაკი ჯერ ინახავს ცვლილებებს. თითო არხში მიდის პირველი 10 ფოტო და ტექსტი იმ არხის ენაზე. მხოლოდ არხში დადებულ პოსტს „დეტალები აპში“ ბმული არ ექნება.</p>
+          <div className="mt-4 rounded-lg border border-dashed border-gray-300 p-3">
+            <div className="mb-2 text-sm font-semibold text-gray-900">⏰ ავტომატური გამოქვეყნება <span className="font-normal text-gray-500">(თბილისის დროით)</span></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-medium text-gray-600">
+                📱 მინი აპში
+                <input type="datetime-local" name="scheduleAppAt" defaultValue={toTbilisiInput(post.scheduleAppAt)} disabled={post.catalog && !post.scheduleAppAt} className="ui-field mt-1 disabled:opacity-50" />
+                {post.catalog && !post.scheduleAppAt ? <span className="mt-1 block text-[11px] font-normal text-gray-500">უკვე აპშია</span> : null}
+              </label>
+              <label className="block text-xs font-medium text-gray-600">
+                📣 Telegram არხებში ({channels.map((c) => CHANNEL_FLAG[c.lang]).join(" + ") || "არხი არ არის"})
+                <input type="datetime-local" name="scheduleTgAt" defaultValue={toTbilisiInput(post.scheduleTgAt)} className="ui-field mt-1" />
+              </label>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              შეავსე დრო და დააჭირე „შენახვა“ — დრო რომ მოვა, ბინა თავად გამოჩნდება აპში / დაიდება არხებში და ზარში შეტყობინება მოგივა. ცარიელი = არ იგეგმება (გასაუქმებლად წაშალე დრო და შეინახე). მოწმდება ~10 წუთში ერთხელ{lastRun ? `, ბოლოს: ${fmtTbilisi(lastRun)}` : ""}.
+            </p>
+            {!schedulerOk ? <p className="mt-1 text-[11px] font-medium text-amber-700">⚠️ ავტომატური შემმოწმებელი ჯერ არ გაშვებულა ან 1 საათზე მეტია არ გაეშვა (GitHub → Actions → „Publish scheduled posts“).</p> : null}
+          </div>
           {post.lat == null || post.mapMode === "off" ? <p className="mt-2 text-xs font-medium text-amber-700">⚠️ რუკის წერტილი არ არის — აპის რუკაზე ეს ბინა არ გამოჩნდება. ზემოთ „რუკა“ ველში ჩასვი Google Maps ბმული ან კოორდინატები.</p> : null}
         </Card>
 
