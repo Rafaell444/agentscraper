@@ -8,6 +8,8 @@ export type TgWebApp = {
   version?: string;
   ready: () => void;
   expand: () => void;
+  enableClosingConfirmation?: () => void;
+  disableVerticalSwipes?: () => void;
   isVersionAtLeast?: (v: string) => boolean;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;

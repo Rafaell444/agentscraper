@@ -57,7 +57,8 @@ export function shortPrice(item: Pick<CatalogItem, "price" | "currency">): strin
   return `${sym}${n}`;
 }
 
-const KIND_COLOR: Record<DealKind, string> = { rent: "#059669", sale: "#4f46e5", daily: "#ea580c" };
+// Brand blue for rent, gold for sale (the key in the logo), teal for daily.
+const KIND_COLOR: Record<DealKind, string> = { rent: "#1d4f8c", sale: "#b7791f", daily: "#0f8a7e" };
 
 const STYLE = `
 .mp{position:relative;width:max-content;transform:translate(-50%,calc(-100% - 7px));display:flex;align-items:center;gap:5px;padding:2px 10px 2px 2px;border-radius:999px;background:#fff;color:#111;border:2px solid var(--k);box-shadow:0 3px 10px rgba(0,0,0,.28);font:700 12.5px/1 system-ui,-apple-system,sans-serif;white-space:nowrap;cursor:pointer;transition:transform .15s ease,background .15s ease}
@@ -69,8 +70,8 @@ const STYLE = `
 .mp.on i{box-shadow:0 0 0 2px #fff}
 @keyframes mp-pop{0%{transform:translate(-50%,calc(-100% - 7px)) scale(.9)}60%{transform:translate(-50%,calc(-100% - 7px)) scale(1.25)}100%{transform:translate(-50%,calc(-100% - 7px)) scale(1.18)}}
 .mc{display:flex;flex-direction:column;align-items:center;width:max-content;transform:translate(-50%,-50%);cursor:pointer}
-.mc b{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font:800 14px system-ui,sans-serif;background:radial-gradient(circle at 30% 30%,#34d399,#047857);box-shadow:0 0 0 5px rgba(5,150,105,.25),0 0 0 10px rgba(5,150,105,.12),0 4px 12px rgba(0,0,0,.3)}
-.mc span{margin-top:6px;padding:2px 7px;border-radius:999px;background:#fff;color:#065f46;font:700 11px system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.25);white-space:nowrap}
+.mc b{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font:800 14px system-ui,sans-serif;background:radial-gradient(circle at 30% 30%,#7fb0dc,#0e2a4d);box-shadow:0 0 0 5px rgba(29,79,140,.25),0 0 0 10px rgba(29,79,140,.12),0 4px 12px rgba(0,0,0,.3)}
+.mc span{margin-top:6px;padding:2px 7px;border-radius:999px;background:#fff;color:#0e2a4d;font:700 11px system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.25);white-space:nowrap}
 .me{width:16px;height:16px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25);transform:translate(-50%,-50%)}
 .ms{display:flex;align-items:center;gap:4px;width:max-content;transform:translate(-9px,-9px);pointer-events:none}
 .ms b{display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--c);color:#fff;border:2px solid #fff;font:900 10px system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.35)}
@@ -168,7 +169,7 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
           maxClusterRadius: 55,
           showCoverageOnHover: false,
           spiderfyOnMaxZoom: true,
-          spiderLegPolylineOptions: { weight: 1.5, color: "#059669", opacity: 0.6 },
+          spiderLegPolylineOptions: { weight: 1.5, color: "#1d4f8c", opacity: 0.6 },
           iconCreateFunction: (group: Lf) => {
             const children = group.getAllChildMarkers() as Lf[];
             const prices = children.map((c) => c.options.item as CatalogItem).filter((i) => i.price != null);

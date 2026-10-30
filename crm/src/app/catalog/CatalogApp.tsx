@@ -213,7 +213,17 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
   const [filters, setFilters] = useState<Filters>(() => emptyFilters(deals[0] ?? "rent"));
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("new");
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTabState] = useState<Tab>("home");
+  // Tabs the user came through, so Back returns to the previous screen instead of closing the app.
+  const tabRef = useRef<Tab>("home");
+  const tabStack = useRef<Tab[]>([]);
+  const setTab = useCallback((next: Tab) => {
+    if (next === tabRef.current) return;
+    tabStack.current = [...tabStack.current.filter((x) => x !== next), tabRef.current].slice(-10);
+    tabRef.current = next;
+    setTabState(next);
+  }, []);
+  const [dark, setDark] = useState(false);
   const [openRef, setOpenRef] = useState<number | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [mapSelected, setMapSelected] = useState<number | null>(null);
@@ -246,9 +256,14 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     if (app) {
       app.ready();
       app.expand();
+      setDark(app.colorScheme === "dark");
       try {
         app.setHeaderColor?.("secondary_bg_color");
         app.setBackgroundColor?.("secondary_bg_color");
+        // Ask before closing (users tapped "Close" when looking for Back), and
+        // keep a swipe down on the map or a list from closing the app.
+        app.enableClosingConfirmation?.();
+        app.disableVerticalSwipes?.();
       } catch {
         // older clients
       }
@@ -288,7 +303,10 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
     fetch("/api/catalog/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ref }) }).catch(() => undefined);
   }, [setRecent]);
 
+  // Back: sheet → listing → search → previous tab → Home.
+  const canGoBack = Boolean(sheet || openRef || searching || tab !== "home");
   const closeTop = useCallback(() => {
+    haptic("tap");
     if (sheet) setSheet(null);
     else if (openRef) {
       if (history.state?.p) history.back();
@@ -296,18 +314,25 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
         setOpenRef(null);
         history.replaceState(null, "", location.pathname);
       }
+    } else if (searching) setSearching(false);
+    else if (tabRef.current !== "home") {
+      const previous = tabStack.current.pop() ?? "home";
+      tabRef.current = previous;
+      setTabState(previous);
+      setMapSelected(null);
+      window.scrollTo({ top: 0 });
     }
-  }, [sheet, openRef]);
+  }, [sheet, openRef, searching]);
 
-  // Telegram's own back button closes the sheet / listing.
+  // Telegram's own Back button (top left) does the same as ours.
   useEffect(() => {
     const back = tg()?.BackButton;
     if (!back) return;
-    if (sheet || openRef) back.show();
+    if (canGoBack) back.show();
     else back.hide();
     back.onClick(closeTop);
     return () => back.offClick(closeTop);
-  }, [sheet, openRef, closeTop]);
+  }, [canGoBack, closeTop]);
 
   useEffect(() => {
     if (!toast) return;
@@ -414,7 +439,10 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
           "--text": "var(--tg-theme-text-color, #111827)",
           "--hint": "var(--tg-theme-hint-color, #6b7280)",
           "--line": "color-mix(in srgb, var(--hint) 25%, transparent)",
-          "--accent": "#059669",
+          // Brand: the navy and sky blue of the Tbilisi Buy & Rent logo (lighter blue on dark themes).
+          "--accent": dark ? "#5b9bd8" : "#1d4f8c",
+          "--navy": "#0e2a4d",
+          "--sky": "#7fb0dc",
         } as React.CSSProperties
       }
     >
@@ -434,13 +462,19 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
           phone={phone}
         />
       ) : (
-        <div className="pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
+        <div className="pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
           <header ref={headerRef} className="sticky top-0 z-20 space-y-2 bg-[var(--bg2)]/95 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent)] text-white">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10" /></svg>
-              </span>
-              <span className="flex-1 truncate text-base font-bold">{agency}</span>
+              {canGoBack ? (
+                <button type="button" onClick={closeTop} aria-label={t.back} className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-[var(--bg)] pl-2 pr-3 text-sm font-semibold text-[var(--accent)] shadow-sm active:scale-95">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                  {t.back}
+                </button>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/brand-logo.jpg" alt="" className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm ring-2 ring-[var(--bg)] [transform:scale(1)]" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-base font-extrabold tracking-tight text-[var(--text)]">{agency}</span>
               {tab === "list" || tab === "map" ? (
                 <button type="button" aria-label={t.search} onClick={() => { haptic("tap"); setSearching(true); }} className={`flex h-8 w-8 items-center justify-center rounded-lg ${query ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--text)]"}`}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
@@ -584,22 +618,39 @@ export function CatalogApp({ items, agency, manager, phone, linkTemplate }: { it
             </main>
           ) : null}
 
-          <nav ref={navRef} className="fixed inset-x-0 bottom-0 z-30 flex border-t border-[var(--line)] bg-[var(--bg)] pb-[env(safe-area-inset-bottom)]">
-            {([
-              ["home", t.tabHome, "M3 11l9-8 9 8M5 10v10h14V10"],
-              ["list", t.tabList, "M4 6h16M4 12h16M4 18h10"],
-              ["map", t.tabMap, "M12 21s-7-6.5-7-11a7 7 0 1 1 14 0c0 4.5-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"],
-              ["saved", t.tabSaved, "M12 20s-7-4.4-9-8.6C1.6 8.3 3.5 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.3 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"],
-              ["request", t.tabRequest, "M12 5v14M5 12h14"],
-            ] as [Tab, string, string][]).map(([value, label, icon]) => (
-              <button key={value} type="button" onClick={() => { haptic("select"); setTab(value); setMapSelected(null); window.scrollTo({ top: 0 }); }} className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${tab === value ? "text-[var(--accent)]" : "text-[var(--hint)]"}`}>
-                <span className="relative">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill={value === "saved" && tab === value ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
-                  {value === "saved" && favs.length ? <span className="absolute -right-2 -top-1 rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-white">{favs.length}</span> : null}
-                </span>
-                {label}
-              </button>
-            ))}
+          {/* Floating tab bar: the active tab gets a blue pill, "Find me" is the raised round button in the middle. */}
+          <nav ref={navRef} className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-3">
+            <div className="pointer-events-auto mx-auto flex max-w-md items-end rounded-[26px] bg-[var(--bg)] px-1.5 pb-1.5 pt-1.5 shadow-[0_10px_30px_rgba(14,42,77,0.28)] ring-1 ring-[var(--line)]">
+              {([
+                ["home", t.tabHome, "M3 11l9-8 9 8M5 10v10h14V10"],
+                ["list", t.tabList, "M4 6h16M4 12h16M4 18h10"],
+                ["request", t.tabRequest, "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3M11 8v6M8 11h6"],
+                ["map", t.tabMap, "M12 21s-7-6.5-7-11a7 7 0 1 1 14 0c0 4.5-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"],
+                ["saved", t.tabSaved, "M12 20s-7-4.4-9-8.6C1.6 8.3 3.5 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.3 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"],
+              ] as [Tab, string, string][]).map(([value, label, icon]) => {
+                const active = tab === value;
+                const go = () => { haptic("select"); setTab(value); setMapSelected(null); setSearching(false); window.scrollTo({ top: 0 }); };
+                if (value === "request") {
+                  return (
+                    <button key={value} type="button" onClick={go} className="flex flex-1 flex-col items-center gap-1">
+                      <span className={`-mt-7 flex h-[58px] w-[58px] items-center justify-center rounded-full bg-gradient-to-br from-[#3a7dc4] to-[var(--navy)] text-white shadow-[0_8px_20px_rgba(14,42,77,0.45)] ring-4 ring-[var(--bg2)] transition-transform active:scale-90 ${active ? "scale-105" : ""}`}>
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+                      </span>
+                      <span className={`text-[11px] font-bold ${active ? "text-[var(--accent)]" : "text-[var(--text)]"}`}>{label}</span>
+                    </button>
+                  );
+                }
+                return (
+                  <button key={value} type="button" onClick={go} className="flex flex-1 flex-col items-center gap-1 pt-1">
+                    <span className={`relative flex h-8 w-14 items-center justify-center rounded-full transition-colors ${active ? "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--accent)]" : "text-[var(--hint)]"}`}>
+                      <svg width="23" height="23" viewBox="0 0 24 24" fill={active && value !== "list" ? "currentColor" : "none"} fillOpacity={value === "map" || value === "home" ? 0.18 : 1} stroke="currentColor" strokeWidth={active ? 2.4 : 2} strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+                      {value === "saved" && favs.length ? <span className="absolute right-1.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-[var(--bg)]">{favs.length}</span> : null}
+                    </span>
+                    <span className={`text-[11px] ${active ? "font-bold text-[var(--accent)]" : "font-medium text-[var(--hint)]"}`}>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </nav>
         </div>
       )}
@@ -692,7 +743,7 @@ function SearchList({ searches, t, describe, countOf, freshOf, onOpen, onRemove,
                 </div>
               </button>
               {canNotify ? (
-                <button type="button" disabled={search.notify} onClick={() => onNotify(search)} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${search.notify ? "bg-emerald-100 text-emerald-800" : "bg-[var(--bg2)] text-[var(--text)]"}`}>
+                <button type="button" disabled={search.notify} onClick={() => onNotify(search)} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${search.notify ? "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--accent)]" : "bg-[var(--bg2)] text-[var(--text)]"}`}>
                   {search.notify ? t.notifyOn : t.notifySearch}
                 </button>
               ) : null}
@@ -735,13 +786,15 @@ function Home({ items, deals, lang, t, recent, searchProps, onOpen, onBrowse, on
 
   return (
     <main className="space-y-5 px-3 pb-4 pt-1">
-      <section className="rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-white shadow-md">
-        <div className="text-xl font-bold">👋 {t.hello(name)}</div>
-        <div className="mt-0.5 text-sm text-white/85">{t.homeSub(items.length)}</div>
-        <form onSubmit={(e) => { e.preventDefault(); onQuery(q.trim()); }} className="mt-3 flex items-center gap-2 rounded-2xl bg-white px-3 text-gray-900">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[var(--navy)] via-[#1d4f8c] to-[#4f8cc9] p-4 text-white shadow-[0_10px_30px_rgba(14,42,77,0.3)]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand-logo.jpg" alt="" className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full object-cover opacity-25 mix-blend-luminosity" />
+        <div className="relative text-xl font-extrabold">👋 {t.hello(name)}</div>
+        <div className="relative mt-0.5 text-sm text-white/85">{t.homeSub(items.length)}</div>
+        <form onSubmit={(e) => { e.preventDefault(); onQuery(q.trim()); }} className="relative mt-3 flex items-center gap-2 rounded-2xl bg-white px-3 text-gray-900 shadow-md">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-gray-400"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
           <input value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="search" placeholder={t.homeSearch} className="min-w-0 flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-gray-400" />
-          {q ? <button type="submit" className="text-sm font-semibold text-emerald-700">→</button> : null}
+          {q ? <button type="submit" className="text-sm font-semibold text-[#1d4f8c]">→</button> : null}
         </form>
       </section>
 
@@ -788,7 +841,7 @@ function Home({ items, deals, lang, t, recent, searchProps, onOpen, onBrowse, on
                 key={d.district}
                 type="button"
                 onClick={() => onBrowse({ deal: d.deal, districts: [d.district] })}
-                className="relative h-24 overflow-hidden rounded-2xl bg-emerald-700 bg-cover bg-center text-left shadow-sm active:scale-[0.98]"
+                className="relative h-24 overflow-hidden rounded-2xl bg-gradient-to-br from-[var(--navy)] to-[#4f8cc9] bg-cover bg-center text-left shadow-sm active:scale-[0.98]"
                 style={d.photo ? { backgroundImage: `url(${d.photo})` } : undefined}
               >
                 <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
@@ -1049,9 +1102,10 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
       <div className="relative">
         <Gallery urls={item.photos} />
         <div className="absolute inset-x-2 top-[max(0.5rem,env(safe-area-inset-top))] flex justify-between">
-          {!inTelegram ? (
-            <button type="button" onClick={onBack} className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur" aria-label="back">←</button>
-          ) : <span />}
+          <button type="button" onClick={onBack} className="flex h-9 items-center gap-1 rounded-full bg-black/50 pl-2 pr-3 text-sm font-semibold text-white backdrop-blur active:scale-95" aria-label={t.back}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+            {t.back}
+          </button>
           <div className="flex gap-2">
             <button type="button" onClick={() => onShare(item)} aria-label={t.share} className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13" /></svg>
