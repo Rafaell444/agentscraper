@@ -5,7 +5,7 @@ import { DEAL_LABEL, FEATURES, LEASE_TERMS, PETS, PROPERTY_TYPES, TBILISI_DISTRI
 import { METRO, METRO_LINE_COLOR, metroName } from "@/lib/metro";
 import { MediaGallery, NearbySection } from "./Media";
 import { DICT, type Dict } from "./i18n";
-import { MapView, shortPrice } from "./MapView";
+import { MapView, shortPrice, type Bounds } from "./MapView";
 import { haptic, openTelegram, tg } from "./tg";
 import { KIND_ORDER, NEAR_MINUTES, PLACE_EMOJI } from "./places";
 
@@ -402,7 +402,18 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const results = useMemo(() => sortItems(items.filter((i) => matches(i, filters, query.trim(), lang)), sort), [items, filters, query, sort, lang]);
+  // "Search this area" on the map: only flats inside those bounds (list and map), until cleared or the filters change.
+  const [area, setArea] = useState<Bounds | null>(null);
+  // Bumped when the area is cleared, so the map zooms back out to every flat.
+  const [refit, setRefit] = useState(0);
+  useEffect(() => setArea(null), [filters, query]);
+  const results = useMemo(
+    () => sortItems(items.filter((i) => matches(i, filters, query.trim(), lang) && (!area || (i.point != null && i.point.lat >= area.s && i.point.lat <= area.n && i.point.lng >= area.w && i.point.lng <= area.e))), sort),
+    [items, filters, query, sort, lang, area],
+  );
+  const fitKey = useMemo(() => JSON.stringify([filters, query.trim(), refit]), [filters, query, refit]);
+  // Map cards: west to east, so swiping moves across the map.
+  const mapItems = useMemo(() => results.filter((i) => i.point).sort((a, b) => a.point!.lng - b.point!.lng), [results]);
   useEffect(() => setLimit(PAGE), [filters, query, sort]);
   const districts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -550,7 +561,7 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
           <header ref={headerRef} className="sticky top-0 z-20 space-y-2 bg-[var(--bg2)]/95 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
             <div className="flex items-center gap-2">
               {canGoBack ? (
-                <button type="button" onClick={closeTop} aria-label={t.back} className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-[var(--bg)] pl-2 pr-3 text-sm font-semibold text-[var(--accent)] shadow-sm active:scale-95">
+                <button type="button" onClick={closeTop} aria-label={t.back} className="flex h-10 shrink-0 items-center gap-1 rounded-full bg-[var(--bg)] pl-2 pr-3 text-sm font-semibold text-[var(--accent)] shadow-sm active:scale-95">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                   {t.back}
                 </button>
@@ -563,13 +574,13 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
               )}
               <span className="min-w-0 flex-1 truncate text-base font-extrabold tracking-tight text-[var(--text)]">{agency}</span>
               {tab === "list" || tab === "map" ? (
-                <button type="button" aria-label={t.search} onClick={() => { haptic("tap"); setSearching(true); }} className={`flex h-8 w-8 items-center justify-center rounded-lg ${query ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--text)]"}`}>
+                <button type="button" aria-label={t.search} onClick={() => { haptic("tap"); setSearching(true); }} className={`flex h-10 w-10 items-center justify-center rounded-xl ${query ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--text)]"}`}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
                 </button>
               ) : null}
               <div className="flex rounded-lg bg-[var(--bg)] p-0.5 text-xs font-semibold">
                 {(["ka", "en", "ru"] as Lang[]).map((l) => (
-                  <button key={l} type="button" onClick={() => changeLang(l)} className={`rounded-md px-2 py-1 ${lang === l ? "bg-[var(--accent)] text-white" : "text-[var(--hint)]"}`}>{l.toUpperCase()}</button>
+                  <button key={l} type="button" onClick={() => changeLang(l)} className={`min-h-9 rounded-md px-2.5 py-1.5 ${lang === l ? "bg-[var(--accent)] text-white" : "text-[var(--hint)]"}`}>{l.toUpperCase()}</button>
                 ))}
               </div>
             </div>
@@ -586,11 +597,12 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
             {tab === "list" || tab === "map" ? (
               <div className="-mx-3 flex items-center gap-1.5 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {deals.length > 1 ? <Pill active label={`${DEAL_EMOJI[filters.deal]} ${t[filters.deal]}`} onClick={() => setSheet({ facet: "deal" })} /> : null}
-                <button type="button" aria-label={t.filters} onClick={() => { haptic("tap"); setSheet("filters"); }} className={`relative flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-sm font-medium ${activeCount ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] bg-[var(--bg)]"}`}>
+                <button type="button" aria-label={t.filters} onClick={() => { haptic("tap"); setSheet("filters"); }} className={`relative flex h-10 shrink-0 items-center gap-1 rounded-full border px-3 text-sm font-medium ${activeCount ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] bg-[var(--bg)]"}`}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
                   {activeCount ? <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[11px] font-bold text-white">{activeCount}</span> : null}
                 </button>
                 {query && !searching ? <Pill active onClick={() => setQuery("")} label={`“${query}” ✕`} plain /> : null}
+                {area ? <Pill active onClick={() => { setArea(null); setRefit((n) => n + 1); }} label={`📍 ${t.thisArea} ✕`} plain /> : null}
                 <Pill
                   active={Boolean(filters.priceMin || filters.priceMax)}
                   label={filters.priceMin || filters.priceMax ? priceRangeLabel(filters.priceMin, filters.priceMax) : t.pillPrice}
@@ -608,14 +620,16 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
                     onClick={() => setSheet({ facet: "district" })}
                   />
                 ) : null}
-                {items.some((i) => i.kind === filters.deal && i.metro.some((m) => m.minutes <= 15)) ? (
+                {/* Metro and pets live in Filters; here only while on, so an active filter is always visible. */}
+                {filters.nearMetro || filters.metro.length > 0 ? (
                   <Pill
                     active={filters.nearMetro || filters.metro.length > 0}
                     label={filters.metro.length ? `Ⓜ ${metroName(filters.metro[0], lang)}${filters.metro.length > 1 ? ` +${filters.metro.length - 1}` : ""}` : filters.nearMetro ? t.nearMetro : t.pillMetro}
                     onClick={() => setSheet({ facet: "metro" })}
                   />
                 ) : null}
-                {filters.deal !== "sale" ? <Pill active={filters.pets} label={t.petsOk} onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))} plain /> : null}
+                {filters.pets ? <Pill active label={`${t.petsOk} ✕`} onClick={() => setFilters((f) => ({ ...f, pets: false }))} plain /> : null}
+                {filters.near?.length ? <Pill active label={`${filters.near.map((k) => PLACE_EMOJI[k]).join("")} ✕`} onClick={() => setFilters((f) => ({ ...f, near: [] }))} plain /> : null}
               </div>
             ) : null}
           </header>
@@ -666,20 +680,27 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
 
           {tab === "map" ? (
             <div className="fixed inset-x-0 z-10 overflow-hidden" style={{ top: chrome.top, bottom: chrome.bottom }}>
-              <MapView items={results} selected={mapSelected} onSelect={setMapSelected} labels={{ ...t.mapLabels, metro: t.metroLayer }} dark={tg()?.colorScheme === "dark"} lang={lang} />
+              <MapView
+                items={results}
+                selected={mapSelected}
+                onSelect={setMapSelected}
+                labels={{ ...t.mapLabels, metro: t.metroLayer, searchArea: t.searchArea }}
+                dark={tg()?.colorScheme === "dark"}
+                lang={lang}
+                fitKey={fitKey}
+                onSearchArea={(b) => { haptic("success"); setArea(b); setMapSelected(null); }}
+                bottom={mapSelected ? 170 : 60}
+              />
               {!results.some((i) => i.point) ? <div className="pointer-events-none absolute left-3 right-16 top-3 z-[500] rounded-xl bg-[var(--bg)] p-3 text-center text-sm text-[var(--hint)] shadow">{t.mapEmpty}</div> : null}
               {!mapSelected && results.some((i) => !i.point) ? (
                 <button type="button" onClick={() => setTab("list")} className="absolute bottom-3 left-1/2 z-[500] -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--bg)] px-3 py-1.5 text-xs font-medium text-[var(--hint)] shadow-md">
                   📍 {t.notOnMap(results.filter((i) => !i.point).length)}
                 </button>
               ) : null}
-              {mapSelected ? (
-                <div className="absolute inset-x-3 bottom-3 z-[500]">
-                  {(() => {
-                    const item = results.find((i) => i.ref === mapSelected);
-                    return item ? <Card item={item} lang={lang} t={t} fav={favs.includes(item.ref)} onFav={toggle} onOpen={openItem} compact /> : null;
-                  })()}
-                </div>
+              {mapSelected && mapItems.some((i) => i.ref === mapSelected) ? (
+                <MapCarousel items={mapItems} selected={mapSelected} onSelect={setMapSelected}>
+                  {(item) => <Card item={item} lang={lang} t={t} fav={favs.includes(item.ref)} onFav={toggle} onOpen={openItem} compact />}
+                </MapCarousel>
               ) : null}
             </div>
           ) : null}
@@ -782,12 +803,61 @@ function ClosedRibbon({ item, t }: { item: CatalogItem; t: Dict }) {
   );
 }
 
+/**
+ * Swipeable cards at the bottom of the map, one per pin.  Swiping selects the
+ * next flat (the map follows); tapping a pin scrolls to its card.
+ */
+function MapCarousel({ items, selected, onSelect, children }: { items: CatalogItem[]; selected: number; onSelect: (ref: number) => void; children: (item: CatalogItem) => React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const fromSwipe = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (fromSwipe.current) {
+      fromSwipe.current = false;
+      return;
+    }
+    const card = box.current?.querySelector<HTMLElement>(`[data-ref="${selected}"]`);
+    if (card && box.current) box.current.scrollTo({ left: card.offsetLeft - (box.current.clientWidth - card.clientWidth) / 2, behavior: "smooth" });
+  }, [selected]);
+
+  const onScroll = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const el = box.current;
+      if (!el) return;
+      const middle = el.scrollLeft + el.clientWidth / 2;
+      let best: HTMLElement | null = null;
+      for (const card of el.querySelectorAll<HTMLElement>("[data-ref]")) {
+        if (!best || Math.abs(card.offsetLeft + card.clientWidth / 2 - middle) < Math.abs(best.offsetLeft + best.clientWidth / 2 - middle)) best = card;
+      }
+      const ref = Number(best?.dataset.ref);
+      if (ref && ref !== selected) {
+        haptic("select");
+        fromSwipe.current = true;
+        onSelect(ref);
+      }
+    }, 120);
+  };
+
+  return (
+    <div ref={box} onScroll={onScroll} className="absolute inset-x-0 bottom-3 z-[500] flex snap-x snap-mandatory scroll-px-3 gap-2 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {items.map((item) => (
+        <div key={item.ref} data-ref={item.ref} className={`w-[86%] max-w-sm shrink-0 snap-center transition-opacity ${item.ref === selected ? "" : "opacity-80"}`}>
+          {children(item)}
+        </div>
+      ))}
+      {items.length > 1 ? <div className="w-[7%] shrink-0" aria-hidden /> : null}
+    </div>
+  );
+}
+
 function MiniCard({ item, lang, onOpen, t }: { item: CatalogItem; lang: Lang; onOpen: (ref: number) => void; t?: Dict }) {
   return (
     <button type="button" onClick={() => onOpen(item.ref)} className="w-40 shrink-0 snap-start overflow-hidden rounded-2xl bg-[var(--bg)] text-left shadow-sm">
       <div className="relative">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {item.photos[0] ? <img src={item.photos[0]} alt="" loading="lazy" className={`h-28 w-full object-cover ${item.closed ? "grayscale-[60%]" : ""}`} /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
+        {item.photos[0] ? <img src={item.photos[0]} alt="" loading="lazy" className={`brand-ph h-28 w-full object-cover ${item.closed ? "grayscale-[60%]" : ""}`} /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
         {t ? <ClosedRibbon item={item} t={t} /> : null}
       </div>
       <div className="p-2">
@@ -976,7 +1046,7 @@ function Pill({ active, label, onClick, plain = false }: { active: boolean; labe
     <button
       type="button"
       onClick={() => { haptic("select"); onClick(); }}
-      className={`flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-sm font-medium ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] bg-[var(--bg)] text-[var(--text)]"}`}
+      className={`flex h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3.5 text-sm font-medium ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] bg-[var(--bg)] text-[var(--text)]"}`}
     >
       {label}
       {plain ? null : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="opacity-70"><path d="m6 9 6 6 6-6" /></svg>}
@@ -1012,7 +1082,7 @@ function Empty({ t, onReset, onRequest }: { t: Dict; onReset: () => void; onRequ
 
 function Heart({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} aria-label="save" className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur">
+    <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} aria-label="save" className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur">
       <svg width="18" height="18" viewBox="0 0 24 24" fill={on ? "#f43f5e" : "none"} stroke={on ? "#f43f5e" : "currentColor"} strokeWidth="2"><path d="M12 20s-7-4.4-9-8.6C1.6 8.3 3.5 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.3 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z" /></svg>
     </button>
   );
@@ -1035,7 +1105,7 @@ function PhotoStrip({ photos, t, height }: { photos: string[]; t: Dict; height: 
       <div ref={strip} className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {shown.map((url, i) => (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={url} src={url} alt="" loading={i === 0 ? "eager" : "lazy"} draggable={false} className={`${height} w-full shrink-0 snap-center object-cover`} />
+          <img key={url} src={url} alt="" loading={i === 0 ? "eager" : "lazy"} draggable={false} className={`brand-ph ${height} w-full shrink-0 snap-center object-cover`} />
         ))}
       </div>
       {photos.length > 1 ? <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.photosOf(index + 1, photos.length)}</span> : null}
@@ -1102,7 +1172,7 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null 
     return (
       <button type="button" onClick={() => onOpen(item.ref)} className="flex w-full gap-3 overflow-hidden rounded-2xl bg-[var(--bg)] p-2 text-left shadow-lg">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {item.photos[0] ? <img src={item.photos[0]} alt="" className="h-20 w-24 shrink-0 rounded-xl object-cover" /> : <div className="flex h-20 w-24 shrink-0 items-center justify-center rounded-xl bg-[var(--bg2)] text-2xl">🏠</div>}
+        {item.photos[0] ? <img src={item.photos[0]} alt="" className="brand-ph h-20 w-24 shrink-0 rounded-xl object-cover" /> : <div className="flex h-20 w-24 shrink-0 items-center justify-center rounded-xl bg-[var(--bg2)] text-2xl">🏠</div>}
         <div className="min-w-0 flex-1 py-0.5">
           <div className="text-base font-bold">{priceText(item.price, item.currency, item.kind, lang)}</div>
           <div className="truncate text-sm">{title(item, lang)}{item.area ? ` · ${item.area} ${m2(lang)}` : ""}</div>
@@ -1214,12 +1284,12 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
         <MediaGallery key={item.ref} item={item} t={t} />
         {item.closed ? <ClosedRibbon item={item} t={t} /> : null}
         <div className="absolute inset-x-2 top-[max(0.5rem,env(safe-area-inset-top))] flex justify-between">
-          <button type="button" onClick={onBack} className="flex h-9 items-center gap-1 rounded-full bg-black/50 pl-2 pr-3 text-sm font-semibold text-white backdrop-blur active:scale-95" aria-label={t.back}>
+          <button type="button" onClick={onBack} className="flex h-10 items-center gap-1 rounded-full bg-black/50 pl-2 pr-3 text-sm font-semibold text-white backdrop-blur active:scale-95" aria-label={t.back}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
             {t.back}
           </button>
           <div className="flex gap-2">
-            <button type="button" onClick={() => onShare(item)} aria-label={t.share} className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur">
+            <button type="button" onClick={() => onShare(item)} aria-label={t.share} className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13" /></svg>
             </button>
             <Heart on={fav} onClick={() => onFav(item.ref)} />
@@ -1289,7 +1359,7 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
               {similar.map((s) => (
                 <button key={s.ref} type="button" onClick={() => onOpen(s.ref)} className="w-44 shrink-0 snap-start overflow-hidden rounded-2xl bg-[var(--bg)] text-left">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {s.photos[0] ? <img src={s.photos[0]} alt="" loading="lazy" className="h-28 w-full object-cover" /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
+                  {s.photos[0] ? <img src={s.photos[0]} alt="" loading="lazy" className="brand-ph h-28 w-full object-cover" /> : <div className="flex h-28 items-center justify-center bg-[var(--bg2)] text-2xl">🏠</div>}
                   <div className="p-2">
                     <div className="text-sm font-bold">{shortPrice(s)}{s.kind === "rent" ? (lang === "ru" ? "/мес" : lang === "ka" ? "/თვე" : "/mo") : ""}</div>
                     <div className="truncate text-xs text-[var(--hint)]">{title(s, lang)} · {placeName(s.district, lang)}</div>
@@ -1334,7 +1404,7 @@ function BottomSheet({ onClose, children }: { onClose: () => void; children: Rea
 
 function ChipToggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={() => { haptic("select"); onClick(); }} className={`rounded-full border px-3 py-1.5 text-sm ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>
+    <button type="button" onClick={() => { haptic("select"); onClick(); }} className={`min-h-10 rounded-full border px-3.5 py-2 text-sm ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>
       {children}
     </button>
   );

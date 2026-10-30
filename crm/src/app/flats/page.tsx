@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { dealKind, headline, placeName, priceText, toCatalogItem, type DealKind } from "@/lib/catalog";
+import { dealKind, placeName, type DealKind } from "@/lib/catalog";
 import { catalogLink } from "@/lib/channel";
-import { metroName } from "@/lib/metro";
+import { areaSlug } from "@/lib/areas";
 import { getSettings } from "@/lib/settings";
 import { SITE_TEXT, siteBase, siteLang, sitePosts } from "@/lib/site";
 import { DICT } from "@/app/catalog/i18n";
 import { SiteHeader } from "./SiteHeader";
+import { FlatCard } from "./FlatCard";
 
 // Public list of all flats (the website's home page for Google).
 
@@ -39,6 +40,9 @@ export default async function FlatsPage({ searchParams }: Props) {
   const [settings, base, posts] = await Promise.all([getSettings(), siteBase(), sitePosts()]);
   const kinds = (["rent", "sale", "daily"] as DealKind[]).filter((k) => posts.some((p) => dealKind(p.dealType) === k));
   const shown = posts.filter((p) => !deal || dealKind(p.dealType) === deal);
+  const counts = new Map<string, number>();
+  for (const p of posts) if (p.district) counts.set(p.district, (counts.get(p.district) ?? 0) + 1);
+  const districts = [...counts].sort((a, b) => b[1] - a[1]);
   const q = (extra: Record<string, string>) => {
     const params = new URLSearchParams({ ...(lang === "en" ? {} : { lang }), ...extra });
     return params.size ? `?${params}` : "";
@@ -59,28 +63,25 @@ export default async function FlatsPage({ searchParams }: Props) {
       </div>
 
       <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((post) => {
-          const item = toCatalogItem(post);
-          const metro = item.metro.find((m) => m.minutes <= 15);
-          return (
-            <li key={post.id}>
-              <Link href={`/flat/${post.refNo}${q({})}`} className="block overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:shadow-md">
-                <div className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {item.photos[0] ? <img src={item.photos[0]} alt={headline(post, lang)} loading="lazy" className={`h-48 w-full object-cover ${item.closed ? "grayscale-[60%]" : ""}`} /> : <div className="flex h-48 items-center justify-center bg-gray-100 text-3xl">🏠</div>}
-                  {item.closed ? <span className="absolute left-2 top-2 rounded-md bg-[#0e2a4d] px-2 py-0.5 text-xs font-black uppercase text-white">✓ {item.kind === "sale" ? t.sold : t.rented}</span> : null}
-                </div>
-                <div className="space-y-1 p-3">
-                  <div className={`text-lg font-bold ${item.closed ? "text-gray-400 line-through" : "text-gray-900"}`}>{priceText(post.price, post.currency, item.kind, lang)}</div>
-                  <h2 className="truncate text-sm font-medium text-gray-800">{headline(post, lang)}{item.area ? ` · ${item.area} m²` : ""}</h2>
-                  <div className="truncate text-xs text-gray-500">📍 {placeName(post.location || post.district, lang)}</div>
-                  {metro ? <div className="text-xs text-gray-500">🚇 {metroName(metro.id, lang)} · {t.walkMin(metro.minutes)}</div> : null}
-                </div>
-              </Link>
-            </li>
-          );
-        })}
+        {shown.map((post) => (
+          <li key={post.id}>
+            <FlatCard post={post} lang={lang} />
+          </li>
+        ))}
       </ul>
+
+      {districts.length ? (
+        <section className="mt-8">
+          <h2 className="mb-2 text-base font-semibold text-gray-900">{s.byDistrict}</h2>
+          <div className="flex flex-wrap gap-2">
+            {districts.map(([d, n]) => (
+              <Link key={d} href={`/area/${areaSlug(d)}${q({})}`} className="rounded-full bg-white px-3 py-1.5 text-sm text-gray-800 ring-1 ring-gray-200 hover:ring-[#1d4f8c]">
+                {placeName(d, lang)} <span className="text-gray-400">· {n}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

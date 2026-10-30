@@ -8,6 +8,7 @@ import { metroName } from "@/lib/metro";
 import { mapView } from "@/lib/map";
 import { getSettings } from "@/lib/settings";
 import { SITE_TEXT, flatTitle, siteBase, siteLang } from "@/lib/site";
+import { areaSlug } from "@/lib/areas";
 import { DICT } from "@/app/catalog/i18n";
 import { Gallery } from "@/app/s/[token]/Gallery";
 import { SiteHeader } from "../../flats/SiteHeader";
@@ -31,7 +32,8 @@ async function load(refText: string) {
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const [{ ref }, { lang: l }] = await Promise.all([params, searchParams]);
   const post = await load(ref);
-  if (!post) return { title: "Not found", robots: { index: false } };
+  // In metadata, so the 404 status is sent before the page starts streaming.
+  if (!post) notFound();
   const lang = siteLang(l);
   const [settings, base] = await Promise.all([getSettings(), siteBase()]);
   const item = toCatalogItem(post);
@@ -118,7 +120,7 @@ export default async function FlatPage({ params, searchParams }: Props) {
             <div className="text-xs text-gray-500">#{post.refNo} · {DEAL_LABEL[kind][lang]}</div>
             <h1 className="mt-1 text-2xl font-bold text-gray-900">{headline(post, lang)}{item.area ? `, ${item.area} m²` : ""}</h1>
             <div className={`mt-1 text-2xl font-extrabold ${item.closed ? "text-gray-400 line-through" : "text-[#1d4f8c]"}`}>{priceText(post.price, post.currency, kind, lang)}</div>
-            {place ? <div className="mt-1 text-sm text-gray-600">📍 {place}</div> : null}
+            {place ? <div className="mt-1 text-sm text-gray-600">📍 {place}{post.district ? <> · <Link href={`/area/${areaSlug(post.district)}${lang === "en" ? "" : `?lang=${lang}`}`} className="text-[#1d4f8c] hover:underline">{SITE_TEXT[lang].aboutArea(placeName(post.district, lang))} →</Link></> : null}</div> : null}
             {item.metro.filter((m) => m.minutes <= 15).slice(0, 3).map((m) => (
               <div key={m.id} className="text-sm text-gray-600">🚇 {metroName(m.id, lang)} · {t.walkMin(m.minutes)}</div>
             ))}

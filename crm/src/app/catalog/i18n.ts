@@ -150,6 +150,8 @@ const ka = {
   openMap: "რუკის გახსნა",
   thisFlat: "ეს ბინა",
   minShort: "წთ",
+  searchArea: "ამ არეალში ძებნა",
+  thisArea: "ეს არეალი",
   nearFilter: (n: number) => `ახლოს (${n} წთ-მდე ფეხით)`,
 };
 
@@ -305,6 +307,8 @@ const en: Dict = {
   openMap: "Open map",
   thisFlat: "This flat",
   minShort: "min",
+  searchArea: "Search this area",
+  thisArea: "This area",
   nearFilter: (n: number) => `Nearby (up to ${n} min walk)`,
 };
 
@@ -458,6 +462,8 @@ const ru: Dict = {
   openMap: "Открыть карту",
   thisFlat: "Эта квартира",
   minShort: "мин",
+  searchArea: "Искать в этой области",
+  thisArea: "Эта область",
   nearFilter: (n: number) => `Рядом (до ${n} мин пешком)`,
 };
 

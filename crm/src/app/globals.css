@@ -81,3 +81,20 @@ body {
   background: #d1d5db;
   border-radius: 8px;
 }
+
+/* Mini app photo placeholder: the brand navy with the round logo and a soft
+   shimmer, shown on an <img> until its photo has loaded (the photo covers it). */
+.brand-ph {
+  background-color: #0e2a4d;
+  background-image: url("/brand-mark.png"), linear-gradient(110deg, #0e2a4d 35%, #1d4f8c 50%, #0e2a4d 65%);
+  background-size: 44px 44px, 250% 100%;
+  background-position: center, 100% 0;
+  background-repeat: no-repeat;
+  animation: brand-ph 1.6s ease-in-out infinite;
+}
+@keyframes brand-ph {
+  to { background-position: center, -150% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-ph { animation: none; }
+}

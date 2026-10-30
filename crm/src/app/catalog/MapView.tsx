@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CatalogItem, DealKind, Lang } from "@/lib/catalog";
+import { roomsLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
 import { METRO, METRO_LINE_COLOR, metroLine } from "@/lib/metro";
 import { fetchNearby, placeHtml } from "./places";
 
@@ -119,7 +119,13 @@ const KIND_COLOR: Record<DealKind, string> = { rent: "#1d4f8c", sale: "#b7791f",
 const STYLE = `
 .mp{position:relative;width:max-content;transform:translate(-50%,calc(-100% - 7px));display:flex;align-items:center;gap:5px;padding:2px 10px 2px 2px;border-radius:999px;background:#fff;color:#111;border:2px solid var(--k);box-shadow:0 3px 10px rgba(0,0,0,.28);font:700 12.5px/1 system-ui,-apple-system,sans-serif;white-space:nowrap;cursor:pointer;transition:transform .15s ease,background .15s ease}
 .mp::after{content:"";position:absolute;left:50%;bottom:-7px;width:10px;height:10px;background:inherit;border-right:2px solid var(--k);border-bottom:2px solid var(--k);transform:translateX(-50%) rotate(45deg);border-bottom-right-radius:2px}
-.mp i{display:block;width:26px;height:26px;border-radius:50%;background:var(--k) center/cover no-repeat;flex:none}
+.mp i{display:block;width:26px;height:26px;border-radius:50%;background:var(--k) center/cover no-repeat;flex:none;transition:all .2s ease}
+.mp span{display:flex;flex-direction:column;gap:2px}
+.mp em{display:none;font:600 10.5px/1 system-ui,-apple-system,sans-serif;font-style:normal;opacity:.75}
+.zoom-xl .mp{padding:3px 10px 3px 3px;border-radius:14px}
+.zoom-xl .mp i{width:46px;height:38px;border-radius:10px}
+.zoom-xl .mp em{display:block}
+.zoom-xl .mp::after{bottom:-7px}
 .mp i.e{display:flex;align-items:center;justify-content:center;color:#fff;font-style:normal;font-size:13px}
 .mp:hover{transform:translate(-50%,calc(-100% - 7px)) scale(1.06)}
 .mp.on{background:var(--k);color:#fff;transform:translate(-50%,calc(-100% - 7px)) scale(1.18);box-shadow:0 0 0 6px color-mix(in srgb,var(--k) 25%,transparent),0 6px 16px rgba(0,0,0,.35);animation:mp-pop .35s ease}
@@ -163,15 +169,30 @@ const LAYERS: Record<LayerKey, { url: string; max: number; attribution: string; 
   },
 };
 
-function pinHtml(item: CatalogItem, active: boolean): string {
+function pinHtml(item: CatalogItem, active: boolean, lang: Lang): string {
   const photo = item.photos[0];
   const thumb = photo ? `<i style="background-image:url('${photo}')"></i>` : `<i class="e">🏠</i>`;
-  return `<div class="mp${active ? " on" : ""}" style="--k:${KIND_COLOR[item.kind]}">${thumb}${shortPrice(item)}</div>`;
+  // Zoomed in close (.zoom-xl) the pin grows into a small photo card with rooms and m².
+  const facts = [roomsLabel(item.rooms, lang), item.area ? `${item.area} m²` : ""].filter(Boolean).join(" · ");
+  return `<div class="mp${active ? " on" : ""}" style="--k:${KIND_COLOR[item.kind]}">${thumb}<span>${shortPrice(item)}${facts ? `<em>${facts}</em>` : ""}</span></div>`;
 }
 
-export type MapLabels = { layers: Record<LayerKey, string>; locate: string; fit: string; from: string; metro: string };
+export type MapLabels = { layers: Record<LayerKey, string>; locate: string; fit: string; from: string; metro: string; searchArea: string };
+export type Bounds = { s: number; w: number; n: number; e: number };
 
-export function MapView({ items, selected, onSelect, labels, dark, lang }: { items: CatalogItem[]; selected: number | null; onSelect: (ref: number | null) => void; labels: MapLabels; dark: boolean; lang: Lang }) {
+/**
+ * fitKey: the map re-fits to the pins only when it changes (filters, search),
+ * not when "search this area" narrows the list.  bottom: px covered by the
+ * cards at the bottom, so the selected pin is kept above them.
+ */
+export function MapView({ items, selected, onSelect, labels, dark, lang, fitKey, onSearchArea, bottom = 190 }: {
+  items: CatalogItem[]; selected: number | null; onSelect: (ref: number | null) => void; labels: MapLabels; dark: boolean; lang: Lang;
+  fitKey: string; onSearchArea: (bounds: Bounds) => void; bottom?: number;
+}) {
+  // "Search this area" shows after the user (not the app) moves the map.
+  const [moved, setMoved] = useState(false);
+  const auto = useRef(false);
+  const fitted = useRef<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const lib = useRef<Lf>(null);
   const map = useRef<Lf>(null);
@@ -212,6 +233,10 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
   const fit = () => {
     const L = lib.current;
     if (!L || !map.current) return;
+    auto.current = true;
+    // fitBounds to the view it already has fires no moveend; do not swallow the next real move.
+    setTimeout(() => (auto.current = false), 1200);
+    setMoved(false);
     if (points.length) map.current.fitBounds(L.latLngBounds(points.map((i) => [i.point!.lat, i.point!.lng])), { padding: [50, 50], maxZoom: 15 });
     else map.current.setView([41.7151, 44.8271], 12);
   };
@@ -259,7 +284,14 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
         const placesPane = m.createPane("places");
         placesPane.style.zIndex = "500";
         placesPane.style.pointerEvents = "none";
-        const zoomClass = () => box.current?.classList.toggle("zoom-hi", m.getZoom() >= 14);
+        const zoomClass = () => {
+          box.current?.classList.toggle("zoom-hi", m.getZoom() >= 14);
+          box.current?.classList.toggle("zoom-xl", m.getZoom() >= 16);
+        };
+        m.on("moveend", () => {
+          if (auto.current) auto.current = false;
+          else setMoved(true);
+        });
         m.on("zoomend", zoomClass);
         zoomClass();
         setReady(true);
@@ -332,15 +364,18 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
     cluster.current.clearLayers();
     markers.current.clear();
     const list = points.map((item) => {
-      const marker = L.marker([item.point!.lat, item.point!.lng], { icon: L.divIcon({ className: "", iconSize: [0, 0], html: pinHtml(item, item.ref === selected) }), item });
+      const marker = L.marker([item.point!.lat, item.point!.lng], { icon: L.divIcon({ className: "", iconSize: [0, 0], html: pinHtml(item, item.ref === selected, lang) }), item });
       marker.on("click", () => select.current(item.ref));
       markers.current.set(item.ref, marker);
       return marker;
     });
     cluster.current.addLayers(list);
-    fit();
+    if (fitted.current !== fitKey) {
+      fitted.current = fitKey;
+      fit();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, ready]);
+  }, [key, ready, fitKey, lang]);
 
   // Highlight the selected pin; an approximate location gets a soft circle.
   useEffect(() => {
@@ -348,7 +383,7 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
     if (!ready || !L || !map.current) return;
     for (const item of points) {
       const marker = markers.current.get(item.ref);
-      marker?.setIcon(L.divIcon({ className: "", iconSize: [0, 0], html: pinHtml(item, item.ref === selected) }));
+      marker?.setIcon(L.divIcon({ className: "", iconSize: [0, 0], html: pinHtml(item, item.ref === selected, lang) }));
       marker?.setZIndexOffset(item.ref === selected ? 1000 : 0);
     }
     area.current?.remove();
@@ -357,8 +392,12 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
     // Keep the chosen pin above the listing card at the bottom.
     if (item) {
       const at = map.current.latLngToContainerPoint([item.point!.lat, item.point!.lng]);
-      const height = map.current.getSize().y;
-      if (at.y > height - 190) map.current.panBy([0, at.y - height * 0.45]);
+      const size = map.current.getSize();
+      // Outside the clear part of the map (under the cards, the top bar or off an edge): bring it to ~40% height.
+      if (at.y > size.y - bottom || at.y < 70 || at.x < 30 || at.x > size.x - 30) {
+        auto.current = true;
+        map.current.panBy([at.x - size.x / 2, at.y - (size.y - bottom) * 0.55], { animate: true });
+      }
     }
     if (item && !item.point!.exact) {
       area.current = L.circle([item.point!.lat, item.point!.lng], { radius: 350, color: KIND_COLOR[item.kind], weight: 1.5, fillOpacity: 0.12, interactive: false }).addTo(map.current);
@@ -388,7 +427,10 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
       }
       places.current = group.addTo(map.current);
       // Close enough that the places spread out instead of piling on the pin.
-      if (map.current.getZoom() < 15) map.current.flyTo([item.point!.lat, item.point!.lng], 15, { duration: 0.6 });
+      if (map.current.getZoom() < 15) {
+        auto.current = true;
+        map.current.flyTo([item.point!.lat, item.point!.lng], 15, { duration: 0.6 });
+      }
     });
     return () => {
       alive = false;
@@ -404,6 +446,7 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
         const at: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         me.current?.remove();
         me.current = L.marker(at, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div class="me"></div>' }), interactive: false }).addTo(map.current);
+        auto.current = true;
         map.current.setView(at, 15);
       },
       () => undefined,
@@ -412,10 +455,25 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
   };
 
   if (failed) return <div className="p-6 text-center text-sm text-[var(--hint)]">Map could not load.</div>;
-  const btn = "flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--bg)] text-[var(--text)] shadow-md active:scale-95";
+  const btn = "flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--bg)] text-[var(--text)] shadow-md active:scale-95";
   return (
     <div className="relative h-full w-full">
       <div ref={box} className="h-full w-full" />
+      {moved ? (
+        <button
+          type="button"
+          onClick={() => {
+            const b = map.current?.getBounds();
+            if (!b) return;
+            setMoved(false);
+            onSearchArea({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() });
+          }}
+          className="absolute left-1/2 top-3 z-[600] flex h-11 -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-lg active:scale-95"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+          {labels.searchArea}
+        </button>
+      ) : null}
       <div className="absolute right-3 top-3 z-[600] flex flex-col gap-2">
         <button type="button" aria-label="layers" onClick={() => setPicker((v) => !v)} className={btn}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 3 2 8.5 12 14l10-5.5L12 3z" /><path d="m2 13.5 10 5.5 10-5.5" /></svg>
@@ -428,7 +486,7 @@ export function MapView({ items, selected, onSelect, labels, dark, lang }: { ite
         </button>
       </div>
       {picker ? (
-        <div className="absolute right-16 top-3 z-[600] grid grid-cols-2 gap-2 rounded-2xl bg-[var(--bg)] p-2 shadow-lg">
+        <div className="absolute right-[4.25rem] top-3 z-[600] grid grid-cols-2 gap-2 rounded-2xl bg-[var(--bg)] p-2 shadow-lg">
           {(Object.keys(LAYERS) as LayerKey[]).map((k) => (
             <button
               key={k}

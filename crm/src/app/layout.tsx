@@ -25,7 +25,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const pathname = (await headers()).get("x-pathname") ?? "";
   // The mini app draws its own full-screen layout.
   const isApp = pathname.startsWith("/catalog");
-  const isPublic = pathname.startsWith("/p/") || pathname.startsWith("/s/") || pathname.startsWith("/flat") || isApp;
+  const isPublic = pathname.startsWith("/p/") || pathname.startsWith("/s/") || pathname.startsWith("/flat") || pathname.startsWith("/area/") || isApp;
   const unread = session && !isPublic ? await prisma.notification.count({ where: { userId: session.id, readAt: null } }).catch(() => 0) : 0;
   if (isApp) {
     return (

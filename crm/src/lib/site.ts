@@ -20,6 +20,17 @@ export const SITE_TEXT: Record<Lang, {
   ctaTitle: string;
   ctaText: string;
   backToAll: string;
+  byDistrict: string;
+  areaTitle: (area: string) => string;
+  areaDescription: (area: string, n: number) => string;
+  inArea: (n: number) => string;
+  avgRent: string;
+  avgSaleM2: string;
+  metroNear: string;
+  nearShare: string;
+  otherAreas: string;
+  aboutArea: (area: string) => string;
+  perMonth: string;
 }> = {
   en: {
     siteTitle: (a) => `Apartments for rent and sale in Tbilisi — ${a}`,
@@ -35,6 +46,17 @@ export const SITE_TEXT: Record<Lang, {
     ctaTitle: "Book a viewing",
     ctaText: "Open this flat in our Telegram app: more photos, the map, saving and a viewing request in one tap.",
     backToAll: "← All listings",
+    byDistrict: "Apartments by district",
+    areaTitle: (a) => `Apartments in ${a}, Tbilisi`,
+    areaDescription: (a, n) => `${n} apartments for rent and sale in ${a}, Tbilisi: prices, metro, schools and parks nearby. Book a viewing on Telegram.`,
+    inArea: (n) => `${n} listings now`,
+    avgRent: "Average rent",
+    avgSaleM2: "Average sale price per m²",
+    metroNear: "Metro",
+    nearShare: "Flats within 7 min walk of…",
+    otherAreas: "Other districts",
+    aboutArea: (a) => `About ${a}`,
+    perMonth: "/mo",
   },
   ru: {
     siteTitle: (a) => `Квартиры в аренду и на продажу в Тбилиси — ${a}`,
@@ -50,6 +72,17 @@ export const SITE_TEXT: Record<Lang, {
     ctaTitle: "Записаться на просмотр",
     ctaText: "Откройте квартиру в нашем Telegram-приложении: больше фото, карта, избранное и заявка на просмотр в одно касание.",
     backToAll: "← Все объекты",
+    byDistrict: "Квартиры по районам",
+    areaTitle: (a) => `Квартиры в районе ${a}, Тбилиси`,
+    areaDescription: (a, n) => `${n} квартир в аренду и на продажу в районе ${a}, Тбилиси: цены, метро, школы и парки рядом. Запись на просмотр в Telegram.`,
+    inArea: (n) => `${n} объектов сейчас`,
+    avgRent: "Средняя аренда",
+    avgSaleM2: "Средняя цена продажи за м²",
+    metroNear: "Метро",
+    nearShare: "Квартир в 7 мин пешком от…",
+    otherAreas: "Другие районы",
+    aboutArea: (a) => `О районе ${a}`,
+    perMonth: "/мес",
   },
   ka: {
     siteTitle: (a) => `ბინები ქირით და იყიდება თბილისში — ${a}`,
@@ -65,6 +98,17 @@ export const SITE_TEXT: Record<Lang, {
     ctaTitle: "ჩვენების დაჯავშნა",
     ctaText: "გახსენი ბინა ჩვენს Telegram აპში: მეტი ფოტო, რუკა, შენახვა და ჩვენების მოთხოვნა ერთი შეხებით.",
     backToAll: "← ყველა განცხადება",
+    byDistrict: "ბინები უბნების მიხედვით",
+    areaTitle: (a) => `ბინები — ${a}, თბილისი`,
+    areaDescription: (a, n) => `${n} ბინა ქირით და იყიდება — ${a}, თბილისი: ფასები, მეტრო, სკოლები და პარკები ახლოს. ჩვენების დაჯავშნა Telegram-ში.`,
+    inArea: (n) => `ახლა ${n} განცხადება`,
+    avgRent: "საშუალო ქირა",
+    avgSaleM2: "საშუალო ფასი მ²-ზე (იყიდება)",
+    metroNear: "მეტრო",
+    nearShare: "ბინები 7 წთ სავალზე…",
+    otherAreas: "სხვა უბნები",
+    aboutArea: (a) => `უბნის შესახებ — ${a}`,
+    perMonth: "/თვე",
   },
 };
 
