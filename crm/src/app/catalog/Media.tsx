@@ -331,7 +331,8 @@ export function NearbySection({ item, lang, t }: { item: CatalogItem; lang: Lang
   useEffect(() => {
     let alive = true;
     setData("loading");
-    fetch(`/api/catalog/nearby?ref=${item.ref}`)
+    // A flat not looked up yet takes ~11 s; after 30 s show just the map.
+    fetch(`/api/catalog/nearby?ref=${item.ref}`, { signal: AbortSignal.timeout(30000) })
       .then((r) => r.json())
       .then((json) => alive && setData(json.ok ? { center: json.center, places: json.places } : "error"))
       .catch(() => alive && setData("error"));

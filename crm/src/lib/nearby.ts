@@ -1,6 +1,6 @@
 // What is near a flat — shops, schools, parks, cafés… — from OpenStreetMap
-// (Overpass API).  Looked up once per flat and kept for 30 days in
-// SharedPost.nearby, so the mini app never waits on Overpass twice.
+// (Nominatim search).  Looked up once per flat and kept for 30 days in
+// SharedPost.nearby; the 10-minute cron fills it in ahead of visitors.
 
 import { prisma } from "./db";
 import { publicPoint, publicWhere } from "./catalog";
@@ -23,18 +23,28 @@ export type Nearby = { center: { lat: number; lng: number }; places: Place[] };
 
 const RADIUS = 800; // metres, ~10 min on foot
 const MAX_AGE = 30 * 86400_000;
-const ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+// Nominatim (OpenStreetMap search) answers in under a second; the Overpass
+// servers used before were often overloaded and timed out from Vercel.
+// Its usage policy allows one request per second, so the searches run one
+// after another and each flat is looked up only once a month.
+const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const USER_AGENT = "TbilisiHomes-CRM/1.0 (real-estate catalog; https://agenturicrm.vercel.app)";
+const SEARCHES: { kind: PlaceKind; query: string; types?: string[] }[] = [
+  { kind: "supermarket", query: "amenity=supermarket" },
+  { kind: "supermarket", query: "amenity=convenience%20store" },
+  { kind: "school", query: "amenity=school" },
+  { kind: "kindergarten", query: "amenity=kindergarten" },
+  { kind: "park", query: "amenity=park" },
+  { kind: "cafe", query: "amenity=cafe" },
+  { kind: "cafe", query: "amenity=restaurant" },
+  { kind: "pharmacy", query: "amenity=pharmacy" },
+  { kind: "gym", query: "amenity=sports%20centre", types: ["sports_centre", "fitness_centre"] },
+  { kind: "gym", query: "q=fitness", types: ["fitness_centre", "sports_centre"] },
+];
 
-function kindOf(tags: Record<string, string>): PlaceKind | null {
-  if (tags.shop === "supermarket" || tags.shop === "convenience") return "supermarket";
-  if (tags.amenity === "school") return "school";
-  if (tags.amenity === "kindergarten") return "kindergarten";
-  if (tags.leisure === "park") return "park";
-  if (tags.amenity === "cafe" || tags.amenity === "restaurant") return "cafe";
-  if (tags.amenity === "pharmacy") return "pharmacy";
-  if (tags.leisure === "fitness_centre") return "gym";
-  return null;
-}
+type NominatimHit = { osm_type: string; osm_id: number; lat: string; lon: string; name?: string; type?: string; namedetails?: Record<string, string> };
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Walking minutes, same rule as the metro badge (straight line × 1.3, 80 m/min). */
 function walkMinutes(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -46,50 +56,46 @@ function walkMinutes(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return Math.max(1, Math.round((metres * 1.3) / 80));
 }
 
-async function overpass(lat: number, lng: number): Promise<Place[]> {
-  const around = `(around:${RADIUS},${lat},${lng})`;
-  const query = `[out:json][timeout:40];(
-    nwr${around}[shop~"^(supermarket|convenience)$"];
-    nwr${around}[amenity~"^(school|kindergarten|cafe|restaurant|pharmacy)$"];
-    nwr${around}[leisure~"^(park|fitness_centre)$"];
-  );out center tags 400;`;
-  let lastError: unknown = null;
-  for (const url of ENDPOINTS) {
+async function lookup(lat: number, lng: number): Promise<Place[]> {
+  // A box of about ±800 m around the point; walking time is checked per place below.
+  const dLat = RADIUS / 111_320;
+  const dLng = RADIUS / (111_320 * Math.cos((lat * Math.PI) / 180));
+  const viewbox = [lng - dLng, lat + dLat, lng + dLng, lat - dLat].map((n) => n.toFixed(5)).join(",");
+  const seen = new Set<string>();
+  const places: Place[] = [];
+  let answered = 0;
+  for (const [i, search] of SEARCHES.entries()) {
+    if (i > 0) await pause(1100);
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "TbilisiHomes-CRM/1.0" },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(45000),
+      const response = await fetch(`${NOMINATIM}?${search.query}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=10&namedetails=1`, {
+        headers: { "User-Agent": USER_AGENT, "Accept-Language": "ka,en,ru" },
+        signal: AbortSignal.timeout(10000),
         cache: "no-store",
       });
-      if (!response.ok) throw new Error(`overpass ${response.status}`);
-      const json = (await response.json()) as { elements: { lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[] };
-      const places: Place[] = [];
-      for (const el of json.elements) {
-        const tags = el.tags ?? {};
-        const kind = kindOf(tags);
-        const pLat = el.lat ?? el.center?.lat;
-        const pLng = el.lon ?? el.center?.lon;
-        if (!kind || pLat == null || pLng == null) continue;
+      if (!response.ok) continue;
+      const hits = (await response.json()) as NominatimHit[];
+      answered += 1;
+      for (const hit of hits) {
+        const key = `${hit.osm_type}${hit.osm_id}`;
+        if (seen.has(key) || (search.types && !search.types.includes(hit.type ?? ""))) continue;
+        seen.add(key);
+        const pLat = Number(hit.lat);
+        const pLng = Number(hit.lon);
+        const names = hit.namedetails ?? {};
         // Unnamed corner shops and cafés are noise; unnamed parks still count.
-        const ka = tags["name:ka"] || tags.name || "";
-        if (!ka && kind !== "park") continue;
-        places.push({
-          kind,
-          name: { ka, en: tags["name:en"] || ka, ru: tags["name:ru"] || tags["name:en"] || ka },
-          lat: pLat,
-          lng: pLng,
-          minutes: walkMinutes(lat, lng, pLat, pLng),
-        });
+        const ka = names["name:ka"] || names.name || hit.name || "";
+        if (!ka && search.kind !== "park") continue;
+        const minutes = walkMinutes(lat, lng, pLat, pLng);
+        if (minutes > 15) continue;
+        places.push({ kind: search.kind, name: { ka, en: names["name:en"] || ka, ru: names["name:ru"] || names["name:en"] || ka }, lat: pLat, lng: pLng, minutes });
       }
-      // Nearest 6 of each kind are plenty for the card and the map.
-      return PLACE_KINDS.flatMap((k) => places.filter((p) => p.kind === k).sort((a, b) => a.minutes - b.minutes).slice(0, 6));
-    } catch (error) {
-      lastError = error;
+    } catch {
+      // one failed search leaves that kind out
     }
   }
-  throw lastError;
+  if (!answered) throw new Error("nominatim did not answer");
+  // Nearest 6 of each kind are plenty for the card and the map.
+  return PLACE_KINDS.flatMap((k) => places.filter((p) => p.kind === k).sort((a, b) => a.minutes - b.minutes).slice(0, 6));
 }
 
 /** Places around the flat's public point (the approximate one when the address is private). */
@@ -107,7 +113,7 @@ export async function nearbyFor(ref: number): Promise<Nearby | null> {
       // re-fetch below
     }
   }
-  const places = await overpass(point.lat, point.lng);
+  const places = await lookup(point.lat, point.lng);
   const result: Nearby = { center: { lat: point.lat, lng: point.lng }, places };
   await prisma.sharedPost.update({ where: { id: post.id }, data: { nearby: JSON.stringify(result), nearbyAt: new Date() } });
   return result;
@@ -115,8 +121,8 @@ export async function nearbyFor(ref: number): Promise<Nearby | null> {
 
 /**
  * Background fill, run by the 10-minute cron: looks up places for public flats
- * that have none yet (the public Overpass server can take 30+ seconds, too slow
- * to make a client wait).  A failed lookup is retried an hour later.
+ * that have none yet (about 11 seconds per flat, one search per second).
+ * A failed lookup is retried an hour later.
  */
 export async function warmNearby(budgetMs = 100000): Promise<number> {
   const started = Date.now();
@@ -124,12 +130,12 @@ export async function warmNearby(budgetMs = 100000): Promise<number> {
   const posts = await prisma.sharedPost.findMany({
     where: { AND: [publicWhere(), { lat: { not: null }, lng: { not: null }, mapMode: { not: "off" } }, { OR: [{ nearbyAt: null }, { nearbyAt: { lt: stale } }] }] },
     orderBy: { updatedAt: "desc" },
-    take: 4,
+    take: 8,
     select: { id: true, refNo: true },
   });
   let done = 0;
   for (const post of posts) {
-    if (Date.now() - started > budgetMs - 50000) break;
+    if (Date.now() - started > budgetMs - 20000) break;
     try {
       if (post.refNo && (await nearbyFor(post.refNo))) done += 1;
     } catch {
