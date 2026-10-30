@@ -12,6 +12,7 @@ import { getSettings } from "./settings";
 const MARK = Buffer.from(BRAND_MARK_PNG, "base64");
 const MARK_URI = `data:image/png;base64,${BRAND_MARK_PNG}`;
 const labels = new Map<string, Promise<Buffer>>();
+const BRAND = "Tbilisi Home";
 
 /** "@TbilisiBuyRent" from the channel setting ("@x", "https://t.me/x" or a numeric id). */
 function handle(value: string): string {
@@ -53,8 +54,8 @@ export async function watermark(data: Uint8Array): Promise<{ data: Buffer; mime:
     // Loaded here: sharp comes with Next as an optional dependency; if it is ever missing, photos go out unmarked instead of failing.
     const sharp = (await import("sharp")).default;
     const settings = await getSettings();
-    // The label font covers Latin letters only; a Georgian agency name falls back to the brand name.
-    const agency = /^[\x20-\x7e]+$/.test(settings.agency_name || "") ? settings.agency_name : "Tbilisi Home";
+    // The public brand of the channels and the mini app (the CRM's agency name may differ).
+    const agency = BRAND;
     const channel = handle(settings.telegram_channel_en || settings.telegram_channel || "");
     const image = sharp(Buffer.from(data)).rotate();
     const meta = await image.metadata();

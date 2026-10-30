@@ -378,7 +378,7 @@ function nearbySummary(post: Pick<SharedPost, "nearby" | "lat" | "lng" | "mapMod
 }
 
 /** Public photo URL; v= changes whenever the watermark changes, so caches fetch the new version. */
-export const PHOTO_VERSION = "w1";
+export const PHOTO_VERSION = "w2";
 export function photoUrl(id: string): string {
   return `/api/catalog/photo/${id}?v=${PHOTO_VERSION}`;
 }
