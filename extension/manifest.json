@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tbilisi Home — CRM helper",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Brings MyHome owner numbers and pages of sites that block our server (ss.ge, binebi.ge, korter.ge when they block us) from your own Chrome to the Tbilisi Home CRM.",
   "permissions": [
     "storage",

@@ -577,3 +577,21 @@ model RelayPage {
   @@index([fetchedAt])
   @@map("relay_pages")
 }
+
+// Chrome extension pace analytics: one row per run of MyHome numbers (a batch
+// of listings at one pause), so the Extension page can show which pause
+// MyHome tolerates without logging the agent out.
+model ExtPaceLog {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  pace      Int // seconds between listings
+  tried     Int
+  found     Int
+  seconds   Int // how long the run lasted
+  loggedOut Boolean  @default(false) @map("logged_out")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([pace])
+  @@index([createdAt])
+  @@map("ext_pace_logs")
+}

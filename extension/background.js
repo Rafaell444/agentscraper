@@ -167,24 +167,43 @@ async function processItem(item) {
         : "⚠ " + what + ": " + (PROBLEMS[result.status] || "ვერ მოხერხდა"),
   );
   await badge();
+  const found = Boolean(saved?.phone);
   if (result.status === "login") {
-    // MyHome logged us out: most likely too fast, so the pause grows one step each time.
+    // MyHome logged us out: most likely too fast, so the pause grows one step and that pace is remembered as failed.
     const { intervalSec } = await settings();
+    const { paceFails = {} } = await chrome.storage.local.get("paceFails");
     const slower = PACE_STEPS.find((step) => step > intervalSec) ?? PACE_STEPS[PACE_STEPS.length - 1];
-    await chrome.storage.local.set({ intervalSec: slower });
-    const pace = slower >= 60 ? slower / 60 + " წუთი" : slower + " წამი";
-    await stopAuto(`MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა. პაუზა გავზარდე: ახლა ${pace}.`, "login");
-    return "stop";
+    await chrome.storage.local.set({ intervalSec: slower, paceOk: 0, paceFails: { ...paceFails, [intervalSec]: Date.now() } });
+    await stopAuto(`MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა. პაუზა გავზარდე: ახლა ${paceText(slower)}.`, "login");
+    return { stop: true, login: true, found };
   }
   if (refusals >= 3) {
     await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი — ნომრების მოტანა გაჩერდა.", "blocked");
-    return "stop";
+    return { stop: true, login: false, found };
   }
-  return "ok";
+  await maybeSpeedUp();
+  return { stop: false, login: false, found };
 }
 
 // Pause choices in seconds; a MyHome logout moves to the next, slower one.
-const PACE_STEPS = [20, 30, 45, 60, 90, 120];
+const PACE_STEPS = [10, 15, 20, 30, 45, 60, 90, 120];
+// After this many listings without a logout, one step faster is tried...
+const SPEED_UP_AFTER = 300;
+// ...but never a pace that logged us out in the last 3 days.
+const FAIL_MEMORY_MS = 3 * 86400_000;
+
+const paceText = (sec) => (sec >= 60 ? sec / 60 + " წუთი" : sec + " წამი");
+
+/** Probe for the shortest pause MyHome accepts: one step faster after a long clean stretch. */
+async function maybeSpeedUp() {
+  const { paceOk = 0, paceFails = {} } = await chrome.storage.local.get(["paceOk", "paceFails"]);
+  const { intervalSec } = await settings();
+  if (paceOk + 1 < SPEED_UP_AFTER) return chrome.storage.local.set({ paceOk: paceOk + 1 });
+  const faster = [...PACE_STEPS].reverse().find((step) => step < intervalSec);
+  const failedRecently = faster != null && Date.now() - (paceFails[faster] ?? 0) < FAIL_MEMORY_MS;
+  await chrome.storage.local.set({ paceOk: 0, ...(faster != null && !failedRecently ? { intervalSec: faster } : {}) });
+  if (faster != null && !failedRecently) await addLog(`⏩ ${SPEED_UP_AFTER} განცხადება გამოყვანის გარეშე — პაუზას ვცდი ${paceText(faster)}`);
+}
 
 // One batch runs up to 4 minutes, then the next alarm tick carries on.
 const BATCH_MS = 4 * 60_000;
@@ -202,6 +221,7 @@ async function runOne(force = false) {
   }
   await chrome.storage.local.set({ busySince: Date.now() });
   const started = Date.now();
+  const run = { pace: cfg.intervalSec, tried: 0, found: 0, loggedOut: false };
   let tabId = null;
   let wait = cfg.intervalSec * 1000;
   try {
@@ -217,7 +237,13 @@ async function runOne(force = false) {
         const now = await settings();
         if (!force && !now.auto) break batch;
         if ((await state()).stats.tried >= now.dailyCap) break batch;
-        if ((await processItem(item)) === "stop") break batch;
+        const done = await processItem(item);
+        run.tried += 1;
+        if (done.found) run.found += 1;
+        if (done.login) run.loggedOut = true;
+        if (done.stop) break batch;
+        // A sped-up pace starts a new analytics row.
+        if ((await settings()).intervalSec !== run.pace) break batch;
         tabId = (await state()).workerTab;
         // Pause ±30% so it does not tick like a clock.
         await sleep(now.intervalSec * 1000 * (0.7 + Math.random() * 0.6));
@@ -233,6 +259,11 @@ async function runOne(force = false) {
     const { nextAt } = await state();
     await chrome.storage.local.set({ busySince: 0, lastRunAt: Date.now(), nextAt: Math.max(nextAt, Date.now() + Math.min(wait, 10 * 60_000)) });
     await badge();
+    // Pace analytics: how many listings at which pause, and whether MyHome logged us out.
+    if (run.tried) {
+      const seconds = Math.round((Date.now() - started) / 1000);
+      api("/api/ext/pace", { method: "POST", body: JSON.stringify({ ...run, seconds }) }).catch(() => undefined);
+    }
   }
 }
 

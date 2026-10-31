@@ -56,6 +56,8 @@
     <div class="card">
       <label>ტემპი
         <select id="intervalSec">
+          <option value="10">10 წამი პაუზა</option>
+          <option value="15">15 წამი პაუზა</option>
           <option value="20">20 წამი პაუზა</option>
           <option value="30">30 წამი პაუზა</option>
           <option value="45">45 წამი პაუზა</option>
@@ -65,7 +67,7 @@
         </select>
       </label>
       <label>დღეში მაქსიმუმ<input id="dailyCap" type="number" min="10" max="5000" step="50" /></label>
-      <p class="note">თუ MyHome გამოგიყვანს ანგარიშიდან, გაფართოება გაჩერდება, გაცნობებს და პაუზას თავად გაზრდის.</p>
+      <p class="note">პაუზა თავად ერგება MyHome-ს: გამოყვანისას იზრდება, 300 განცხადება უპრობლემოდ — ცდის უფრო მოკლეს. ანალიტიკა: CRM → გაფართოება.</p>
       <p id="whoSmall" class="note"></p>
       <button id="reconnect">კავშირის შეცვლა (სხვა გასაღები)</button>
     </div>
