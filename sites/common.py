@@ -61,6 +61,8 @@ COLUMNS = [
     "Lat",
     "Lng",
     "Images",
+    # Cadastral code (ს/კ) where the site gives it (MyHome).
+    "Cadastral Code",
 ]
 INTERNAL_COLUMNS = {"Lat", "Lng", "Images"}
 NUMERIC_COLUMNS = {

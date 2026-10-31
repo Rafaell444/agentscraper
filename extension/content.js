@@ -36,8 +36,38 @@ function loginNeeded() {
   );
 }
 
-/** Press MyHome's own "show number" button and wait for its answer. */
+const CADASTRAL = /\d{2}\.\d{2}\.\d{2}\.\d{3}\.\d{2,4}(?:\.\d{2,4}){0,2}/;
+
+/** The full code once the page shows it after "ს/კ:" (masked as 01.7*** before the click). */
+function shownCadastral() {
+  return (document.body.innerText.match(/ს\/კ\s*:?\s*([\d.]+)/)?.[1] ?? "").match(CADASTRAL)?.[0] ?? "";
+}
+
+/** The listing's cadastral code (ს/კ): press MyHome's "კოდის ნახვა" when it is there, then read it. */
+async function revealCadastral() {
+  const button = [...document.querySelectorAll("span, button")].find((el) => /^კოდის ნახვა$/.test((el.textContent || "").trim()) && visible(el));
+  if (button) {
+    button.click();
+    for (let i = 0; i < 10; i++) {
+      await sleep(300);
+      const code = shownCadastral();
+      if (code) return code;
+    }
+  }
+  const shown = shownCadastral();
+  if (shown) return shown;
+  // The page's own data has it too (MyHome masks it only on screen).
+  return document.getElementById("__NEXT_DATA__")?.textContent.match(/"rs_code":"([\d.]+)"/)?.[1]?.match(CADASTRAL)?.[0] ?? "";
+}
+
+/** Press MyHome's "show number" (and "show code") buttons and wait for the answers. */
 async function reveal() {
+  const result = await revealPhone();
+  if (result.status !== "login" && listingId()) result.cadastral = await revealCadastral().catch(() => "");
+  return result;
+}
+
+async function revealPhone() {
   // A managed browser check ("Just a moment…") is left to Chrome to finish, as for any visitor.
   for (let i = 0; i < 25 && /just a moment/i.test(document.title); i++) await sleep(1000);
   if (/just a moment/i.test(document.title)) return { status: "blocked", detail: "browser check" };

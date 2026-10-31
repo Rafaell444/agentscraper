@@ -217,6 +217,7 @@ def detail_fields(detail: dict[str, Any]) -> dict[str, Any]:
         "Lat": number(detail.get("lat")),
         "Lng": number(detail.get("lng")),
         "Images": json.dumps(detail_photos(detail)),
+        "Cadastral Code": str(detail.get("rs_code") or "").strip(),
     }
 
 

@@ -407,7 +407,13 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           </Card>
 
           <Card title="საკადასტრო კოდი">
-            <CadastralBox address={listing.address} code={cadastral} back={`/listings/${encodeURIComponent(listing.id)}`} />
+            {listing.cadastralCode ? (
+              <p className="mb-2 text-sm">
+                <span className="font-mono font-semibold">{listing.cadastralCode}</span>
+                <span className="ml-2 text-xs text-gray-500">განცხადებიდან ({listing.siteName})</span>
+              </p>
+            ) : null}
+            <CadastralBox address={listing.address} code={cadastral ?? listing.cadastralCode} back={`/listings/${encodeURIComponent(listing.id)}`} />
           </Card>
 
           {phoneMatches.length ? (

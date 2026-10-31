@@ -153,7 +153,7 @@ async function processItem(item) {
   const tabId = await workerTab(item.url);
   await waitForLoad(tabId, 45_000);
   const result = await askReveal(tabId);
-  const saved = await api("/api/ext/result", { method: "POST", body: JSON.stringify({ listingId: item.id, url: item.url, phone: result.phone, status: result.status }) });
+  const saved = await api("/api/ext/result", { method: "POST", body: JSON.stringify({ listingId: item.id, url: item.url, phone: result.phone, status: result.status, cadastral: result.cadastral }) });
   const st = await state();
   const stats = { ...st.stats, tried: st.stats.tried + 1, found: st.stats.found + (saved?.phone ? 1 : 0) };
   const refusals = result.status === "blocked" ? st.refusals + 1 : 0;
@@ -161,7 +161,7 @@ async function processItem(item) {
   const what = item.label || "MyHome განცხადება";
   await addLog(
     saved?.phone
-      ? "✓ " + prettyPhone(saved.phone) + " — " + what + (item.owner ? " (მესაკუთრე)" : "")
+      ? "✓ " + prettyPhone(saved.phone) + " — " + what + (item.owner ? " (მესაკუთრე)" : "") + (saved.cadastral ? " · ს/კ " + saved.cadastral : "")
       : result.status === "none"
         ? "— " + what + ": ნომერი არ აქვს"
         : "⚠ " + what + ": " + (PROBLEMS[result.status] || "ვერ მოხერხდა"),
@@ -325,7 +325,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "save") {
       // The "📞 → CRM" button on a listing page.
       try {
-        const saved = await api("/api/ext/result", { method: "POST", body: JSON.stringify({ url: message.url, phone: message.phone, status: message.status }) });
+        const saved = await api("/api/ext/result", { method: "POST", body: JSON.stringify({ url: message.url, phone: message.phone, status: message.status, cadastral: message.cadastral }) });
         if (saved?.phone && saved.ok) {
           const { stats } = await state();
           await chrome.storage.local.set({ stats: { ...stats, found: stats.found + 1 } });

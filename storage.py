@@ -49,6 +49,7 @@ COLUMN_MAP = {
     "Image": "image",
     "Images": "images",
     "Detail Status": "detail_status",
+    "Cadastral Code": "cadastral_code",
 }
 FLOAT_MAP = {
     "Area m2": "area_m2",
