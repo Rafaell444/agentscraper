@@ -196,9 +196,22 @@ export async function getWelcome(lang: Lang): Promise<WelcomePost | null> {
   }
 }
 
-/** Escape for Telegram HTML and turn **bold** into <b>bold</b>. */
+/**
+ * Escape for Telegram HTML; **bold** becomes <b>bold</b> and [Manager](https://t.me/name)
+ * a link.  A bare @username also works as the target: [Manager](@name).
+ */
 function welcomeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\[([^\]\n]+)\]\((?:@([A-Za-z0-9_]{4,})|(https?:\/\/[^\s)"]+))\)/g, (_, label: string, user?: string, url?: string) => `<a href="${user ? `https://t.me/${user}` : url}">${label}</a>`);
+}
+
+/** The welcome text as Telegram shows it (no ** or link markup), for the length limit. */
+function welcomeVisible(text: string): string {
+  return text.split("**").join("").replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, "$1");
 }
 
 /** One button only: Telegram shows it on the pinned bar only when the post has a single button. */
@@ -212,7 +225,7 @@ export async function publishWelcome(input: { lang: Lang; text: string; button: 
   const button = input.button.trim() || WELCOME_DEFAULTS[input.lang === "ru" ? "ru" : "en"].button;
   const reply_markup = { inline_keyboard: [[{ text: button, url: catalogLink(settings, base, null, input.lang, "c") }]] };
   const html = welcomeHtml(text);
-  const visible = text.split("**").join("").length; // Telegram counts the caption without markup
+  const visible = welcomeVisible(text).length; // Telegram counts the caption without markup
   const photo = input.photo && input.photo.size > 0 ? input.photo : null;
   const tooLong = `ფოტოიან პოსტში ტექსტი მაქს. 1024 სიმბოლოა (ახლა ${visible}). შეამოკლე.`;
 
