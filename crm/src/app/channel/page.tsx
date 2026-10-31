@@ -37,7 +37,14 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
 export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string; scheduler?: string }> }) {
   const user = await requireUser();
   const { bot, tab = "leads", welcome, days, scheduler } = await searchParams;
-  const [cron, lastRun, collectorAt] = await Promise.all([dbCronStatus(), lastScheduleRun(), lastCollectorDispatch()]);
+  const [cron, lastRun, collectorAt, healthRow] = await Promise.all([dbCronStatus(), lastScheduleRun(), lastCollectorDispatch(), prisma.setting.findUnique({ where: { key: "collector_health" } })]);
+  // Per-site result of the last collector run (written by collect.py).
+  let health: Record<string, { at?: string; ok?: boolean; error?: string; new?: number }> = {};
+  try {
+    health = healthRow ? JSON.parse(healthRow.value) : {};
+  } catch {
+    health = {};
+  }
   const schedulerMsg = scheduler ? { ok: scheduler.startsWith("ok"), text: scheduler.replace(/^(ok|err):/, "") } : null;
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
@@ -128,6 +135,15 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
               🔄 განცხადებების შემგროვებელი (GitHub) ამავე ტაიმერით ეშვება ყოველ 30 წუთში{collectorAt ? `, ბოლოს ${fmtDate(collectorAt, true)}` : ""}.
               {!collectorDispatchConfigured() ? <span className="font-medium text-amber-700"> ⚠️ Vercel-ში არ არის GITHUB_DISPATCH_TOKEN — მის გარეშე ვერ ჩაირთვება.</span> : null}
             </p>
+            {Object.keys(health).length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(health).map(([site, h]) => (
+                  <span key={site} title={h.error || undefined} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${h.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>
+                    {h.ok ? "✓" : "⚠"} {site}{h.ok ? ` · +${h.new ?? 0}` : ` · ${(h.error ?? "").match(/HTTP \d+/)?.[0] ?? "შეცდომა"}`}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               {cron.kind !== "unsupported" ? (
                 <form action={enableScheduler}>
