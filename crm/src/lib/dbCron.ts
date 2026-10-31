@@ -5,6 +5,7 @@
 
 import { prisma } from "./db";
 import { lastScheduleRun, runDueSchedules } from "./schedule";
+import { dispatchCollectorIfDue } from "./collectorDispatch";
 
 const JOB = "crm-publish";
 
@@ -65,6 +66,8 @@ let lastLocalCheck = 0;
 export async function runSchedulesIfStale(): Promise<void> {
   if (Date.now() - lastLocalCheck < 60_000) return;
   lastLocalCheck = Date.now();
+  // The listings collector too: GitHub hardly ever starts it on its own schedule.
+  await dispatchCollectorIfDue().catch(() => false);
   const last = await lastScheduleRun();
   if (last && Date.now() - last.getTime() < 5 * 60_000) return;
   await runDueSchedules();

@@ -14,6 +14,7 @@ copies of the same property across sites and posters) and a price history.
 from __future__ import annotations
 
 import csv
+import json
 import os
 import re
 import sqlite3
@@ -413,6 +414,38 @@ def save_rows(site_key: str, rows: dict[str, dict[str, Any]]) -> bool:
     finally:
         db.close()
     return True
+
+
+def load_health() -> dict[str, Any]:
+    """Per-site result of the previous collector runs (settings key ``collector_health``)."""
+    url = database_url()
+    if not url:
+        return {}
+    db = Database(url)
+    try:
+        row = db.execute('SELECT "value" FROM "settings" WHERE "key" = ?', ("collector_health",)).fetchone()
+        return json.loads(row[0]) if row and row[0] else {}
+    except Exception:  # settings table missing (CRM not deployed) or bad JSON
+        return {}
+    finally:
+        db.close()
+
+
+def save_health(health: dict[str, Any]) -> None:
+    """Store per-site results so ops_alert.py can name a site that keeps failing."""
+    url = database_url()
+    if not url:
+        return
+    db = Database(url)
+    try:
+        db.execute(
+            'INSERT INTO "settings" ("key", "value", "updated_at") VALUES (?, ?, ?) '
+            'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = excluded."updated_at"',
+            ("collector_health", json.dumps(health, ensure_ascii=False), db.date_value(datetime.now())),
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 def save_one(site_key: str, row: dict[str, Any]) -> None:

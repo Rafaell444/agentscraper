@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from datetime import datetime, timezone
 from types import ModuleType
 from typing import Any
 
@@ -104,6 +105,9 @@ def collect_site(session: requests.Session, site: ModuleType, args: argparse.Nam
             page_rows = site.parse_list(session, page)
         except (requests.RequestException, ScraperError) as exc:
             LOGGER.error("[%s] page %s failed: %s", site.KEY, page, exc)
+            # The first page failing means the site gave us nothing this run (blocked, down, redesigned).
+            if page == 1:
+                stats["error"] = str(exc)[:200]
             break
         if not page_rows:
             LOGGER.info("[%s] pagination ended at empty page %s", site.KEY, page)
@@ -218,14 +222,33 @@ def main(argv: list[str] | None = None) -> int:
     sites = [load_site(key) for key in keys]
     failures = 0
     any_changed = False
+    # Per-site health for ops_alert.py: a site that keeps failing gets named in the Telegram alert.
+    health = storage.load_health()
     with build_session() as session:
         for site in sites:
+            error = ""
+            stats: dict[str, Any] = {}
             try:
                 stats = collect_site(session, site, args)
                 any_changed = any_changed or bool(stats["changed"])
+                error = str(stats.get("error", ""))
             except Exception as exc:  # one broken site must not stop the others
                 failures += 1
+                error = f"{type(exc).__name__}: {exc}"[:200]
                 LOGGER.exception("[%s] collection failed: %s", site.KEY, exc)
+            previous = health.get(site.KEY, {})
+            health[site.KEY] = {
+                "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "ok": not error,
+                "error": error,
+                "fails": (int(previous.get("fails", 0)) + 1) if error else 0,
+                "new": int(stats.get("new", 0)),
+                "pages": int(stats.get("pages", 0)),
+            }
+    try:
+        storage.save_health(health)
+    except Exception as exc:  # health is a nice-to-have; never fail the run for it
+        LOGGER.warning("could not save collector health: %s", exc)
     if not args.no_workbook and (any_changed or not os.path.exists(args.output)):
         build_workbook.build(args.output)
     if sites and failures == len(sites):

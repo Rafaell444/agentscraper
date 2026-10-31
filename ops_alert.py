@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -107,10 +108,28 @@ def check(db: storage.Database, token: str) -> None:
             f"⚠️ <b>დაგეგმილი პოსტები არ გამოქვეყნდა ({len(late)})</b>\n{lines}\n"
             "CRM → „არხი და აპი“ → „⏰ ავტომატური გამოქვეყნება“ — შეამოწმე, რომ ჩართულია."
         ))
+    # A site that failed in two runs in a row (blocked, down, redesigned) is named.
+    try:
+        health = json.loads(setting(db, "collector_health") or "{}")
+    except ValueError:
+        health = {}
+    broken = {key: info for key, info in health.items() if int(info.get("fails", 0)) >= 2}
+    if broken:
+        lines = "\n".join(f"• <b>{html.escape(key)}</b>: {html.escape(str(info.get('error', ''))[:140])}" for key, info in broken.items())
+        send(db, token, "sites_" + "_".join(sorted(broken)), (
+            "⚠️ <b>საიტიდან განცხადებები ვერ მოდის</b>\n"
+            f"{lines}\n"
+            "სხვა საიტები მუშაობს. 403 ნიშნავს, რომ საიტი GitHub-ის სერვერებს ბლოკავს."
+            + (f"\nლოგი: {run_url()}" if run_url() else "")
+        ))
+
+    # Quiet nights are normal: only 10:00–23:00 in Tbilisi (UTC+4) counts, or 12 hours at any time.
     row = db.execute('SELECT MAX("collected_at") FROM "listings"').fetchone()
     newest = parse_time(row[0] if row else None)
-    if newest and now - newest > timedelta(hours=6):
-        hours = int((now - newest).total_seconds() // 3600)
+    tbilisi_hour = (now + timedelta(hours=4)).hour
+    quiet = now - newest if newest else timedelta(0)
+    if newest and (quiet > timedelta(hours=12) or (quiet > timedelta(hours=6) and 10 <= tbilisi_hour <= 23)):
+        hours = int(quiet.total_seconds() // 3600)
         send(db, token, "collector_quiet", (
             "⚠️ <b>ახალი განცხადებები აღარ ემატება</b>\n"
             f"ბოლო განცხადება {hours} საათის წინ შეინახა. შესაძლოა საიტმა დიზაინი შეცვალა ან ბლოკავს.\n"

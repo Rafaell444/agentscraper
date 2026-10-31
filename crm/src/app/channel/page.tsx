@@ -13,6 +13,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { connectBot, disableScheduler, enableScheduler, postWelcome, setLeadStatus } from "./actions";
 import { dbCronStatus } from "@/lib/dbCron";
 import { lastScheduleRun } from "@/lib/schedule";
+import { collectorDispatchConfigured, lastCollectorDispatch } from "@/lib/collectorDispatch";
 import { CatalogStatsView } from "./Stats";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
 export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string; scheduler?: string }> }) {
   const user = await requireUser();
   const { bot, tab = "leads", welcome, days, scheduler } = await searchParams;
-  const [cron, lastRun] = await Promise.all([dbCronStatus(), lastScheduleRun()]);
+  const [cron, lastRun, collectorAt] = await Promise.all([dbCronStatus(), lastScheduleRun(), lastCollectorDispatch()]);
   const schedulerMsg = scheduler ? { ok: scheduler.startsWith("ok"), text: scheduler.replace(/^(ok|err):/, "") } : null;
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
@@ -122,6 +123,10 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
             )}
             <p className="text-xs text-gray-500">
               პუბლიკაციის შემმოწმებელი ბოლოს გაეშვა: {lastRun ? fmtDate(lastRun, true) : "ჯერ არასდროს"}. სარეზერვოდ, როცა ვინმე CRM-ს ან მინი აპს ხსნის, ვადაგასული პოსტებიც ქვეყნდება.
+            </p>
+            <p className="text-xs text-gray-500">
+              🔄 განცხადებების შემგროვებელი (GitHub) ამავე ტაიმერით ეშვება ყოველ 30 წუთში{collectorAt ? `, ბოლოს ${fmtDate(collectorAt, true)}` : ""}.
+              {!collectorDispatchConfigured() ? <span className="font-medium text-amber-700"> ⚠️ Vercel-ში არ არის GITHUB_DISPATCH_TOKEN — მის გარეშე ვერ ჩაირთვება.</span> : null}
             </p>
             <div className="flex flex-wrap gap-2">
               {cron.kind !== "unsupported" ? (
