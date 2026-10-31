@@ -1,11 +1,11 @@
 // Background worker: in auto mode it takes the next MyHome listing without a
 // number from the CRM, opens it in one pinned background tab, asks content.js
-// to press "ნომრის ნახვა", and saves the answer.  About one listing a minute,
-// up to a daily cap; it stops by itself if MyHome asks for a login or keeps
-// refusing.
+// to press "ნომრის ნახვა", and saves the answer.  Listings follow each other
+// with a short pause (a few seconds), up to a daily cap; it stops by itself if
+// MyHome asks for a login or keeps refusing.
 
 // Auto mode is on by default: opening Chrome is enough for numbers to keep coming.
-const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 60, dailyCap: 400 };
+const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 1, dailyCap: 1500 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -148,7 +148,40 @@ async function workerTab(url) {
   return tab.id;
 }
 
-/** One listing from the queue. */
+/** One listing: open it, press "show number", save the answer. Returns "stop" when the agent is needed. */
+async function processItem(item) {
+  const tabId = await workerTab(item.url);
+  await waitForLoad(tabId, 45_000);
+  const result = await askReveal(tabId);
+  const saved = await api("/api/ext/result", { method: "POST", body: JSON.stringify({ listingId: item.id, url: item.url, phone: result.phone, status: result.status }) });
+  const st = await state();
+  const stats = { ...st.stats, tried: st.stats.tried + 1, found: st.stats.found + (saved?.phone ? 1 : 0) };
+  const refusals = result.status === "blocked" ? st.refusals + 1 : 0;
+  await chrome.storage.local.set({ stats, refusals, queueEmptyAt: 0, busySince: Date.now(), lastRunAt: Date.now() });
+  const what = item.label || "MyHome განცხადება";
+  await addLog(
+    saved?.phone
+      ? "✓ " + prettyPhone(saved.phone) + " — " + what + (item.owner ? " (მესაკუთრე)" : "")
+      : result.status === "none"
+        ? "— " + what + ": ნომერი არ აქვს"
+        : "⚠ " + what + ": " + (PROBLEMS[result.status] || "ვერ მოხერხდა"),
+  );
+  await badge();
+  if (result.status === "login") {
+    await stopAuto("MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა.", "login");
+    return "stop";
+  }
+  if (refusals >= 3) {
+    await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი — ნომრების მოტანა გაჩერდა.", "blocked");
+    return "stop";
+  }
+  return "ok";
+}
+
+// One batch runs up to 4 minutes, then the next alarm tick carries on.
+const BATCH_MS = 4 * 60_000;
+
+/** Listings from the queue one after another, a short pause (the chosen pace) between them. */
 async function runOne(force = false) {
   const cfg = await settings();
   const st = await state();
@@ -160,42 +193,37 @@ async function runOne(force = false) {
     return;
   }
   await chrome.storage.local.set({ busySince: Date.now() });
+  const started = Date.now();
+  let tabId = null;
+  let wait = cfg.intervalSec * 1000;
   try {
-    const queue = await api("/api/ext/queue?limit=1");
-    const item = queue.items?.[0];
-    if (!item) {
-      await addLog("ყველა ნომერი მოტანილია — ახლებს 10 წუთში შევამოწმებ");
-      await chrome.storage.local.set({ nextAt: Date.now() + 10 * 60_000, queueEmptyAt: Date.now() });
-      return;
+    batch: while (Date.now() - started < BATCH_MS) {
+      const { items = [] } = await api("/api/ext/queue?limit=" + (force ? 1 : 5));
+      if (!items.length) {
+        await addLog("ყველა ნომერი მოტანილია — ახლებს 10 წუთში შევამოწმებ");
+        await chrome.storage.local.set({ queueEmptyAt: Date.now() });
+        wait = 10 * 60_000;
+        break;
+      }
+      for (const item of items) {
+        const now = await settings();
+        if (!force && !now.auto) break batch;
+        if ((await state()).stats.tried >= now.dailyCap) break batch;
+        if ((await processItem(item)) === "stop") break batch;
+        tabId = (await state()).workerTab;
+        // Pause ±30% so it does not tick like a clock.
+        await sleep(now.intervalSec * 1000 * (0.7 + Math.random() * 0.6));
+      }
+      if (force) break;
     }
-    const tabId = await workerTab(item.url);
-    await waitForLoad(tabId, 45_000);
-    const result = await askReveal(tabId);
-    const saved = await api("/api/ext/result", { method: "POST", body: JSON.stringify({ listingId: item.id, url: item.url, phone: result.phone, status: result.status }) });
-    const stats = { ...st.stats, tried: st.stats.tried + 1, found: st.stats.found + (saved?.phone ? 1 : 0) };
-    const refusals = result.status === "blocked" ? st.refusals + 1 : 0;
-    await chrome.storage.local.set({ stats, refusals });
-    const what = item.label || "MyHome განცხადება";
-    await addLog(
-      saved?.phone
-        ? "✓ " + prettyPhone(saved.phone) + " — " + what + (item.owner ? " (მესაკუთრე)" : "")
-        : result.status === "none"
-          ? "— " + what + ": ნომერი არ აქვს"
-          : "⚠ " + what + ": " + (PROBLEMS[result.status] || "ვერ მოხერხდა"),
-    );
-    await chrome.storage.local.set({ queueEmptyAt: 0 });
-    // Free the tab's memory until the next listing; the page says what this tab is.
-    chrome.tabs.update(tabId, { url: chrome.runtime.getURL("worker.html") }).catch(() => undefined);
-    if (result.status === "login") await stopAuto("MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა.", "login");
-    else if (refusals >= 3) await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი — ნომრების მოტანა გაჩერდა.", "blocked");
   } catch (error) {
     await addLog("⚠ " + (String(error?.message).includes("გასაღები") ? error.message : "CRM-თან კავშირი ვერ მოხერხდა (ინტერნეტი?)"));
     if (String(error?.message).includes("გასაღები")) await stopAuto("CRM-ის გასაღები არასწორია — გაფართოება CRM-ს ვეღარ უკავშირდება.", "key");
   } finally {
-    // Next listing after the chosen interval, ±30% so it does not tick like a clock.
-    const jitter = 0.7 + Math.random() * 0.6;
+    // Free the tab's memory until the next batch; the page says what this tab is.
+    if (tabId != null) chrome.tabs.update(tabId, { url: chrome.runtime.getURL("worker.html") }).catch(() => undefined);
     const { nextAt } = await state();
-    await chrome.storage.local.set({ busySince: 0, lastRunAt: Date.now(), nextAt: Math.max(nextAt, Date.now() + cfg.intervalSec * 1000 * jitter) });
+    await chrome.storage.local.set({ busySince: 0, lastRunAt: Date.now(), nextAt: Math.max(nextAt, Date.now() + Math.min(wait, 10 * 60_000)) });
     await badge();
   }
 }
@@ -270,7 +298,12 @@ function schedule() {
   chrome.alarms.create("relay", { delayInMinutes: 0.2, periodInMinutes: 30 });
 }
 
-chrome.runtime.onInstalled.addListener(schedule);
+chrome.runtime.onInstalled.addListener(async () => {
+  schedule();
+  const { intervalSec, dailyCap } = await chrome.storage.local.get(["intervalSec", "dailyCap"]);
+  if (intervalSec >= 40) await chrome.storage.local.set({ intervalSec: DEFAULTS.intervalSec });
+  if (dailyCap === 400) await chrome.storage.local.set({ dailyCap: DEFAULTS.dailyCap });
+});
 // Opening Chrome: catch up at once (relay right away; numbers resume on the next tick).
 chrome.runtime.onStartup.addListener(async () => {
   schedule();

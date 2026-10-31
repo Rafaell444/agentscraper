@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 60, dailyCap: 400 };
+const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 1, dailyCap: 1500 };
 const today = () => new Date().toISOString().slice(0, 10);
 
 function ago(ms) {
@@ -69,7 +69,7 @@ async function load() {
 function workingLine(s, stats) {
   if (stats.tried >= s.dailyCap) return "დღის ლიმიტი შესრულდა — ხვალ გააგრძელებს.";
   if (s.queueEmptyAt) return "ყველა ნომერი მოტანილია — ახლებს ელოდება.";
-  return s.lastRunAt ? `ბოლო შემოწმება ${ago(s.lastRunAt)} · დაახლ. წუთში ერთი` : "პირველი ნომერი რამდენიმე წუთში მოვა.";
+  return s.lastRunAt ? `ბოლო შემოწმება ${ago(s.lastRunAt)}` : "პირველი ნომერი რამდენიმე წუთში მოვა.";
 }
 
 async function check(s) {
@@ -133,7 +133,7 @@ $("reconnect").addEventListener("click", async () => {
   $("token").focus();
 });
 $("intervalSec").addEventListener("change", () => chrome.storage.local.set({ intervalSec: Number($("intervalSec").value) }));
-$("dailyCap").addEventListener("change", () => chrome.storage.local.set({ dailyCap: Math.max(10, Number($("dailyCap").value) || 400) }));
+$("dailyCap").addEventListener("change", () => chrome.storage.local.set({ dailyCap: Math.max(10, Number($("dailyCap").value) || 1500) }));
 $("runNow").addEventListener("click", async () => {
   $("runNow").disabled = true;
   $("runNow").textContent = "ვამოწმებ…";
