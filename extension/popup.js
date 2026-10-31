@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: false, intervalSec: 60, dailyCap: 400 };
+const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 60, dailyCap: 400 };
 
 async function load() {
   const s = { ...DEFAULTS, ...(await chrome.storage.local.get(null)) };
@@ -11,6 +11,8 @@ async function load() {
   const stats = s.stats?.day === new Date().toISOString().slice(0, 10) ? s.stats : { found: 0, tried: 0 };
   $("found").textContent = stats.found;
   $("tried").textContent = stats.tried;
+  const relay = s.relayStats?.day === new Date().toISOString().slice(0, 10) ? s.relayStats.pages : 0;
+  $("pages").textContent = relay;
   $("log").innerHTML = "";
   for (const line of s.log ?? []) {
     const li = document.createElement("li");
@@ -26,6 +28,7 @@ async function check() {
     $("who").className = "muted ok";
     $("who").textContent = `✓ დაკავშირებულია: ${me.name} · დღეს ${me.today} ნომერი`;
     $("waiting").textContent = me.waiting;
+    $("pagesWaiting").textContent = me.relayWaiting ?? "–";
   } else {
     $("who").className = "muted err";
     $("who").textContent = "✗ " + (me?.error || "CRM-თან კავშირი ვერ მოხერხდა");

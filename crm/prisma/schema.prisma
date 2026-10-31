@@ -554,3 +554,25 @@ model CatalogEvent {
   @@index([postId, kind])
   @@map("catalog_events")
 }
+
+// Browser relay: pages the collector could not download (the site blocks
+// GitHub's servers) are listed in relay_requests; the Chrome extension
+// downloads them from an agent's own connection into relay_pages, and the
+// next collector run reads them from there (collect.py / relay.py).
+model RelayRequest {
+  url       String    @id
+  createdAt DateTime  @default(now()) @map("created_at")
+  claimedAt DateTime? @map("claimed_at")
+
+  @@index([createdAt])
+  @@map("relay_requests")
+}
+
+model RelayPage {
+  url       String   @id
+  html      String
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+
+  @@index([fetchedAt])
+  @@map("relay_pages")
+}

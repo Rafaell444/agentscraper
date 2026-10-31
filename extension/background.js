@@ -4,7 +4,8 @@
 // up to a daily cap; it stops by itself if MyHome asks for a login or keeps
 // refusing.
 
-const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: false, intervalSec: 60, dailyCap: 400 };
+// Auto mode is on by default: opening Chrome is enough for numbers to keep coming.
+const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 60, dailyCap: 400 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -138,10 +139,64 @@ async function runOne(force = false) {
   }
 }
 
-chrome.runtime.onInstalled.addListener(() => chrome.alarms.create("tick", { periodInMinutes: 0.5 }));
-chrome.runtime.onStartup.addListener(() => chrome.alarms.create("tick", { periodInMinutes: 0.5 }));
+// ---- Browser relay: pages the collector could not download (the site blocks
+// GitHub's servers) come from here, at Chrome start and every 30 minutes. ----
+
+async function relayRun() {
+  const cfg = await settings();
+  if (!cfg.token) return;
+  const s = await chrome.storage.local.get(["relayBusySince", "relayStats"]);
+  if (s.relayBusySince && Date.now() - s.relayBusySince < 15 * 60_000) return;
+  await chrome.storage.local.set({ relayBusySince: Date.now(), relayLastRun: Date.now() });
+  const stats = s.relayStats?.day === today() ? s.relayStats : { day: today(), pages: 0 };
+  let sent = 0;
+  try {
+    // Several rounds: the collector asks for detail pages (numbers) after it reads the result pages.
+    for (let round = 0; round < 3; round++) {
+      const { urls = [] } = await api("/api/ext/relay?limit=40");
+      if (!urls.length) break;
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, { credentials: "include", cache: "no-store" });
+          const html = await response.text();
+          if (!response.ok || /<title>\s*Just a moment/i.test(html)) {
+            await addLog("⚠ გვერდი ვერ ჩამოვიდა: " + new URL(url).hostname + " (" + response.status + ")");
+            continue;
+          }
+          const saved = await api("/api/ext/relay", { method: "POST", body: JSON.stringify({ url, html }) });
+          if (saved?.ok) sent += 1;
+        } catch {
+          // one page failing does not stop the rest
+        }
+        await sleep(1200 + Math.random() * 1500);
+      }
+      // Ask the CRM to process them now; the next round picks up what that run asks for.
+      await api("/api/ext/relay/done", { method: "POST", body: "{}" });
+      if (round < 2) await sleep(4 * 60_000);
+    }
+  } catch (error) {
+    await addLog("⚠ relay: " + (error?.message || error));
+  } finally {
+    stats.pages += sent;
+    await chrome.storage.local.set({ relayBusySince: 0, relayStats: stats });
+    if (sent) await addLog("⇅ " + sent + " გვერდი გაიგზავნა CRM-ში (ss.ge / binebi …)");
+  }
+}
+
+function schedule() {
+  chrome.alarms.create("tick", { periodInMinutes: 0.5 });
+  chrome.alarms.create("relay", { delayInMinutes: 0.2, periodInMinutes: 30 });
+}
+
+chrome.runtime.onInstalled.addListener(schedule);
+// Opening Chrome: catch up at once (relay right away; numbers resume on the next tick).
+chrome.runtime.onStartup.addListener(async () => {
+  schedule();
+  await chrome.storage.local.set({ nextAt: 0, busySince: 0, relayBusySince: 0 });
+});
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "tick") runOne();
+  if (alarm.name === "relay") relayRun();
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -167,10 +222,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: false, error: String(error?.message || error) });
       }
     } else if (message?.type === "runNow") {
-      await runOne(true);
+      await Promise.all([runOne(true), relayRun()]);
       sendResponse({ ok: true });
     } else if (message?.type === "settingsChanged") {
       await chrome.storage.local.set({ nextAt: 0, refusals: 0 });
+      relayRun();
       await badge();
       sendResponse({ ok: true });
     }

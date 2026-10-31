@@ -17,12 +17,12 @@ export async function lastCollectorDispatch(): Promise<Date | null> {
   return row ? new Date(row.value) : null;
 }
 
-/** Dispatch monitor.yml if the last dispatch was 28+ minutes ago; true when a run was started. */
-export async function dispatchCollectorIfDue(): Promise<boolean> {
+/** Dispatch monitor.yml if the last dispatch was 28+ minutes ago (or minGapMs); true when a run was started. */
+export async function dispatchCollectorIfDue(minGapMs = EVERY_MS): Promise<boolean> {
   const token = process.env.GITHUB_DISPATCH_TOKEN;
   if (!token) return false;
   const last = await lastCollectorDispatch();
-  if (last && Date.now() - last.getTime() < EVERY_MS) return false;
+  if (last && Date.now() - last.getTime() < minGapMs) return false;
   // Claim the slot first, so two CRM instances do not both start a run.
   const now = new Date();
   const claimed = await prisma.setting.updateMany({ where: { key: KEY, value: last ? last.toISOString() : "" }, data: { value: now.toISOString() } });

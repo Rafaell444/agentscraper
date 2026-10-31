@@ -1,34 +1,72 @@
 {
   "manifest_version": 3,
   "name": "Tbilisi Home — CRM helper",
-  "version": "1.0.0",
-  "description": "Reads MyHome owner phone numbers in your own Chrome and saves them to the Tbilisi Home CRM.",
-  "permissions": ["storage", "alarms", "tabs", "notifications"],
+  "version": "1.1.0",
+  "description": "Brings MyHome owner numbers and pages of sites that block our server (ss.ge, binebi.ge) from your own Chrome to the Tbilisi Home CRM.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "notifications",
+    "background"
+  ],
   "host_permissions": [
     "https://www.myhome.ge/*",
     "https://myhome.ge/*",
+    "https://home.ss.ge/*",
+    "https://ss.ge/*",
+    "https://binebi.ge/*",
+    "https://www.binebi.ge/*",
+    "https://www.place.ge/*",
+    "https://place.ge/*",
+    "https://rentals.ge/*",
+    "https://www.rentals.ge/*",
     "https://agenturicrm.vercel.app/*",
     "http://localhost:3000/*"
   ],
-  "optional_host_permissions": ["https://*/*"],
-  "background": { "service_worker": "background.js" },
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://www.myhome.ge/*", "https://myhome.ge/*"],
-      "js": ["hook.js"],
+      "matches": [
+        "https://www.myhome.ge/*",
+        "https://myhome.ge/*"
+      ],
+      "js": [
+        "hook.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.myhome.ge/*", "https://myhome.ge/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://www.myhome.ge/*",
+        "https://myhome.ge/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_icon": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" }
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
   },
-  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" }
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
 }

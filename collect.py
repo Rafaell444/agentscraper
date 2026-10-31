@@ -32,6 +32,7 @@ from sites.common import (
     MAX_AGE_DAYS,
     OWNER_PHYSICAL,
     OWNERS_ONLY,
+    RelayMissing,
     ScraperError,
     build_session,
     city_matches,
@@ -95,7 +96,7 @@ def collect_site(session: requests.Session, site: ModuleType, args: argparse.Nam
     else:
         max_pages = args.delta_pages or setting(site, "DELTA_PAGES", 10)
 
-    stats = {"pages": 0, "new": 0, "updated": 0, "details": 0, "detail_failures": 0}
+    stats = {"pages": 0, "new": 0, "updated": 0, "details": 0, "detail_failures": 0, "waiting": 0}
     previous_fingerprint: tuple[str, ...] | None = None
     stale_pages = 0
     for page in range(1, max_pages + 1):
@@ -103,6 +104,14 @@ def collect_site(session: requests.Session, site: ModuleType, args: argparse.Nam
             polite_pause()
         try:
             page_rows = site.parse_list(session, page)
+        except RelayMissing as exc:
+            # Blocked site: the page is now asked of the browser extension.  Ask
+            # for the first three result pages at once, then stop for this run.
+            stats["waiting"] += 1
+            LOGGER.info("[%s] %s", site.KEY, exc)
+            if page < 3:
+                continue
+            break
         except (requests.RequestException, ScraperError) as exc:
             LOGGER.error("[%s] page %s failed: %s", site.KEY, page, exc)
             # The first page failing means the site gave us nothing this run (blocked, down, redesigned).
@@ -166,9 +175,17 @@ def collect_site(session: requests.Session, site: ModuleType, args: argparse.Nam
         pending.sort(key=lambda row: row.get("Timestamp Added", ""), reverse=True)
         pending.sort(key=lambda row: kind_rank.get(str(row.get("Owner Type") or ""), 2))
         pending.sort(key=lambda row: row.get("Detail Status") == "failed")
+        relay_asked = 0
         for index, row in enumerate(pending[:limit], 1):
             try:
                 update = site.fetch_detail(session, row)
+            except RelayMissing:
+                # Not a failure: the extension will bring the page (numbers come from it).
+                relay_asked += 1
+                stats["waiting"] += 1
+                if relay_asked >= 60:
+                    break
+                continue
             except (requests.RequestException, ScraperError, KeyError, ValueError) as exc:
                 row["Detail Status"] = "failed"
                 stats["detail_failures"] += 1
@@ -191,9 +208,9 @@ def collect_site(session: requests.Session, site: ModuleType, args: argparse.Nam
     stats["total"] = len(rows)
     stats["changed"] = int(changed)
     LOGGER.info(
-        "[%s] mode=%s pages=%s new=%s updated=%s details=%s detail_failures=%s dropped=%s total=%s changed=%s",
+        "[%s] mode=%s pages=%s new=%s updated=%s details=%s detail_failures=%s waiting_for_browser=%s dropped=%s total=%s changed=%s",
         site.KEY, "backfill" if backfill else "delta", stats["pages"], stats["new"], stats["updated"],
-        stats["details"], stats["detail_failures"], stats["dropped"], stats["total"], bool(changed),
+        stats["details"], stats["detail_failures"], stats["waiting"], stats["dropped"], stats["total"], bool(changed),
     )
     return stats
 
@@ -224,6 +241,14 @@ def main(argv: list[str] | None = None) -> int:
     any_changed = False
     # Per-site health for ops_alert.py: a site that keeps failing gets named in the Telegram alert.
     health = storage.load_health()
+    # Pages a site refuses us come from agents' browsers (relay.py, the Chrome extension).
+    relay = None
+    if storage.database_url():
+        import relay as relay_module
+        import sites.common as common
+
+        relay = relay_module.Relay(storage.database_url())
+        common.RELAY = relay
     with build_session() as session:
         for site in sites:
             error = ""
@@ -244,7 +269,11 @@ def main(argv: list[str] | None = None) -> int:
                 "fails": (int(previous.get("fails", 0)) + 1) if error else 0,
                 "new": int(stats.get("new", 0)),
                 "pages": int(stats.get("pages", 0)),
+                # Pages this site blocks, asked of the browser extension this run.
+                "waiting": int(stats.get("waiting", 0)),
             }
+    if relay is not None:
+        relay.save_wanted()
     try:
         storage.save_health(health)
     except Exception as exc:  # health is a nice-to-have; never fail the run for it

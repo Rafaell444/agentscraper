@@ -10,6 +10,7 @@ import re
 import time
 from datetime import datetime
 from typing import Any, Iterable
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -256,13 +257,38 @@ def polite_pause() -> None:
         time.sleep(delay + random.uniform(0, min(delay, 0.25)))
 
 
+class RelayMissing(ScraperError):
+    """The site blocks this server and the browser extension has not sent the page yet."""
+
+
+# Set by collect.py (relay.Relay): pages blocked sites refuse us come from agents' browsers.
+RELAY: Any = None
+BLOCKED_STATUSES = {401, 403, 429, 451}
+
+
 def get_html(session: requests.Session, url: str) -> str:
+    host = urlparse(url).hostname or ""
+    if RELAY is not None and host in RELAY.blocked:
+        return relay_page(url, "blocked host")
     response = session.get(url, timeout=(10, 35))
+    if response.status_code in BLOCKED_STATUSES and RELAY is not None:
+        # The site refuses this server: use (or ask for) a copy from the browser extension.
+        RELAY.blocked.add(host)
+        LOGGER.warning("%s answered HTTP %s; using the browser relay for this host", host, response.status_code)
+        return relay_page(url, f"HTTP {response.status_code}")
     if response.status_code != 200:
         raise ScraperError(f"GET {url} returned HTTP {response.status_code}")
     if "text/html" not in response.headers.get("Content-Type", ""):
         raise ScraperError(f"GET {url} did not return HTML")
     return response.text
+
+
+def relay_page(url: str, reason: str) -> str:
+    html = RELAY.page(url)
+    if html is None:
+        RELAY.want(url, reason)
+        raise RelayMissing(f"GET {url}: waiting for the browser extension ({reason})")
+    return html
 
 
 def get_soup(session: requests.Session, url: str) -> BeautifulSoup:
