@@ -30,6 +30,17 @@ async function api(path, init = {}) {
   return json;
 }
 
+/** "599123456" -> "599 12 34 56" */
+function prettyPhone(phone) {
+  return String(phone).split(/;\s*/).map((p) => (/^5\d{8}$/.test(p) ? p.replace(/^(\d{3})(\d{2})(\d{2})(\d{2})$/, "$1 $2 $3 $4") : p)).join(", ");
+}
+
+const PROBLEMS = {
+  blocked: "MyHome-მა ნომერი არ აჩვენა",
+  login: "MyHome შესვლას ითხოვს",
+  error: "გვერდი ვერ ჩაიტვირთა",
+};
+
 async function addLog(line) {
   const { log } = await state();
   const entry = new Date().toLocaleTimeString("ka-GE", { hour: "2-digit", minute: "2-digit" }) + " " + line;
@@ -153,8 +164,8 @@ async function runOne(force = false) {
     const queue = await api("/api/ext/queue?limit=1");
     const item = queue.items?.[0];
     if (!item) {
-      await addLog("რიგი ცარიელია — 10 წუთში ვცდი თავიდან");
-      await chrome.storage.local.set({ nextAt: Date.now() + 10 * 60_000 });
+      await addLog("ყველა ნომერი მოტანილია — ახლებს 10 წუთში შევამოწმებ");
+      await chrome.storage.local.set({ nextAt: Date.now() + 10 * 60_000, queueEmptyAt: Date.now() });
       return;
     }
     const tabId = await workerTab(item.url);
@@ -164,19 +175,27 @@ async function runOne(force = false) {
     const stats = { ...st.stats, tried: st.stats.tried + 1, found: st.stats.found + (saved?.phone ? 1 : 0) };
     const refusals = result.status === "blocked" ? st.refusals + 1 : 0;
     await chrome.storage.local.set({ stats, refusals });
-    await addLog(saved?.phone ? "✓ " + saved.phone : result.status === "none" ? "— ნომერი არ არის" : "⚠ " + result.status + (result.detail ? " (" + result.detail + ")" : ""));
+    const what = item.label || "MyHome განცხადება";
+    await addLog(
+      saved?.phone
+        ? "✓ " + prettyPhone(saved.phone) + " — " + what + (item.owner ? " (მესაკუთრე)" : "")
+        : result.status === "none"
+          ? "— " + what + ": ნომერი არ აქვს"
+          : "⚠ " + what + ": " + (PROBLEMS[result.status] || "ვერ მოხერხდა"),
+    );
+    await chrome.storage.local.set({ queueEmptyAt: 0 });
     // Free the tab's memory until the next listing.
     chrome.tabs.update(tabId, { url: "about:blank" }).catch(() => undefined);
     if (result.status === "login") await stopAuto("MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა.", "login");
     else if (refusals >= 3) await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი — ნომრების მოტანა გაჩერდა.", "blocked");
   } catch (error) {
-    await addLog("⚠ " + (error?.message || error));
+    await addLog("⚠ " + (String(error?.message).includes("გასაღები") ? error.message : "CRM-თან კავშირი ვერ მოხერხდა (ინტერნეტი?)"));
     if (String(error?.message).includes("გასაღები")) await stopAuto("CRM-ის გასაღები არასწორია — გაფართოება CRM-ს ვეღარ უკავშირდება.", "key");
   } finally {
     // Next listing after the chosen interval, ±30% so it does not tick like a clock.
     const jitter = 0.7 + Math.random() * 0.6;
     const { nextAt } = await state();
-    await chrome.storage.local.set({ busySince: 0, nextAt: Math.max(nextAt, Date.now() + cfg.intervalSec * 1000 * jitter) });
+    await chrome.storage.local.set({ busySince: 0, lastRunAt: Date.now(), nextAt: Math.max(nextAt, Date.now() + cfg.intervalSec * 1000 * jitter) });
     await badge();
   }
 }
@@ -206,7 +225,7 @@ async function relayRun() {
           hosts[host] ??= { ok: 0, failed: 0 };
           if (!response.ok || /<title>\s*Just a moment/i.test(html)) {
             hosts[host].failed += 1;
-            await addLog("⚠ გვერდი ვერ ჩამოვიდა: " + new URL(url).hostname + " (" + response.status + ")");
+            await addLog("⚠ " + host + " გვერდს არ გვაძლევს (" + response.status + ")");
             continue;
           }
           const saved = await api("/api/ext/relay", { method: "POST", body: JSON.stringify({ url, html }) });
@@ -222,11 +241,11 @@ async function relayRun() {
       if (round < 2) await sleep(4 * 60_000);
     }
   } catch (error) {
-    await addLog("⚠ relay: " + (error?.message || error));
+    await addLog("⚠ ss.ge / binebi: CRM-თან კავშირი ვერ მოხერხდა");
   } finally {
     stats.pages += sent;
     await chrome.storage.local.set({ relayBusySince: 0, relayStats: stats });
-    if (sent) await addLog("⇅ " + sent + " გვერდი გაიგზავნა CRM-ში (ss.ge / binebi …)");
+    if (sent) await addLog("⇅ " + Object.keys(hosts).filter((h) => hosts[h].ok).map((h) => h.replace(/^(www|home)\./, "")).join(", ") + " — " + sent + " გვერდი გადაეცა CRM-ს");
     // A site that refuses even this browser usually wants a one-time check in a normal tab.
     const stuck = Object.entries(hosts).find(([, h]) => h.failed >= 3 && !h.ok);
     const { alert, siteAlertAt = 0 } = await chrome.storage.local.get(["alert", "siteAlertAt"]);

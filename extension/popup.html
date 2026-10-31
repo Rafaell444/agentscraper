@@ -8,57 +8,65 @@
 <body>
   <header>
     <img src="icons/48.png" alt="" />
-    <div>
+    <div class="brand">
       <b>Tbilisi Home</b>
-      <small>MyHome ნომრები → CRM</small>
+      <small>ნომრები და განცხადებები → CRM</small>
     </div>
+    <label class="switch" id="autoWrap" title="ავტომატური რეჟიმი"><input id="auto" type="checkbox" /><span></span></label>
   </header>
 
-  <section id="alert" class="alert" hidden>
-    <b>🔴 გაჩერდა — საჭიროა შენი ჩარევა</b>
-    <p id="alertText"></p>
-    <button id="alertOpen">რა უნდა გავაკეთო?</button>
-  </section>
-
-  <section id="connect">
-    <label>CRM მისამართი<input id="crmUrl" type="url" placeholder="https://agenturicrm.vercel.app" /></label>
-    <label>შენი გასაღები<input id="token" type="password" placeholder="CRM → გაფართოება → გასაღები" /></label>
-    <button id="save" class="primary">დაკავშირება</button>
-    <p id="who" class="muted"></p>
-  </section>
-
-  <section id="work">
-    <div class="row">
-      <div>
-        <b>ავტომატური რეჟიმი</b>
-        <small>ფონურ ჩანართში ხსნის განცხადებებს CRM-ის რიგიდან</small>
-      </div>
-      <label class="switch"><input id="auto" type="checkbox" /><span></span></label>
+  <!-- One status that says everything: working / stopped / off / not connected. -->
+  <section id="status" class="status">
+    <div class="dot" id="dot"></div>
+    <div class="status-text">
+      <b id="statusTitle">…</b>
+      <small id="statusSub"></small>
     </div>
-    <div class="row">
+  </section>
+  <button id="alertOpen" class="danger" hidden>რა უნდა გავაკეთო?</button>
+
+  <section id="numbers" class="numbers" hidden>
+    <div><b id="found">0</b><small>ნომერი დღეს</small></div>
+    <div><b id="waiting">–</b><small>ელოდება ნომერს</small></div>
+  </section>
+
+  <section id="connect" class="card" hidden>
+    <b class="card-title">დაკავშირება CRM-თან</b>
+    <ol class="how">
+      <li>გახსენი CRM → <b>გაფართოება</b></li>
+      <li>დააკოპირე შენი გასაღები და ჩასვი აქ</li>
+    </ol>
+    <label>შენი გასაღები<input id="token" type="password" placeholder="ჩასვი გასაღები" autocomplete="off" /></label>
+    <label class="crm-url" hidden>CRM მისამართი<input id="crmUrl" type="url" placeholder="https://agenturicrm.vercel.app" /></label>
+    <button id="save" class="primary">დაკავშირება</button>
+    <p id="who" class="note"></p>
+  </section>
+
+  <section id="activity" class="card" hidden>
+    <div class="card-head">
+      <b class="card-title">ბოლო მოქმედებები</b>
+      <button id="runNow" class="link">ახლავე შემოწმება</button>
+    </div>
+    <ul id="log"></ul>
+    <p id="logEmpty" class="note">ჯერ არაფერი — პირველი ნომერი რამდენიმე წუთში მოვა.</p>
+  </section>
+
+  <details id="settings">
+    <summary>პარამეტრები</summary>
+    <div class="card">
       <label>ტემპი
         <select id="intervalSec">
-          <option value="120">1 განცხადება / 2 წთ</option>
-          <option value="60">1 განცხადება / წუთი</option>
-          <option value="40">1 განცხადება / 40 წმ</option>
+          <option value="120">ნელი — 1 განცხადება 2 წუთში</option>
+          <option value="60">ჩვეულებრივი — 1 განცხადება წუთში</option>
+          <option value="40">სწრაფი — 1 განცხადება 40 წამში</option>
         </select>
       </label>
-      <label>დღეში მაქს.<input id="dailyCap" type="number" min="10" max="2000" step="10" /></label>
+      <label>დღეში მაქსიმუმ<input id="dailyCap" type="number" min="10" max="2000" step="10" /></label>
+      <p class="note">მეტი სიჩქარე = MyHome-ის შეზღუდვის მეტი შანსი. 400 / დღე უსაფრთხოა.</p>
+      <p id="whoSmall" class="note"></p>
+      <button id="reconnect">კავშირის შეცვლა (სხვა გასაღები)</button>
     </div>
-    <div class="stats">
-      <div><b id="found">0</b><small>ნომერი დღეს</small></div>
-      <div><b id="tried">0</b><small>ნანახი დღეს</small></div>
-      <div><b id="waiting">–</b><small>რიგში</small></div>
-    </div>
-    <div class="stats">
-      <div><b id="pages">0</b><small>გვერდი გაგზავნილი დღეს</small></div>
-      <div><b id="pagesWaiting">–</b><small>გვერდი რიგში</small></div>
-      <div><b>30′</b><small>ყოველ</small></div>
-    </div>
-    <p class="muted">დაბლოკილი საიტების (ss.ge, binebi) გვერდები შენი Chrome-იდან მოდის: Chrome-ის გახსნისას და ყოველ 30 წუთში.</p>
-    <button id="runNow">ახლავე</button>
-    <ul id="log"></ul>
-  </section>
+  </details>
 
   <script src="popup.js"></script>
 </body>

@@ -58,7 +58,7 @@ export async function phoneQueue(limit: number) {
       },
     ],
   });
-  const pick = { select: { id: true, link: true, posterKind: true }, orderBy: { collectedAt: "desc" as const } };
+  const pick = { select: { id: true, link: true, posterKind: true, neighbourhood: true, district: true, rooms: true }, orderBy: { collectedAt: "desc" as const } };
   const owners = await prisma.listing.findMany({ where: where(true), take: limit, ...pick });
   const others = owners.length < limit ? await prisma.listing.findMany({ where: where(false), take: limit - owners.length, ...pick }) : [];
   const items = [...owners, ...others];
@@ -70,7 +70,9 @@ export async function phoneQueue(limit: number) {
       create: { listingId: item.id, phoneCheck: "pending", phoneCheckedAt: now },
     });
   }
-  return items.map((i) => ({ id: i.id, url: i.link!, owner: i.posterKind === "owner" }));
+  // "ვაკე, 3 ოთახი": shown in the extension's log next to the number it found.
+  const label = (i: (typeof items)[number]) => [i.neighbourhood || i.district, i.rooms ? `${i.rooms} ოთახი` : ""].filter(Boolean).join(", ");
+  return items.map((i) => ({ id: i.id, url: i.link!, owner: i.posterKind === "owner", label: label(i) }));
 }
 
 export async function phoneQueueSize(): Promise<number> {
