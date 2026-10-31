@@ -35,13 +35,16 @@ export function myhomeId(url: string): string | null {
   }
 }
 
-// A failed or unfinished try is retried after 6 hours; "none" (no number on the listing) is not retried.
+// A failed or unfinished try is retried after 6 hours; "none" (no number seen) once more after a day,
+// since a MyHome login popup used to look the same as a listing without a number.
 const RETRY_MS = 6 * 3600_000;
+const NONE_RETRY_MS = 24 * 3600_000;
 const RETRY = ["pending", "login", "blocked", "error"];
 
 /** The next MyHome listings without a number (owners first, newest first), marked as taken for this agent. */
 export async function phoneQueue(limit: number) {
   const retryBefore = new Date(Date.now() - RETRY_MS);
+  const noneBefore = new Date(Date.now() - NONE_RETRY_MS);
   const where = (owner: boolean) => ({
     site: "myhome",
     archived: false,
@@ -54,6 +57,7 @@ export async function phoneQueue(limit: number) {
           { lead: null },
           { lead: { manualPhone: null, phoneCheckedAt: null } },
           { lead: { manualPhone: null, phoneCheckedAt: { lt: retryBefore }, phoneCheck: { in: RETRY } } },
+          { lead: { manualPhone: null, phoneCheckedAt: { lt: noneBefore }, phoneCheck: "none" } },
         ],
       },
     ],
@@ -77,12 +81,13 @@ export async function phoneQueue(limit: number) {
 
 export async function phoneQueueSize(): Promise<number> {
   const retryBefore = new Date(Date.now() - RETRY_MS);
+  const noneBefore = new Date(Date.now() - NONE_RETRY_MS);
   return prisma.listing.count({
     where: {
       site: "myhome",
       archived: false,
       OR: [{ phone: null }, { phone: "" }],
-      AND: [{ OR: [{ lead: null }, { lead: { manualPhone: null, phoneCheckedAt: null } }, { lead: { manualPhone: null, phoneCheckedAt: { lt: retryBefore }, phoneCheck: { in: RETRY } } }] }],
+      AND: [{ OR: [{ lead: null }, { lead: { manualPhone: null, phoneCheckedAt: null } }, { lead: { manualPhone: null, phoneCheckedAt: { lt: retryBefore }, phoneCheck: { in: RETRY } } }, { lead: { manualPhone: null, phoneCheckedAt: { lt: noneBefore }, phoneCheck: "none" } }] }],
     },
   });
 }

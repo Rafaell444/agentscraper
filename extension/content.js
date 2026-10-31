@@ -25,8 +25,15 @@ function acceptCookies() {
   document.querySelectorAll('[id^="cookiescript_injected"]').forEach((n) => n.remove());
 }
 
+// The popup MyHome puts over a listing when it wants an account ("… შექმენი, ან გამოიყენე არსებული ანგარიში").
+const LOGIN_POPUP = /სრულყოფილად სარგებლობისთვის|გამოიყენე არსებული ანგარიში|use an existing account|существующий аккаунт/i;
+
 function loginNeeded() {
-  return location.hostname.includes("auth.tnet.ge") || Boolean(document.querySelector('input[name="Email"], input[name="Password"]'));
+  return (
+    location.hostname.includes("auth.tnet.ge") ||
+    Boolean(document.querySelector('input[name="Email"], input[name="Password"]')) ||
+    LOGIN_POPUP.test(document.body?.innerText || "")
+  );
 }
 
 /** Press MyHome's own "show number" button and wait for its answer. */
@@ -56,7 +63,9 @@ async function reveal() {
   }
   // No API answer seen: take a number that appeared on the page after the click.
   const added = [...phonesIn(document.body.innerText)].filter((p) => !before.has(p));
-  return added.length ? { status: "ok", phone: added.join("; ") } : { status: "none" };
+  if (added.length) return { status: "ok", phone: added.join("; ") };
+  // The button was pressed but nothing came back: not "no number", so it is tried again later.
+  return loginNeeded() ? { status: "login" } : { status: "error", detail: "no answer" };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
