@@ -1,0 +1,30 @@
+* { box-sizing: border-box; }
+body { width: 330px; margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #111827; background: #f1f3f5; }
+header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: #fff; background: linear-gradient(135deg, #1d4f8c, #0e2a4d); }
+header img { width: 38px; height: 38px; border-radius: 50%; background: #fff; }
+header b { display: block; font-size: 15px; }
+header small { opacity: 0.8; }
+section { margin: 10px; padding: 12px; border-radius: 14px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+label { display: block; margin-bottom: 8px; font-size: 12px; color: #6b7280; }
+input, select { display: block; width: 100%; margin-top: 3px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 10px; font: inherit; color: #111827; }
+button { width: 100%; height: 40px; border: 0; border-radius: 10px; font: 600 13px system-ui, sans-serif; cursor: pointer; background: #e5e7eb; color: #111827; }
+button.primary { background: #1d4f8c; color: #fff; }
+.muted { margin: 8px 0 0; color: #6b7280; font-size: 12px; }
+.ok { color: #047857; }
+.err { color: #b91c1c; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.row > div { flex: 1; }
+.row small { display: block; color: #6b7280; font-size: 11px; }
+.row label { flex: 1; margin: 0; }
+.switch { position: relative; flex: none; width: 46px; height: 26px; margin: 0; }
+.switch input { position: absolute; opacity: 0; }
+.switch span { position: absolute; inset: 0; border-radius: 999px; background: #d1d5db; transition: background 0.2s; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+.switch input:checked + span { background: #1d4f8c; }
+.switch input:checked + span::after { transform: translateX(20px); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 10px; text-align: center; }
+.stats div { padding: 8px 4px; border-radius: 10px; background: #f1f3f5; }
+.stats b { display: block; font-size: 18px; color: #1d4f8c; }
+.stats small { color: #6b7280; font-size: 11px; }
+#log { max-height: 150px; margin: 10px 0 0; padding: 0; overflow: auto; list-style: none; font-size: 12px; color: #374151; }
+#log li { padding: 3px 0; border-bottom: 1px solid #f1f3f5; }

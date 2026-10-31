@@ -5,7 +5,7 @@ import { jwtVerify } from "jose";
 // /s/<token> is a private post sent to one client; the page itself checks the token.
 // /catalog is the public Telegram mini app; /api/telegram/webhook checks its own secret.
 // /flats, /flat/<ref>, /area/<district>, /sitemap.xml and /robots.txt are the public website for Google.
-const PUBLIC_PATHS = ["/login", "/flat", "/area/", "/sitemap.xml", "/robots.txt", "/api/health", "/api/cron/", "/p/", "/s/", "/catalog", "/api/catalog/", "/api/telegram/webhook"];
+const PUBLIC_PATHS = ["/login", "/flat", "/area/", "/api/ext/", "/sitemap.xml", "/robots.txt", "/api/health", "/api/cron/", "/p/", "/s/", "/catalog", "/api/catalog/", "/api/telegram/webhook"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

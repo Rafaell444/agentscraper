@@ -25,6 +25,7 @@ const LINKS = [
   { href: "/deals", label: "გარიგებები", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
   { href: "/publish", label: "გამოქვეყნება", icon: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" },
   { href: "/agents", label: "აგენტები", icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
+  { href: "/extension", label: "გაფართოება", icon: "M20 13h-2V9a2 2 0 0 0-2-2h-4V5a2 2 0 1 0-4 0v2H4v5h2a2 2 0 1 1 0 4H4v5h5v-2a2 2 0 1 1 4 0v2h5v-4h2a2 2 0 1 0 0-4z" },
 ];
 
 function Icon({ d }: { d: string }) {

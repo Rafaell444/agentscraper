@@ -99,6 +99,8 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
 
   telegramChatId String? @map("telegram_chat_id") // for personal alerts
+  // Key the Chrome extension sends to the CRM (MyHome numbers); null = not connected.
+  extToken       String? @map("ext_token") // random 32-byte hex; looked up with findFirst (no unique constraint, so db push needs no data-loss flag)
 
   leads         Lead[]         @relation("LeadAssignee")
   reposts       Lead[]         @relation("LeadReposter")
@@ -181,6 +183,9 @@ model Lead {
   followUpAt   DateTime? @map("follow_up_at")
   priority     Int       @default(0)
   manualPhone  String?   @map("manual_phone") // number an agent found by hand (e.g. MyHome)
+  // Chrome extension: when it last tried to read the MyHome number and how it went (pending | ok | none | login | blocked | error).
+  phoneCheckedAt DateTime? @map("phone_checked_at")
+  phoneCheck     String?   @map("phone_check")
   hidden       Boolean   @default(false) // keep off public pages
   repostedId   String?   @map("reposted_id") // id/url of our agent's own copy of this ad
   repostedById String?   @map("reposted_by_id")

@@ -1,0 +1,46 @@
+#thc-save {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 16px 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #1d4f8c, #0e2a4d);
+  color: #fff;
+  font: 600 15px/1 system-ui, -apple-system, sans-serif;
+  box-shadow: 0 8px 22px rgba(14, 42, 77, 0.4);
+  cursor: pointer;
+}
+#thc-save img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+}
+#thc-save:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+#thc-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 74px;
+  z-index: 2147483647;
+  max-width: 340px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: #fff;
+  font: 500 14px/1.35 system-ui, -apple-system, sans-serif;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+#thc-toast.thc-ok {
+  background: #047857;
+}
+#thc-toast.thc-err {
+  background: #b91c1c;
+}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ka">
+<head>
+  <meta charset="utf-8" />
+  <title>Tbilisi Home — CRM helper</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <img src="icons/48.png" alt="" />
+    <div>
+      <b>Tbilisi Home</b>
+      <small>MyHome ნომრები → CRM</small>
+    </div>
+  </header>
+
+  <section id="connect">
+    <label>CRM მისამართი<input id="crmUrl" type="url" placeholder="https://agenturicrm.vercel.app" /></label>
+    <label>შენი გასაღები<input id="token" type="password" placeholder="CRM → გაფართოება → გასაღები" /></label>
+    <button id="save" class="primary">დაკავშირება</button>
+    <p id="who" class="muted"></p>
+  </section>
+
+  <section id="work">
+    <div class="row">
+      <div>
+        <b>ავტომატური რეჟიმი</b>
+        <small>ფონურ ჩანართში ხსნის განცხადებებს CRM-ის რიგიდან</small>
+      </div>
+      <label class="switch"><input id="auto" type="checkbox" /><span></span></label>
+    </div>
+    <div class="row">
+      <label>ტემპი
+        <select id="intervalSec">
+          <option value="120">1 განცხადება / 2 წთ</option>
+          <option value="60">1 განცხადება / წუთი</option>
+          <option value="40">1 განცხადება / 40 წმ</option>
+        </select>
+      </label>
+      <label>დღეში მაქს.<input id="dailyCap" type="number" min="10" max="2000" step="10" /></label>
+    </div>
+    <div class="stats">
+      <div><b id="found">0</b><small>ნომერი დღეს</small></div>
+      <div><b id="tried">0</b><small>ნანახი დღეს</small></div>
+      <div><b id="waiting">–</b><small>რიგში</small></div>
+    </div>
+    <button id="runNow">ერთი ახლავე</button>
+    <ul id="log"></ul>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>
