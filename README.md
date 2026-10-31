@@ -24,6 +24,8 @@ listing's text are extracted automatically.
 | `binebi.ge`  | binebi.ge                | Site filter: Tbilisi. The owner/agent flag is only on the detail page, so every listing is read once. |
 | `place.ge`   | place.ge                 | Small portal; phone and owner/agent flag are on the list page. |
 | `rentals.ge` | rentals.ge               | Expat-oriented agency site; read through the public data API its own pages use. All posts are agency posts. |
+| `korter.ge`  | korter.ge                | Sale and rent lists from the page JSON; each listing page gives the seller (owner / realtor / developer) and the seller's phone. |
+| `avezor.ge`  | avezor.ge                | Agency site; read through the public data API its own pages use. Shows only Avezor's office number, so a phone is kept only when written in the description. |
 
 Not added: livo.ge is the same TNET database as MyHome (identical listing
 IDs), so it would only duplicate MyHome posts.

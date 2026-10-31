@@ -70,6 +70,8 @@ const HOST_SITES: Record<string, string> = {
   "ss.ge": "ssge",
   "place.ge": "place",
   "rentals.ge": "rentals",
+  "korter.ge": "korter",
+  "avezor.ge": "avezor",
   "makler.ge": "makler",
   "housing.ge": "housing",
 };

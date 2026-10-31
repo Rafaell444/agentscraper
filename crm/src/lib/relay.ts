@@ -6,7 +6,7 @@
 import { prisma } from "./db";
 
 /** Only pages of the sites the collector reads are accepted. */
-const HOSTS = /(^|\.)(ss\.ge|binebi\.ge|myhome\.ge|place\.ge|rentals\.ge)$/;
+const HOSTS = /(^|\.)(ss\.ge|binebi\.ge|myhome\.ge|place\.ge|rentals\.ge|korter\.ge|avezor\.ge)$/;
 const CLAIM_MS = 10 * 60_000;
 const MAX_HTML = 3_500_000;
 

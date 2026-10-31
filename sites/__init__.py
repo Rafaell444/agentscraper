@@ -20,7 +20,7 @@ from __future__ import annotations
 from importlib import import_module
 from types import ModuleType
 
-SITE_KEYS = ("myhome", "ssge", "binebi", "place", "rentals")
+SITE_KEYS = ("myhome", "ssge", "binebi", "place", "rentals", "korter", "avezor")
 OPTIONAL_SITE_KEYS = ("housing", "makler")
 
 
