@@ -168,7 +168,12 @@ async function processItem(item) {
   );
   await badge();
   if (result.status === "login") {
-    await stopAuto("MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა.", "login");
+    // MyHome logged us out: most likely too fast, so the pause grows one step each time.
+    const { intervalSec } = await settings();
+    const slower = PACE_STEPS.find((step) => step > intervalSec) ?? PACE_STEPS[PACE_STEPS.length - 1];
+    await chrome.storage.local.set({ intervalSec: slower });
+    const pace = slower >= 60 ? slower / 60 + " წუთი" : slower + " წამი";
+    await stopAuto(`MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა. პაუზა გავზარდე: ახლა ${pace}.`, "login");
     return "stop";
   }
   if (refusals >= 3) {
@@ -177,6 +182,9 @@ async function processItem(item) {
   }
   return "ok";
 }
+
+// Pause choices in seconds; a MyHome logout moves to the next, slower one.
+const PACE_STEPS = [20, 30, 45, 60, 90, 120];
 
 // One batch runs up to 4 minutes, then the next alarm tick carries on.
 const BATCH_MS = 4 * 60_000;

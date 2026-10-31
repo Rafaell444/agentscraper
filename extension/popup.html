@@ -56,13 +56,16 @@
     <div class="card">
       <label>ტემპი
         <select id="intervalSec">
-          <option value="20">ჩვეულებრივი — 20 წამი პაუზა</option>
-          <option value="30">ფრთხილი — 30 წამი პაუზა</option>
-          <option value="60">ნელი — 1 წუთი პაუზა</option>
+          <option value="20">20 წამი პაუზა</option>
+          <option value="30">30 წამი პაუზა</option>
+          <option value="45">45 წამი პაუზა</option>
+          <option value="60">1 წუთი პაუზა</option>
+          <option value="90">1.5 წუთი პაუზა</option>
+          <option value="120">2 წუთი პაუზა</option>
         </select>
       </label>
       <label>დღეში მაქსიმუმ<input id="dailyCap" type="number" min="10" max="5000" step="50" /></label>
-      <p class="note">თუ MyHome შეზღუდავს, გაფართოება თავად გაჩერდება და გაცნობებს — მაშინ აირჩიე უფრო ნელი ტემპი.</p>
+      <p class="note">თუ MyHome გამოგიყვანს ანგარიშიდან, გაფართოება გაჩერდება, გაცნობებს და პაუზას თავად გაზრდის.</p>
       <p id="whoSmall" class="note"></p>
       <button id="reconnect">კავშირის შეცვლა (სხვა გასაღები)</button>
     </div>
