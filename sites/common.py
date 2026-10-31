@@ -283,11 +283,16 @@ def get_html(session: requests.Session, url: str) -> str:
     return response.text
 
 
+RELAY_GONE = "__GONE__"
+
+
 def relay_page(url: str, reason: str) -> str:
     html = RELAY.page(url)
     if html is None:
         RELAY.want(url, reason)
         raise RelayMissing(f"GET {url}: waiting for the browser extension ({reason})")
+    if html == RELAY_GONE:
+        raise ScraperError(f"GET {url}: removed from the site (404 in the browser)")
     return html
 
 

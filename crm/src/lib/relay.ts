@@ -33,8 +33,12 @@ export async function claimRelayRequests(limit: number): Promise<string[]> {
   return urls;
 }
 
-export async function storeRelayPage(url: string, html: string): Promise<{ ok: boolean; error?: string }> {
+/** Stored instead of the HTML when the site answers 404/410: the listing was removed. */
+export const GONE = "__GONE__";
+
+export async function storeRelayPage(url: string, html: string, gone = false): Promise<{ ok: boolean; error?: string }> {
   if (!relayHostAllowed(url)) return { ok: false, error: "host not allowed" };
+  if (gone) html = GONE;
   if (!html || html.length > MAX_HTML) return { ok: false, error: "empty or too large" };
   // A browser check page instead of the listing is not useful.
   if (/<title>\s*Just a moment/i.test(html)) return { ok: false, error: "browser check page" };

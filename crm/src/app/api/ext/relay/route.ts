@@ -9,11 +9,11 @@ export async function GET(request: Request) {
   return Response.json({ ok: true, urls: await claimRelayRequests(limit) });
 }
 
-/** POST { url, html }: one page downloaded in the agent's browser. */
+/** POST { url, html } (or { url, gone: true } for a removed listing): one page from the agent's browser. */
 export async function POST(request: Request) {
   const user = await extUser(request);
   if (!user) return Response.json({ ok: false, error: "bad key" }, { status: 401 });
-  const body = ((await request.json().catch(() => ({}))) ?? {}) as { url?: string; html?: string };
-  const result = await storeRelayPage(String(body.url ?? ""), String(body.html ?? ""));
+  const body = ((await request.json().catch(() => ({}))) ?? {}) as { url?: string; html?: string; gone?: boolean };
+  const result = await storeRelayPage(String(body.url ?? ""), String(body.html ?? ""), body.gone === true);
   return Response.json(result, { status: result.ok ? 200 : 400 });
 }

@@ -19,7 +19,7 @@ function setStatus(kind, title, sub) {
 function showLog(lines) {
   $("log").innerHTML = "";
   for (const line of lines.slice(0, 15)) {
-    const [, time, text] = line.match(/^(\d{1,2}:\d{2})\s+(.*)$/) ?? [null, "", line];
+    const [, time, text] = line.match(/^(\d{1,2}:\d{2})(?:\s*[AP]M)?\s+(.*)$/i) ?? [null, "", line];
     const li = document.createElement("li");
     const t = document.createElement("time");
     t.textContent = time;

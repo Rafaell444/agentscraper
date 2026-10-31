@@ -43,7 +43,7 @@ const PROBLEMS = {
 
 async function addLog(line) {
   const { log } = await state();
-  const entry = new Date().toLocaleTimeString("ka-GE", { hour: "2-digit", minute: "2-digit" }) + " " + line;
+  const entry = new Date().toLocaleTimeString("ka-GE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) + " " + line;
   await chrome.storage.local.set({ log: [entry, ...log].slice(0, 30) });
 }
 
@@ -184,8 +184,8 @@ async function runOne(force = false) {
           : "⚠ " + what + ": " + (PROBLEMS[result.status] || "ვერ მოხერხდა"),
     );
     await chrome.storage.local.set({ queueEmptyAt: 0 });
-    // Free the tab's memory until the next listing.
-    chrome.tabs.update(tabId, { url: "about:blank" }).catch(() => undefined);
+    // Free the tab's memory until the next listing; the page says what this tab is.
+    chrome.tabs.update(tabId, { url: chrome.runtime.getURL("worker.html") }).catch(() => undefined);
     if (result.status === "login") await stopAuto("MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა.", "login");
     else if (refusals >= 3) await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი — ნომრების მოტანა გაჩერდა.", "blocked");
   } catch (error) {
@@ -222,7 +222,13 @@ async function relayRun() {
           const response = await fetch(url, { credentials: "include", cache: "no-store" });
           const html = await response.text();
           const host = new URL(url).hostname;
-          hosts[host] ??= { ok: 0, failed: 0 };
+          hosts[host] ??= { ok: 0, failed: 0, gone: 0 };
+          if (response.status === 404 || response.status === 410) {
+            // The listing was deleted on the site: tell the CRM so it is not asked for again.
+            await api("/api/ext/relay", { method: "POST", body: JSON.stringify({ url, gone: true }) });
+            hosts[host].gone += 1;
+            continue;
+          }
           if (!response.ok || /<title>\s*Just a moment/i.test(html)) {
             hosts[host].failed += 1;
             await addLog("⚠ " + host + " გვერდს არ გვაძლევს (" + response.status + ")");
@@ -245,6 +251,9 @@ async function relayRun() {
   } finally {
     stats.pages += sent;
     await chrome.storage.local.set({ relayBusySince: 0, relayStats: stats });
+    for (const [host, h] of Object.entries(hosts)) {
+      if (h.gone) await addLog("— " + host.replace(/^(www|home)\./, "") + ": " + h.gone + " განცხადება საიტიდან წაშლილია, გამოვტოვე");
+    }
     if (sent) await addLog("⇅ " + Object.keys(hosts).filter((h) => hosts[h].ok).map((h) => h.replace(/^(www|home)\./, "")).join(", ") + " — " + sent + " გვერდი გადაეცა CRM-ს");
     // A site that refuses even this browser usually wants a one-time check in a normal tab.
     const stuck = Object.entries(hosts).find(([, h]) => h.failed >= 3 && !h.ok);
