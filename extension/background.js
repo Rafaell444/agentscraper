@@ -1,11 +1,11 @@
 // Background worker: in auto mode it takes the next MyHome listing without a
 // number from the CRM, opens it in one pinned background tab, asks content.js
 // to press "ნომრის ნახვა", and saves the answer.  Listings follow each other
-// with a short pause (a few seconds), up to a daily cap; it stops by itself if
+// with a 20-second pause, up to a daily cap; it stops by itself if
 // MyHome asks for a login or keeps refusing.
 
 // Auto mode is on by default: opening Chrome is enough for numbers to keep coming.
-const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 1, dailyCap: 1500 };
+const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 20, dailyCap: 1500 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -301,7 +301,8 @@ function schedule() {
 chrome.runtime.onInstalled.addListener(async () => {
   schedule();
   const { intervalSec, dailyCap } = await chrome.storage.local.get(["intervalSec", "dailyCap"]);
-  if (intervalSec >= 40) await chrome.storage.local.set({ intervalSec: DEFAULTS.intervalSec });
+  // 1 s got agents logged out of MyHome: anything faster than 20 s moves to 20 s.
+  if (intervalSec == null || intervalSec < 20) await chrome.storage.local.set({ intervalSec: DEFAULTS.intervalSec });
   if (dailyCap === 400) await chrome.storage.local.set({ dailyCap: DEFAULTS.dailyCap });
 });
 // Opening Chrome: catch up at once (relay right away; numbers resume on the next tick).

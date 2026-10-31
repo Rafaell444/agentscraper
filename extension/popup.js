@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 1, dailyCap: 1500 };
+const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 20, dailyCap: 1500 };
 const today = () => new Date().toISOString().slice(0, 10);
 
 function ago(ms) {
