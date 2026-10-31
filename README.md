@@ -25,10 +25,11 @@ listing's text are extracted automatically.
 | `place.ge`   | place.ge                 | Small portal; phone and owner/agent flag are on the list page. |
 | `rentals.ge` | rentals.ge               | Expat-oriented agency site; read through the public data API its own pages use. All posts are agency posts. |
 | `korter.ge`  | korter.ge                | Sale and rent lists from the page JSON; each listing page gives the seller (owner / realtor / developer) and the seller's phone. |
-| `avezor.ge`  | avezor.ge                | Agency site; read through the public data API its own pages use. Shows only Avezor's office number, so a phone is kept only when written in the description. |
 
 Not added: livo.ge is the same TNET database as MyHome (identical listing
 IDs), so it would only duplicate MyHome posts.
+avezor.ge is an agency that shows only its own office number, never the
+seller's, so its posts are not collected.
 
 Optional, collected only with `--sites housing,makler` and not in the
 owners-only scope: housing.ge never says who posted an ad, and makler.ge is an

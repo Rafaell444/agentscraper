@@ -39,15 +39,57 @@ async function addLog(line) {
 async function badge() {
   const { auto } = await settings();
   const { stats } = await state();
+  const { alert } = await chrome.storage.local.get("alert");
+  if (alert) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#dc2626" });
+    await chrome.action.setBadgeText({ text: "!" });
+    return;
+  }
   await chrome.action.setBadgeBackgroundColor({ color: auto ? "#1d4f8c" : "#6b7280" });
   await chrome.action.setBadgeText({ text: stats.found ? String(stats.found) : auto ? "on" : "" });
 }
 
-async function stopAuto(reason) {
-  await chrome.storage.local.set({ auto: false });
-  await addLog("⏸ " + reason);
+/** The red page in front of the agent, focused (and flashing in the taskbar). */
+async function openAlertTab() {
+  const url = chrome.runtime.getURL("alert.html");
+  const [existing] = await chrome.tabs.query({ url });
+  const tab = existing ? await chrome.tabs.update(existing.id, { active: true }) : await chrome.tabs.create({ url, active: true });
+  if (tab?.windowId != null) await chrome.windows.update(tab.windowId, { focused: true, drawAttention: true }).catch(() => undefined);
+}
+
+/**
+ * Something needs the agent: a red page that opens by itself (again at every
+ * Chrome start until solved), a red "!" on the icon, a notification that
+ * stays until clicked, and a Telegram message from the CRM.
+ */
+async function alertUser(reason, kind, url = "") {
+  await chrome.storage.local.set({ alert: { reason, kind, url, at: Date.now() } });
+  await addLog("🔴 " + reason);
   await badge();
-  chrome.notifications?.create({ type: "basic", iconUrl: "icons/128.png", title: "Tbilisi Home — ავტომატური რეჟიმი გაჩერდა", message: reason });
+  chrome.notifications?.create("alert", {
+    type: "basic",
+    iconUrl: "icons/128.png",
+    title: "🔴 Tbilisi Home — საჭიროა შენი ჩარევა",
+    message: reason,
+    priority: 2,
+    requireInteraction: true,
+    buttons: [{ title: "გახსნა" }],
+  });
+  await openAlertTab().catch(() => undefined);
+  if (kind !== "key") api("/api/ext/alert", { method: "POST", body: JSON.stringify({ reason }) }).catch(() => undefined);
+}
+
+async function stopAuto(reason, kind) {
+  await chrome.storage.local.set({ auto: false });
+  await alertUser(reason, kind);
+}
+
+async function resume() {
+  await chrome.storage.local.set({ alert: null, auto: true, nextAt: 0, refusals: 0, busySince: 0 });
+  chrome.notifications?.clear("alert");
+  await addLog("▶ ისევ ჩართულია");
+  await badge();
+  relayRun();
 }
 
 function waitForLoad(tabId, timeoutMs) {
@@ -125,11 +167,11 @@ async function runOne(force = false) {
     await addLog(saved?.phone ? "✓ " + saved.phone : result.status === "none" ? "— ნომერი არ არის" : "⚠ " + result.status + (result.detail ? " (" + result.detail + ")" : ""));
     // Free the tab's memory until the next listing.
     chrome.tabs.update(tabId, { url: "about:blank" }).catch(() => undefined);
-    if (result.status === "login") await stopAuto("MyHome შესვლას ითხოვს. შედი MyHome-ზე ამ Chrome-ში და ისევ ჩართე.");
-    else if (refusals >= 3) await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი. სცადე მოგვიანებით ან ნელი ტემპით.");
+    if (result.status === "login") await stopAuto("MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა.", "login");
+    else if (refusals >= 3) await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი — ნომრების მოტანა გაჩერდა.", "blocked");
   } catch (error) {
     await addLog("⚠ " + (error?.message || error));
-    if (String(error?.message).includes("გასაღები")) await stopAuto("CRM-ის გასაღები არასწორია — შეამოწმე ფანჯარაში.");
+    if (String(error?.message).includes("გასაღები")) await stopAuto("CRM-ის გასაღები არასწორია — გაფართოება CRM-ს ვეღარ უკავშირდება.", "key");
   } finally {
     // Next listing after the chosen interval, ±30% so it does not tick like a clock.
     const jitter = 0.7 + Math.random() * 0.6;
@@ -150,6 +192,7 @@ async function relayRun() {
   await chrome.storage.local.set({ relayBusySince: Date.now(), relayLastRun: Date.now() });
   const stats = s.relayStats?.day === today() ? s.relayStats : { day: today(), pages: 0 };
   let sent = 0;
+  const hosts = {}; // host -> { ok, failed }
   try {
     // Several rounds: the collector asks for detail pages (numbers) after it reads the result pages.
     for (let round = 0; round < 3; round++) {
@@ -159,12 +202,16 @@ async function relayRun() {
         try {
           const response = await fetch(url, { credentials: "include", cache: "no-store" });
           const html = await response.text();
+          const host = new URL(url).hostname;
+          hosts[host] ??= { ok: 0, failed: 0 };
           if (!response.ok || /<title>\s*Just a moment/i.test(html)) {
+            hosts[host].failed += 1;
             await addLog("⚠ გვერდი ვერ ჩამოვიდა: " + new URL(url).hostname + " (" + response.status + ")");
             continue;
           }
           const saved = await api("/api/ext/relay", { method: "POST", body: JSON.stringify({ url, html }) });
           if (saved?.ok) sent += 1;
+          hosts[host].ok += 1;
         } catch {
           // one page failing does not stop the rest
         }
@@ -180,6 +227,13 @@ async function relayRun() {
     stats.pages += sent;
     await chrome.storage.local.set({ relayBusySince: 0, relayStats: stats });
     if (sent) await addLog("⇅ " + sent + " გვერდი გაიგზავნა CRM-ში (ss.ge / binebi …)");
+    // A site that refuses even this browser usually wants a one-time check in a normal tab.
+    const stuck = Object.entries(hosts).find(([, h]) => h.failed >= 3 && !h.ok);
+    const { alert, siteAlertAt = 0 } = await chrome.storage.local.get(["alert", "siteAlertAt"]);
+    if (stuck && !alert && Date.now() - siteAlertAt > 6 * 3600_000) {
+      await chrome.storage.local.set({ siteAlertAt: Date.now() });
+      await alertUser(stuck[0] + " შენს Chrome-საც აღარ აძლევს გვერდებს — განცხადებები ამ საიტიდან არ მოდის.", "site", "https://" + stuck[0] + "/");
+    }
   }
 }
 
@@ -193,7 +247,13 @@ chrome.runtime.onInstalled.addListener(schedule);
 chrome.runtime.onStartup.addListener(async () => {
   schedule();
   await chrome.storage.local.set({ nextAt: 0, busySince: 0, relayBusySince: 0 });
+  // Still waiting for the agent: show the red page again right away.
+  const { alert } = await chrome.storage.local.get("alert");
+  await badge();
+  if (alert) await openAlertTab().catch(() => undefined);
 });
+chrome.notifications?.onClicked.addListener((id) => id === "alert" && openAlertTab());
+chrome.notifications?.onButtonClicked.addListener((id) => id === "alert" && openAlertTab());
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "tick") runOne();
   if (alarm.name === "relay") relayRun();
@@ -224,7 +284,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     } else if (message?.type === "runNow") {
       await Promise.all([runOne(true), relayRun()]);
       sendResponse({ ok: true });
+    } else if (message?.type === "resume") {
+      await resume();
+      sendResponse({ ok: true });
     } else if (message?.type === "settingsChanged") {
+      // A new key fixes a "wrong key" stop.
+      const { alert } = await chrome.storage.local.get("alert");
+      if (alert?.kind === "key") await resume();
       await chrome.storage.local.set({ nextAt: 0, refusals: 0 });
       relayRun();
       await badge();

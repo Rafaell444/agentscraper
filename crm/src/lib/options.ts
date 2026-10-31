@@ -37,7 +37,6 @@ export const SITE_COLORS: Record<string, string> = {
   makler: "#64748B",
   rentals: "#0891B2",
   korter: "#65A30D",
-  avezor: "#EA580C",
 };
 
 export const PAGE_SIZE = 50;

@@ -13,6 +13,8 @@ async function load() {
   $("tried").textContent = stats.tried;
   const relay = s.relayStats?.day === new Date().toISOString().slice(0, 10) ? s.relayStats.pages : 0;
   $("pages").textContent = relay;
+  $("alert").hidden = !s.alert;
+  $("alertText").textContent = s.alert?.reason ?? "";
   $("log").innerHTML = "";
   for (const line of s.log ?? []) {
     const li = document.createElement("li");
@@ -53,9 +55,12 @@ $("save").addEventListener("click", async () => {
 });
 
 $("auto").addEventListener("change", async () => {
-  await chrome.storage.local.set({ auto: $("auto").checked });
+  // Turning it back on after a stop also clears the red alert.
+  if ($("auto").checked) await chrome.runtime.sendMessage({ type: "resume" });
+  else await chrome.storage.local.set({ auto: false });
   await chrome.runtime.sendMessage({ type: "settingsChanged" });
 });
+$("alertOpen").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("alert.html") }));
 $("intervalSec").addEventListener("change", () => chrome.storage.local.set({ intervalSec: Number($("intervalSec").value) }));
 $("dailyCap").addEventListener("change", () => chrome.storage.local.set({ dailyCap: Math.max(10, Number($("dailyCap").value) || 400) }));
 $("runNow").addEventListener("click", async () => {

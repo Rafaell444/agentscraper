@@ -6,6 +6,7 @@
 import { prisma } from "./db";
 import { lastScheduleRun, runDueSchedules } from "./schedule";
 import { dispatchCollectorIfDue } from "./collectorDispatch";
+import { getSettings } from "./settings";
 
 const JOB = "crm-publish";
 
@@ -56,6 +57,25 @@ export async function disableDbCron(): Promise<void> {
   await prisma.$executeRawUnsafe(`select cron.unschedule(jobid) from cron.job where jobname = '${JOB}'`).catch(() => undefined);
 }
 
+const AUTO_KEY = "db_cron_auto_enabled";
+
+/**
+ * Turn the timer on once by itself (first CRM visit after deploy), so nobody
+ * has to press the button.  Remembered after that: if an admin later turns it
+ * off on the Channel page, it stays off.
+ */
+async function ensureDbCronOnce(): Promise<void> {
+  if (!isPostgres()) return;
+  if (await prisma.setting.findUnique({ where: { key: AUTO_KEY } })) return;
+  const production = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  const base = ((await getSettings()).public_base_url?.trim() || (production ? `https://${production}` : "")).replace(/\/$/, "");
+  if (!base) return;
+  const status = await dbCronStatus();
+  if (status.kind === "unsupported") return;
+  if (status.kind === "off" && !(await enableDbCron(base)).ok) return;
+  await prisma.setting.upsert({ where: { key: AUTO_KEY }, create: { key: AUTO_KEY, value: new Date().toISOString() }, update: {} });
+}
+
 let lastLocalCheck = 0;
 
 /**
@@ -66,6 +86,7 @@ let lastLocalCheck = 0;
 export async function runSchedulesIfStale(): Promise<void> {
   if (Date.now() - lastLocalCheck < 60_000) return;
   lastLocalCheck = Date.now();
+  await ensureDbCronOnce().catch(() => undefined);
   // The listings collector too: GitHub hardly ever starts it on its own schedule.
   await dispatchCollectorIfDue().catch(() => false);
   const last = await lastScheduleRun();
