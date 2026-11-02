@@ -255,6 +255,21 @@ function priceTag(usd: number | null, kind: DealKind, lang: Lang): string | null
   return lang === "ka" ? `#${top}${over}` : `#${over}${top}`;
 }
 
+/** Russian noun form for a count: 1 спальня, 2 спальни, 5 спален (11–14 take the "many" form). */
+export function ruPlural(n: number, one: string, few: string, many: string): string {
+  const tens = n % 100;
+  const last = n % 10;
+  if (tens >= 11 && tens <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
+/** "1 bedroom / 2 bedrooms", "1 спальня / 2 спальни / 5 спален", "2 საძინებელი". */
+export function bedroomsWord(n: number, lang: Lang): string {
+  return lang === "ka" ? "საძინებელი" : lang === "en" ? (n === 1 ? "bedroom" : "bedrooms") : ruPlural(n, "спальня", "спальни", "спален");
+}
+
 /** details is null when the flat is only in the channel, not in the mini app. */
 export type CaptionLinks = { details: string | null; catalog: string; manager?: string | null };
 
@@ -266,8 +281,8 @@ export function channelCaption(post: SharedPost, lang: Lang, links: CaptionLinks
   const facts = [
     post.area ? `${post.area} ${L("მ²", "m²", "м²")}` : "",
     post.floor ? `${post.floor}${post.totalFloors ? `/${post.totalFloors}` : ""} ${L("სართ.", "floor", "этаж")}` : "",
-    post.bedrooms ? `${post.bedrooms} ${L("საძინებელი", post.bedrooms > 1 ? "bedrooms" : "bedroom", "спальни")}` : "",
-    post.bathrooms ? `${post.bathrooms} ${L("სველი წერტ.", "bath", "с/у")}` : "",
+    post.bedrooms ? `${post.bedrooms} ${bedroomsWord(post.bedrooms, lang)}` : "",
+    post.bathrooms ? `${post.bathrooms} ${L("სველი წერტ.", post.bathrooms > 1 ? "baths" : "bath", "с/у")}` : "",
   ].filter(Boolean).join(" | ");
   const features = featureList(post.features).map((k) => FEATURES.find((f) => f.key === k)!).map((f) => f[lang]);
   const place = placeName(post.location || post.district, lang);
@@ -275,7 +290,7 @@ export function channelCaption(post: SharedPost, lang: Lang, links: CaptionLinks
   const tags = [
     tag(DEAL_TAG[kind][lang]),
     post.district ? tag(placeName(post.district, lang)) : "",
-    post.rooms ? (lang === "ka" ? `#${post.rooms}ოთახიანი` : lang === "en" ? `#${post.rooms}rooms` : `#${post.rooms}комнаты`) : "",
+    post.rooms ? (lang === "ka" ? `#${post.rooms}ოთახიანი` : lang === "en" ? `#${post.rooms}rooms` : `#${post.rooms}комн`) : "",
     priceTag(priceUsd(post.price, post.currency), kind, lang) ?? "",
     post.pets === "yes" ? L("#ცხოველებით", "#petfriendly", "#сживотными") : "",
   ].filter(Boolean).join(" ");

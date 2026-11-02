@@ -1,3 +1,4 @@
+import { bedroomsWord } from "@/lib/catalog";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -77,7 +78,7 @@ export default async function PublicSegmentPage({ params }: { params: Promise<{ 
                   <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-500">
                     {listing.areaM2 ? <span>{fmtNum(listing.areaM2)} m²</span> : null}
                     {listing.floor != null ? <span>{t.floor} {listing.floor}{listing.totalFloors ? `/${listing.totalFloors}` : ""}</span> : null}
-                    {listing.bedrooms ? <span>{listing.bedrooms} {t.bedrooms}</span> : null}
+                    {listing.bedrooms ? <span>{listing.bedrooms} {bedroomsWord(listing.bedrooms, segment.lang)}</span> : null}
                     {listing.condition ? <span>{en(maps.cond, listing.condition)}</span> : null}
                   </div>
                   <div className="mt-3 flex items-center justify-between">

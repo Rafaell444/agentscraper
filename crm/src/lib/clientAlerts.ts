@@ -1,7 +1,7 @@
 import { prisma } from "./db";
 import { getSettings } from "./settings";
 import { shareBase } from "./shareUrl";
-import { DEAL_LABEL, FEATURES, asLang, dealKind, featureList, headline, metroLine, photoUrl, placeName, priceText, priceUsd, termText, typeLabel, type Lang } from "./catalog";
+import { DEAL_LABEL, FEATURES, asLang, bedroomsWord, dealKind, featureList, headline, metroLine, photoUrl, placeName, priceText, priceUsd, termText, typeLabel, type Lang } from "./catalog";
 import { metroName, metroNearby } from "./metro";
 import { catalogLink } from "./channel";
 import { callVerbose } from "./telegram";
@@ -73,7 +73,7 @@ export function prefsSummary(p: SearchPrefs, lang: Lang = "ka"): string {
           ? L(`${money(p.budgetMin)}-დან`, `from ${money(p.budgetMin)}`, `от ${money(p.budgetMin)}`)
           : "",
     p.roomsMin ? `${p.roomsMin}+ ${L("ოთახი", "rooms", "комн.")}` : "",
-    p.bedroomsMin ? `${p.bedroomsMin}+ ${L("საძინებელი", "bedrooms", "спальни")}` : "",
+    p.bedroomsMin ? `${p.bedroomsMin}+ ${bedroomsWord(p.bedroomsMin, lang)}` : "",
     p.bathroomsMin ? `${p.bathroomsMin}+ ${L("სველი წერტ.", "baths", "с/у")}` : "",
     p.areaMin || p.areaMax ? `${p.areaMin ?? ""}–${p.areaMax ?? ""} ${L("მ²", "m²", "м²")}` : "",
     p.areas?.length ? p.areas.map((area) => placeName(area, lang)).join(", ") : "",
