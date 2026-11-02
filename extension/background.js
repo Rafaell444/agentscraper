@@ -1,11 +1,11 @@
 // Background worker: in auto mode it takes the next MyHome listing without a
 // number from the CRM, opens it in one pinned background tab, asks content.js
 // to press "ნომრის ნახვა", and saves the answer.  Listings follow each other
-// with a 20-second pause, up to a daily cap; it stops by itself if
+// with a 1-minute pause (1.5 min every 25 listings), up to a daily cap; it stops by itself if
 // MyHome asks for a login or keeps refusing.
 
 // Auto mode is on by default: opening Chrome is enough for numbers to keep coming.
-const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 20, dailyCap: 1500 };
+const DEFAULTS = { crmUrl: "https://agenturicrm.vercel.app", token: "", auto: true, intervalSec: 60, dailyCap: 1500 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -169,41 +169,19 @@ async function processItem(item) {
   await badge();
   const found = Boolean(saved?.phone);
   if (result.status === "login") {
-    // MyHome logged us out: most likely too fast, so the pause grows one step and that pace is remembered as failed.
-    const { intervalSec } = await settings();
-    const { paceFails = {} } = await chrome.storage.local.get("paceFails");
-    const slower = PACE_STEPS.find((step) => step > intervalSec) ?? PACE_STEPS[PACE_STEPS.length - 1];
-    await chrome.storage.local.set({ intervalSec: slower, paceOk: 0, paceFails: { ...paceFails, [intervalSec]: Date.now() } });
-    await stopAuto(`MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა. პაუზა გავზარდე: ახლა ${paceText(slower)}.`, "login");
+    await stopAuto("MyHome შესვლას ითხოვს — ნომრების მოტანა გაჩერდა.", "login");
     return { stop: true, login: true, found };
   }
   if (refusals >= 3) {
     await stopAuto("MyHome ზედიზედ 3-ჯერ არ აჩვენა ნომერი — ნომრების მოტანა გაჩერდა.", "blocked");
     return { stop: true, login: false, found };
   }
-  await maybeSpeedUp();
   return { stop: false, login: false, found };
 }
 
-// Pause choices in seconds; a MyHome logout moves to the next, slower one.
-const PACE_STEPS = [10, 15, 20, 30, 45, 60, 90, 120];
-// After this many listings without a logout, one step faster is tried...
-const SPEED_UP_AFTER = 300;
-// ...but never a pace that logged us out in the last 3 days.
-const FAIL_MEMORY_MS = 3 * 86400_000;
-
-const paceText = (sec) => (sec >= 60 ? sec / 60 + " წუთი" : sec + " წამი");
-
-/** Probe for the shortest pause MyHome accepts: one step faster after a long clean stretch. */
-async function maybeSpeedUp() {
-  const { paceOk = 0, paceFails = {} } = await chrome.storage.local.get(["paceOk", "paceFails"]);
-  const { intervalSec } = await settings();
-  if (paceOk + 1 < SPEED_UP_AFTER) return chrome.storage.local.set({ paceOk: paceOk + 1 });
-  const faster = [...PACE_STEPS].reverse().find((step) => step < intervalSec);
-  const failedRecently = faster != null && Date.now() - (paceFails[faster] ?? 0) < FAIL_MEMORY_MS;
-  await chrome.storage.local.set({ paceOk: 0, ...(faster != null && !failedRecently ? { intervalSec: faster } : {}) });
-  if (faster != null && !failedRecently) await addLog(`⏩ ${SPEED_UP_AFTER} განცხადება გამოყვანის გარეშე — პაუზას ვცდი ${paceText(faster)}`);
-}
+// Every 25 listings a longer break (1.5 min) before going on at the usual pause.
+const BREAK_EVERY = 25;
+const BREAK_SEC = 90;
 
 // One batch runs up to 4 minutes, then the next alarm tick carries on.
 const BATCH_MS = 4 * 60_000;
@@ -245,8 +223,18 @@ async function runOne(force = false) {
         // A sped-up pace starts a new analytics row.
         if ((await settings()).intervalSec !== run.pace) break batch;
         tabId = (await state()).workerTab;
-        // Pause ±30% so it does not tick like a clock.
-        await sleep(now.intervalSec * 1000 * (0.7 + Math.random() * 0.6));
+        const { sinceBreak = 0 } = await chrome.storage.local.get("sinceBreak");
+        const rest = sinceBreak + 1 >= BREAK_EVERY;
+        await chrome.storage.local.set({ sinceBreak: rest ? 0 : sinceBreak + 1 });
+        if (rest) await addLog(`☕ ${BREAK_EVERY} განცხადების შემდეგ — 1.5 წუთი შესვენება`);
+        // Pause ±15% so it does not tick like a clock.
+        const pauseMs = (rest ? BREAK_SEC : now.intervalSec) * 1000 * (0.85 + Math.random() * 0.3);
+        // Chrome stops an idle background worker after ~30 s, so a long pause is an alarm, not a sleep.
+        if (pauseMs > 25_000) {
+          wait = pauseMs;
+          break batch;
+        }
+        await sleep(pauseMs);
       }
       if (force) break;
     }
@@ -257,7 +245,9 @@ async function runOne(force = false) {
     // Free the tab's memory until the next batch; the page says what this tab is.
     if (tabId != null) chrome.tabs.update(tabId, { url: chrome.runtime.getURL("worker.html") }).catch(() => undefined);
     const { nextAt } = await state();
-    await chrome.storage.local.set({ busySince: 0, lastRunAt: Date.now(), nextAt: Math.max(nextAt, Date.now() + Math.min(wait, 10 * 60_000)) });
+    const next = Math.max(nextAt, Date.now() + Math.min(wait, 10 * 60_000));
+    await chrome.storage.local.set({ busySince: 0, lastRunAt: Date.now(), nextAt: next });
+    chrome.alarms.create("next", { when: next });
     await badge();
     // Pace analytics: how many listings at which pause, and whether MyHome logged us out.
     if (run.tried) {
@@ -340,8 +330,9 @@ function schedule() {
 chrome.runtime.onInstalled.addListener(async () => {
   schedule();
   const { intervalSec, dailyCap } = await chrome.storage.local.get(["intervalSec", "dailyCap"]);
-  // 1 s got agents logged out of MyHome: anything faster than 20 s moves to 20 s.
-  if (intervalSec == null || intervalSec < 20) await chrome.storage.local.set({ intervalSec: DEFAULTS.intervalSec });
+  // Agents settled on 1 minute (plus a 1.5-minute break every 25 listings): move everyone to it once.
+  const { paceV2 } = await chrome.storage.local.get("paceV2");
+  if (!paceV2 || intervalSec == null) await chrome.storage.local.set({ intervalSec: DEFAULTS.intervalSec, paceV2: true });
   if (dailyCap === 400) await chrome.storage.local.set({ dailyCap: DEFAULTS.dailyCap });
 });
 // Opening Chrome: catch up at once (relay right away; numbers resume on the next tick).
@@ -356,7 +347,7 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.notifications?.onClicked.addListener((id) => id === "alert" && openAlertTab());
 chrome.notifications?.onButtonClicked.addListener((id) => id === "alert" && openAlertTab());
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "tick") runOne();
+  if (alarm.name === "tick" || alarm.name === "next") runOne();
   if (alarm.name === "relay") relayRun();
 });
 
