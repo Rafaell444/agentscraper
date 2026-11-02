@@ -119,6 +119,14 @@ export async function setLeadStatus(formData: FormData) {
   revalidatePath("/channel");
 }
 
+/** Stop one client's "new flat" alerts for one request (the client can also send /stop). */
+export async function stopLeadAlerts(formData: FormData) {
+  await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (id) await prisma.catalogLead.update({ where: { id }, data: { alerts: false } });
+  revalidatePath("/channel");
+}
+
 /** Bot-sent welcome post with "Open App" buttons, optionally pinned. */
 export async function postWelcome(formData: FormData) {
   await requireAdmin();

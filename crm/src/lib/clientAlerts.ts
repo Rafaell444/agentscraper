@@ -58,24 +58,31 @@ export function cleanPrefs(raw: unknown): SearchPrefs {
   };
 }
 
-/** The request in one Georgian line for agents (CRM notes, Telegram). */
-export function prefsSummary(p: SearchPrefs): string {
+/** The request in one line: Georgian for agents (CRM notes, Telegram), or the client's language in alerts. */
+export function prefsSummary(p: SearchPrefs, lang: Lang = "ka"): string {
+  const L = (ka: string, en: string, ru: string) => ({ ka, en, ru })[lang];
   const money = (n: number) => `$${n.toLocaleString("en-US")}`;
   return [
-    p.deal ? DEAL_LABEL[p.deal === "sale" ? "sale" : p.deal === "daily" ? "daily" : "rent"].ka : "",
-    p.types?.length ? p.types.map((type) => typeLabel(type, "ka")).join("/") : "",
-    p.budgetMin && p.budgetMax ? `${money(p.budgetMin)}–${money(p.budgetMax)}` : p.budgetMax ? `მდე ${money(p.budgetMax)}` : p.budgetMin ? `${money(p.budgetMin)}-დან` : "",
-    p.roomsMin ? `${p.roomsMin}+ ოთახი` : "",
-    p.bedroomsMin ? `${p.bedroomsMin}+ საძინებელი` : "",
-    p.bathroomsMin ? `${p.bathroomsMin}+ სველი წერტ.` : "",
-    p.areaMin || p.areaMax ? `${p.areaMin ?? ""}–${p.areaMax ?? ""} მ²` : "",
-    p.areas?.length ? p.areas.join(", ") : "",
-    p.metro?.length ? `მეტრო: ${p.metro.map((id) => metroName(id, "ka")).join(", ")}` : p.nearMetro ? "მეტროსთან" : "",
-    p.notFirstFloor ? "არა 1-ლი სართ." : "",
-    p.notLastFloor ? "არა ბოლო სართ." : "",
-    p.features?.length ? p.features.map((k) => FEATURES.find((f) => f.key === k)?.ka ?? k).join(", ") : "",
-    p.pets ? "🐾 ცხოველით" : "",
-    p.leaseTerm ? `ვადა: ${termText(p.leaseTerm, "ka")}` : "",
+    p.deal ? DEAL_LABEL[p.deal === "sale" ? "sale" : p.deal === "daily" ? "daily" : "rent"][lang] : "",
+    p.types?.length ? p.types.map((type) => typeLabel(type, lang)).join("/") : "",
+    p.budgetMin && p.budgetMax
+      ? `${money(p.budgetMin)}–${money(p.budgetMax)}`
+      : p.budgetMax
+        ? L(`მდე ${money(p.budgetMax)}`, `up to ${money(p.budgetMax)}`, `до ${money(p.budgetMax)}`)
+        : p.budgetMin
+          ? L(`${money(p.budgetMin)}-დან`, `from ${money(p.budgetMin)}`, `от ${money(p.budgetMin)}`)
+          : "",
+    p.roomsMin ? `${p.roomsMin}+ ${L("ოთახი", "rooms", "комн.")}` : "",
+    p.bedroomsMin ? `${p.bedroomsMin}+ ${L("საძინებელი", "bedrooms", "спальни")}` : "",
+    p.bathroomsMin ? `${p.bathroomsMin}+ ${L("სველი წერტ.", "baths", "с/у")}` : "",
+    p.areaMin || p.areaMax ? `${p.areaMin ?? ""}–${p.areaMax ?? ""} ${L("მ²", "m²", "м²")}` : "",
+    p.areas?.length ? p.areas.map((area) => placeName(area, lang)).join(", ") : "",
+    p.metro?.length ? `${L("მეტრო", "Metro", "Метро")}: ${p.metro.map((id) => metroName(id, lang)).join(", ")}` : p.nearMetro ? L("მეტროსთან", "near metro", "рядом с метро") : "",
+    p.notFirstFloor ? L("არა 1-ლი სართ.", "not 1st floor", "не 1-й этаж") : "",
+    p.notLastFloor ? L("არა ბოლო სართ.", "not top floor", "не последний этаж") : "",
+    p.features?.length ? p.features.map((k) => FEATURES.find((f) => f.key === k)?.[lang] ?? k).join(", ") : "",
+    p.pets ? L("🐾 ცხოველით", "🐾 with pets", "🐾 с животными") : "",
+    p.leaseTerm ? `${L("ვადა", "Term", "Срок")}: ${termText(p.leaseTerm, lang)}` : "",
   ].filter(Boolean).join(" · ");
 }
 
@@ -83,13 +90,14 @@ const MAX_AGE_DAYS = 90;
 
 const TEXT = {
   title: { ka: "🔔 ახალი ბინა თქვენი მოთხოვნით", en: "🔔 A new flat matching your request", ru: "🔔 Новая квартира по вашему запросу" },
+  request: { ka: "თქვენი მოთხოვნა", en: "Your request", ru: "Ваш запрос" },
   open: { ka: "🏠 ბინის ნახვა", en: "🏠 View the flat", ru: "🏠 Смотреть квартиру" },
   stop: { ka: "შეტყობინებების გასათიშად გამოგზავნეთ /stop", en: "To stop these alerts, send /stop", ru: "Чтобы отключить уведомления, отправьте /stop" },
 } satisfies Record<string, Record<Lang, string>>;
 
 const esc = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function parsePrefs(value: string | null): SearchPrefs | null {
+export function parsePrefs(value: string | null): SearchPrefs | null {
   try {
     return value ? (JSON.parse(value) as SearchPrefs) : null;
   } catch {
@@ -159,8 +167,11 @@ export async function alertMatchingClients(postId: string): Promise<number> {
       return prefs ? prefsMatch(prefs, post) : false;
     });
     if (!lead) continue;
+    // The language the client asked in; the request that matched is quoted so they know why they got it.
     const lang = asLang(lead.lang);
     const place = placeName(post.location || post.district, lang);
+    const prefs = parsePrefs(lead.prefs);
+    const request = prefs ? prefsSummary(prefs, lang) : "";
     const caption = [
       `<b>${TEXT.title[lang]}</b>`,
       "",
@@ -169,6 +180,8 @@ export async function alertMatchingClients(postId: string): Promise<number> {
       place ? `📍 ${esc(place)}` : "",
       metroLine(post, lang),
       `🆔 ${post.refNo}`,
+      "",
+      request ? `🔎 ${TEXT.request[lang]}: ${esc(request)}` : "",
       "",
       `<i>${TEXT.stop[lang]}</i>`,
     ].filter((line, i, all) => line !== "" || all[i - 1] !== "").join("\n");

@@ -4,13 +4,14 @@ import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
 import { fmtDate } from "@/lib/format";
-import { AVAILABILITY, dealKind, headline, priceText } from "@/lib/catalog";
+import { AVAILABILITY, asLang, dealKind, headline, priceText } from "@/lib/catalog";
+import { parsePrefs, prefsSummary } from "@/lib/clientAlerts";
 import { CHANNEL_FLAG, WELCOME_DEFAULTS, catalogLink, channelTargets, getWelcome, managerLink, mapLink } from "@/lib/channel";
 import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { connectBot, disableScheduler, enableScheduler, postWelcome, setLeadStatus } from "./actions";
+import { connectBot, disableScheduler, enableScheduler, postWelcome, setLeadStatus, stopLeadAlerts } from "./actions";
 import { dbCronStatus } from "@/lib/dbCron";
 import { lastScheduleRun } from "@/lib/schedule";
 import { collectorDispatchConfigured, lastCollectorDispatch } from "@/lib/collectorDispatch";
@@ -48,7 +49,7 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
   const schedulerMsg = scheduler ? { ok: scheduler.startsWith("ok"), text: scheduler.replace(/^(ok|err):/, "") } : null;
   const settings = await getSettings();
   const base = await shareBase(settings.public_base_url);
-  const [username, hook, leads, posts, newLeads] = await Promise.all([
+  const [username, hook, leads, posts, newLeads, alertLeads] = await Promise.all([
     botUsername(),
     callVerbose<{ url: string; last_error_message?: string }>("getWebhookInfo", {}),
     prisma.catalogLead.findMany({
@@ -64,6 +65,12 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
       select: { id: true, refNo: true, catalog: true, propertyType: true, rooms: true, district: true, location: true, price: true, currency: true, dealType: true, availability: true, channelPostedAt: true, catalogViews: true, _count: { select: { catalogLeads: true, photos: true } } },
     }),
     prisma.catalogLead.count({ where: { status: "new" } }),
+    prisma.catalogLead.findMany({
+      where: { kind: "search", alerts: true, tgUserId: { not: null }, createdAt: { gte: new Date(Date.now() - 90 * 86400_000) } },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+      select: { id: true, name: true, tgUsername: true, tgUserId: true, lang: true, prefs: true, alertedRefs: true, createdAt: true, client: { select: { id: true, name: true } } },
+    }),
   ]);
   const channels = channelTargets(settings);
   const welcomes = await Promise.all(channels.map(async (c) => ({ ...c, post: await getWelcome(c.lang) })));
@@ -206,13 +213,49 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
 
       <div className="flex flex-wrap items-center gap-2">
         <Tabs
-          items={[{ value: "leads", label: "ახალი მოთხოვნები", count: newLeads }, { value: "done", label: "დამუშავებული" }, { value: "listings", label: `კატალოგი (${posts.length})` }, { value: "stats", label: "📊 სტატისტიკა" }]}
+          items={[{ value: "leads", label: "ახალი მოთხოვნები", count: newLeads }, { value: "done", label: "დამუშავებული" }, { value: "alerts", label: `🔔 შეტყობინებები (${alertLeads.length})` }, { value: "listings", label: `კატალოგი (${posts.length})` }, { value: "stats", label: "📊 სტატისტიკა" }]}
           current={tab}
           hrefFor={(value) => `/channel?tab=${value}`}
         />
       </div>
 
-      {tab === "stats" ? (
+      {tab === "alerts" ? (
+        <Card title="🔔 ვინ რა ფილტრით ელოდება ახალ ბინებს">
+          {alertLeads.length === 0 ? (
+            <EmptyState title="ჯერ არავინ" hint="მინი აპში „მომიძებნეთ“ ფორმით და შეტყობინებების ჩართვით კლიენტი აქ გამოჩნდება" />
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-gray-500">
+                ახალი ბინის დამატებისას ბოტი თითოეულს უგზავნის, თუ ბინა მის ფილტრს ერგება — მისივე ენაზე, ფილტრის მოკლე აღწერით. ერთ ადამიანს რამდენიმე ფილტრი თუ აქვს, ერთი ბინა მაინც ერთხელ მიდის. ფილტრი 90 დღე მოქმედებს; კლიენტი /stop-ით ყველას თიშავს.
+              </p>
+              <ul className="divide-y divide-gray-100">
+                {alertLeads.map((lead) => {
+                  const prefs = parsePrefs(lead.prefs);
+                  const sameUser = alertLeads.filter((l) => l.tgUserId === lead.tgUserId).length;
+                  return (
+                    <li key={lead.id} className="flex flex-wrap items-start gap-3 py-3 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {lead.client ? <Link href={`/clients/${lead.client.id}`} className="font-semibold text-gray-900 hover:text-emerald-700">{lead.client.name}</Link> : <span className="font-semibold">{lead.name || "—"}</span>}
+                          {lead.tgUsername ? <a href={`https://t.me/${lead.tgUsername.slice(1)}`} target="_blank" rel="noreferrer" className="text-xs text-sky-700 underline">{lead.tgUsername}</a> : null}
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-700">{{ ka: "🇬🇪 ქართ.", en: "🇬🇧 English", ru: "🇷🇺 Русский" }[asLang(lead.lang)]}</span>
+                          {sameUser > 1 ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">{sameUser} ფილტრი</span> : null}
+                          <span className="text-xs text-gray-500">{fmtDate(lead.createdAt, true)} · {lead.alertedRefs ? `${lead.alertedRefs.split(",").length} ბინა გაეგზავნა` : "ჯერ არაფერი"}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-800">🔎 {prefs ? prefsSummary(prefs) || "ყველა ბინა (ფილტრის გარეშე)" : "—"}</p>
+                      </div>
+                      <form action={stopLeadAlerts}>
+                        <input type="hidden" name="id" value={lead.id} />
+                        <SubmitButton pending="…" className="ui-btn ui-btn-ghost ui-btn-sm">გათიშვა</SubmitButton>
+                      </form>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </Card>
+      ) : tab === "stats" ? (
         <CatalogStatsView days={[7, 30, 90].includes(Number(days)) ? Number(days) : 30} />
       ) : tab === "listings" ? (
         <Card title="კატალოგის ბინები">
