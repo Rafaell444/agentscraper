@@ -1,7 +1,7 @@
 {
-  "name": "მესაკუთრე CRM",
+  "name": "Tbilisi Home CRM",
   "short_name": "CRM",
-  "description": "Tbilisi owner listings CRM",
+  "description": "Tbilisi Home — listings CRM",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f6f8fa",

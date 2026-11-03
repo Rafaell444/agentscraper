@@ -54,7 +54,7 @@ export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }
               <path d="M3 11l9-8 9 8M5 10v10h14V10" />
             </svg>
           </span>
-          <span className="text-base font-bold tracking-tight text-gray-900">მესაკუთრე CRM</span>
+          <span className="text-base font-bold tracking-tight text-gray-900">Tbilisi Home CRM</span>
         </Link>
         <nav className="hidden flex-1 flex-wrap items-center gap-1 md:flex">
           {LINKS.map((link) =>

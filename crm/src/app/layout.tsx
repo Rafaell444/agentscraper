@@ -8,8 +8,8 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export const metadata: Metadata = {
-  title: "მესაკუთრე CRM",
-  description: "Tbilisi owner listings CRM",
+  title: "Tbilisi Home CRM",
+  description: "Tbilisi Home — listings CRM",
   manifest: "/manifest.json",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
   appleWebApp: { capable: true, title: "CRM", statusBarStyle: "default" },

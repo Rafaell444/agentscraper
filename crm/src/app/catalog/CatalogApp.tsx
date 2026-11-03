@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CURRENCIES, CURRENCY_SIGN, DEAL_LABEL, FEATURES, type Currency, type Rates, LEASE_TERMS, PETS, PROPERTY_TYPES, TBILISI_DISTRICTS, placeName, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
+import { BRAND_NAME, CURRENCIES, CURRENCY_SIGN, DEAL_LABEL, FEATURES, type Currency, type Rates, LEASE_TERMS, PETS, PROPERTY_TYPES, TBILISI_DISTRICTS, placeName, roomsLabel, termText, typeLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
 import { METRO, METRO_LINE_COLOR, metroName } from "@/lib/metro";
 import { MediaGallery, NearbySection } from "./Media";
 import { DICT, type Dict } from "./i18n";
@@ -591,11 +591,11 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
                 // The logo file has a light square around the badge: zoom in so only the circle shows.
                 <span className="h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-md ring-2 ring-white">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/brand-logo.jpg" alt="Tbilisi Buy & Rent" className="h-full w-full scale-[1.22] object-cover" />
+                  <img src="/brand-logo.jpg" alt="Tbilisi Home: Buy & Rent" className="h-full w-full scale-[1.22] object-cover" />
                 </span>
               )}
               {/* Next to Back the name would be squeezed to "T…"; the Back button says enough there. */}
-              <span className={`min-w-0 flex-1 truncate text-base font-extrabold tracking-tight text-[var(--text)] ${canGoBack ? "invisible" : ""}`}>{agency}</span>
+              <span className={`min-w-0 flex-1 truncate text-base font-extrabold tracking-tight text-[var(--text)] ${canGoBack ? "invisible" : ""}`}>{BRAND_NAME[lang] ?? agency}</span>
               {tab === "list" || tab === "map" ? (
                 <button type="button" aria-label={t.search} onClick={() => { haptic("tap"); setSearching(true); }} className={`flex h-10 w-10 items-center justify-center rounded-xl ${query ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--text)]"}`}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>

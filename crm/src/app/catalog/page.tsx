@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import { publicWhere, toCatalogItem } from "@/lib/catalog";
 import { catalogLink, managerLink } from "@/lib/channel";
+import { BRAND_NAME } from "@/lib/catalog";
 import { shareBase } from "@/lib/shareUrl";
 import { getRates } from "@/lib/rates";
 import { CatalogApp } from "./CatalogApp";
@@ -13,9 +14,7 @@ import { CatalogApp } from "./CatalogApp";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSettings();
-  const name = settings.agency_name || "Tbilisi apartments";
-  return { title: `${name} — catalog`, description: "Apartments for rent and sale in Tbilisi", robots: { index: false } };
+  return { title: BRAND_NAME.en, description: "Apartments for rent and sale in Tbilisi", robots: { index: false } };
 }
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 1, viewportFit: "cover" };
@@ -40,7 +39,7 @@ export default async function CatalogPage() {
       <script src="https://telegram.org/js/telegram-web-app.js" />
       <CatalogApp
         items={posts.map(toCatalogItem)}
-        agency={settings.agency_name || "Tbilisi Homes"}
+        agency={settings.agency_name || "Tbilisi Home"}
         manager={managerLink(settings.catalog_manager)}
         phone={settings.agency_phone || null}
         linkTemplate={linkTemplate}

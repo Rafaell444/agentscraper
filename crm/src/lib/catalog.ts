@@ -255,6 +255,13 @@ function priceTag(usd: number | null, kind: DealKind, lang: Lang): string | null
   return lang === "ka" ? `#${top}${over}` : `#${over}${top}`;
 }
 
+/** The agency's name as the channels and the mini app show it, per language. */
+export const BRAND_NAME: Record<Lang, string> = {
+  en: "Tbilisi Home: Buy & Rent",
+  ru: "Тбилиси Home: Продажа и Аренда",
+  ka: "Tbilisi Home: Buy & Rent",
+};
+
 /** Russian noun form for a count: 1 спальня, 2 спальни, 5 спален (11–14 take the "many" form). */
 export function ruPlural(n: number, one: string, few: string, many: string): string {
   const tens = n % 100;
