@@ -1,3 +1,4 @@
+import { NETWORKS, forgetSocial, publishToSocial, type Network } from "@/lib/social";
 "use server";
 
 import { redirect } from "next/navigation";
@@ -146,25 +147,34 @@ export async function updatePost(formData: FormData) {
       // Scheduled publishing (a field left out keeps its time; publishing now clears it).
       ...(formData.has("scheduleAppAt") ? { scheduleAppAt: parseTbilisi(text(formData, "scheduleAppAt")) } : {}),
       ...(formData.has("scheduleTgAt") ? { scheduleTgAt: parseTbilisi(text(formData, "scheduleTgAt")) } : {}),
-      ...(target === "app" || target === "both" ? { scheduleAppAt: null } : {}),
-      ...(target === "tg" || target === "both" ? { scheduleTgAt: null } : {}),
+      ...(target === "app" || target === "both" || target === "all" ? { scheduleAppAt: null } : {}),
+      ...(target === "tg" || target === "both" || target === "all" ? { scheduleTgAt: null } : {}),
     },
   });
   const notes: string[] = [];
   let failed = false;
-  if (target === "app" || target === "both") {
+  // "all" = mini app + Telegram + every social network.
+  const app = target === "app" || target === "both" || target === "all";
+  const tg = target === "tg" || target === "both" || target === "all";
+  if (app) {
     await prisma.sharedPost.update({ where: { id }, data: { catalog: true } });
     await ensureRefNo(id);
     notes.push("📱 მინი აპში დაემატა");
     const alerted = await alertMatchingClients(id).catch(() => 0);
     if (alerted) notes.push(`🔔 ${alerted} კლიენტს ეცნობა ბოტში`);
   }
-  if (target === "tg" || target === "both") {
+  if (tg) {
     const result = await publishToChannel(id);
     notes.push(result.ok ? result.message : result.error);
     failed = !result.ok;
   } else {
     await refreshChannelPost(id);
+  }
+  const networks = target === "all" || target === "social" ? NETWORKS : (NETWORKS as readonly string[]).includes(target) ? [target as Network] : [];
+  if (networks.length) {
+    const result = await publishToSocial(id, networks);
+    notes.push(result.message);
+    failed = failed || !result.ok;
   }
   // Places near the flat for the mini app (a no-op when they are saved for this pin already).
   queueNearby(id);
@@ -200,6 +210,41 @@ export async function saveToTelegram(formData: FormData) {
 export async function saveToBoth(formData: FormData) {
   formData.set("target", "both");
   await updatePost(formData);
+}
+
+/** Save, then post to one social network, or to every place at once. */
+export async function saveToFacebook(formData: FormData) {
+  formData.set("target", "fb");
+  await updatePost(formData);
+}
+
+export async function saveToInstagram(formData: FormData) {
+  formData.set("target", "ig");
+  await updatePost(formData);
+}
+
+export async function saveToThreads(formData: FormData) {
+  formData.set("target", "th");
+  await updatePost(formData);
+}
+
+export async function saveToTikTok(formData: FormData) {
+  formData.set("target", "tt");
+  await updatePost(formData);
+}
+
+export async function saveToEverywhere(formData: FormData) {
+  formData.set("target", "all");
+  await updatePost(formData);
+}
+
+/** The post was deleted on that network by hand: let it be posted again. */
+export async function forgetSocialPost(formData: FormData) {
+  await requireUser();
+  const id = String(formData.get("id") ?? "");
+  const network = String(formData.get("network") ?? "");
+  if (id && (NETWORKS as readonly string[]).includes(network)) await forgetSocial(id, network as Network);
+  revalidatePath(`/shared/${id}`);
 }
 
 /** "Save and publish" button: same form, then the post goes live. */

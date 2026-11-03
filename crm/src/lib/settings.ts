@@ -8,7 +8,8 @@ export const SETTING_KEYS = [
   { key: "telegram_channel_en", label: "🇬🇧 Telegram არხი (ინგლისური)", hint: "@username — პოსტები ინგლისურად. ცარიელი = არ ვაქვეყნებთ" },
   { key: "catalog_manager", label: "მენეჯერის Telegram", hint: "@username — მასთან წერენ კლიენტები არხიდან და აპიდან" },
   { key: "mini_app_link", label: "Mini App ბმული", hint: "მაგ. https://t.me/YourBot/app (BotFather → /newapp). ცარიელი = ჩვეულებრივი ვებ-ბმული" },
-  { key: "facebook_page_id", label: "Facebook გვერდის ID", hint: "ციფრული ID; ტოკენი GitHub-ის სეკრეტშია" },
+  { key: "facebook_page_id", label: "Facebook გვერდის ID", hint: "ციფრული ID; ტოკენი Vercel-ში (META_PAGE_TOKEN)" },
+  { key: "instagram_account_id", label: "Instagram ანგარიშის ID", hint: "არ არის აუცილებელი — ცარიელი = Facebook გვერდზე მიბმული ანგარიში" },
   { key: "public_base_url", label: "საჯარო გვერდის მისამართი", hint: "მაგ. https://crm.example.com — QR კოდისთვის" },
   { key: "public_intro_en", label: "საჯარო გვერდის ტექსტი (EN)", hint: "მოკლე შესავალი ინგლისურად" },
 ] as const;

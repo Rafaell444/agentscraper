@@ -11,7 +11,8 @@ import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { connectBot, disableScheduler, enableScheduler, postWelcome, setLeadStatus, stopLeadAlerts } from "./actions";
+import { connectBot, connectTikTokStart, disableScheduler, enableScheduler, postWelcome, setLeadStatus, stopLeadAlerts } from "./actions";
+import { NETWORKS, NETWORK_LABEL, socialStatus } from "@/lib/social";
 import { dbCronStatus } from "@/lib/dbCron";
 import { lastScheduleRun } from "@/lib/schedule";
 import { collectorDispatchConfigured, lastCollectorDispatch } from "@/lib/collectorDispatch";
@@ -35,9 +36,10 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
   );
 }
 
-export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string; scheduler?: string }> }) {
+export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string; scheduler?: string; social?: string }> }) {
   const user = await requireUser();
-  const { bot, tab = "leads", welcome, days, scheduler } = await searchParams;
+  const { bot, tab = "leads", welcome, days, scheduler, social } = await searchParams;
+  const socialReady = await socialStatus();
   const [cron, lastRun, collectorAt, healthRow] = await Promise.all([dbCronStatus(), lastScheduleRun(), lastCollectorDispatch(), prisma.setting.findUnique({ where: { key: "collector_health" } })]);
   // Per-site result of the last collector run (written by collect.py).
   let health: Record<string, { at?: string; ok?: boolean; error?: string; new?: number }> = {};
@@ -120,6 +122,25 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
           <CopyButton value={appUrl} className="ui-btn ui-btn-ghost ui-btn-sm" />
         </div>
       </Card>
+
+      {user.role === "admin" ? (
+        <Card title="🌍 სოციალური ქსელები">
+          <div id="social" className="space-y-2 text-sm">
+            {social ? <p className={`rounded-lg px-3 py-2 text-xs ${social.startsWith("ok:") ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>{social.replace(/^(ok|err):/, "")}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              {NETWORKS.map((n) => (
+                <span key={n} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${socialReady[n].ready ? "bg-emerald-100 text-emerald-800" : "bg-amber-50 text-amber-700"}`} title={socialReady[n].hint}>
+                  {NETWORK_LABEL[n]}: {socialReady[n].ready ? "✓ მზადაა" : socialReady[n].hint}
+                </span>
+              ))}
+            </div>
+            <form action={connectTikTokStart}>
+              <SubmitButton pending="…" className="ui-btn ui-btn-secondary ui-btn-sm">🎵 TikTok-ის დაკავშირება</SubmitButton>
+            </form>
+            <p className="text-xs text-gray-500">ბინის პოსტზე („სად გამოვაქვეყნოთ“) ჩნდება ღილაკები: 📘 📸 🧵 🎵 თითოეულისთვის და „🌍 ყველგან“. ტოკენები Vercel-ის გარემოს ცვლადებშია (META_PAGE_TOKEN, THREADS_TOKEN, TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET).</p>
+          </div>
+        </Card>
+      ) : null}
 
       {user.role === "admin" ? (
         <Card title="⏰ ავტომატური გამოქვეყნება (დაგეგმილი პოსტები)">

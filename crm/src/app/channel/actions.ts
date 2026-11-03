@@ -12,6 +12,8 @@ import { ensureRefNo, publishToChannel, publishWelcome, refreshChannelPost, remo
 import { alertMatchingClients } from "@/lib/clientAlerts";
 import { queueNearby } from "@/lib/nearby";
 import { callVerbose, webhookSecret } from "@/lib/telegram";
+import { tiktokAuthUrl } from "@/lib/social";
+import { randomBytes } from "node:crypto";
 
 function back(id: string, result: { ok: boolean; message?: string; error?: string }): never {
   revalidatePath(`/shared/${id}`);
@@ -117,6 +119,14 @@ export async function setLeadStatus(formData: FormData) {
   const status = formData.get("status") === "done" ? "done" : "new";
   if (id) await prisma.catalogLead.update({ where: { id }, data: { status } });
   revalidatePath("/channel");
+}
+
+/** "Connect TikTok": TikTok asks the admin to allow posting, then sends them back to /api/social/tiktok. */
+export async function connectTikTokStart() {
+  await requireAdmin();
+  const state = randomBytes(16).toString("hex");
+  await prisma.setting.upsert({ where: { key: "tiktok_oauth_state" }, create: { key: "tiktok_oauth_state", value: state }, update: { value: state } });
+  redirect(tiktokAuthUrl(await shareBase((await getSettings()).public_base_url), state));
 }
 
 /** Stop one client's "new flat" alerts for one request (the client can also send /stop). */

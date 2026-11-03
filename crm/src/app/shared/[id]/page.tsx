@@ -11,7 +11,8 @@ import { mapView } from "@/lib/map";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { deletePost, regenerateToken, retryCollectorFetch, saveToApp, saveToBoth, savePostAndPublish, saveToTelegram, setPostStatus, updatePost } from "../actions";
+import { deletePost, regenerateToken, retryCollectorFetch, saveToApp, saveToBoth, saveToEverywhere, saveToFacebook, saveToInstagram, saveToThreads, saveToTikTok, savePostAndPublish, saveToTelegram, setPostStatus, updatePost } from "../actions";
+import { NETWORKS, NETWORK_LABEL, parseSocial, socialStatus } from "@/lib/social";
 import { PhotoManager } from "./PhotoManager";
 import { filterOptions } from "@/lib/queries";
 import { AVAILABILITY, FEATURES, LEASE_TERMS, featureList, termText } from "@/lib/catalog";
@@ -21,7 +22,7 @@ import { ImportWaiter } from "./ImportWaiter";
 
 export const dynamic = "force-dynamic";
 // Server actions here also look up nearby places after responding (~12 s).
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const DEALS = ["ქირავდება", "იყიდება", "ქირავდება დღიურად", "გირავდება"];
 const TYPES = ["ბინა", "კერძო სახლი", "აგარაკი", "მიწის ნაკვეთი", "კომერციული ფართი", "სასტუმრო"];
@@ -75,6 +76,8 @@ export default async function SharedPostEditor({ params, searchParams }: { param
   const channels = channelTargets(settings);
   const postedIn = parseChannelIds(post.channelMessageIds);
   const missing = channels.filter((c) => !postedIn[c.lang]);
+  const social = parseSocial(post.socialPosts);
+  const socialReady = await socialStatus();
   const postFeatures = new Set(featureList(post.features));
   const channelMsg = channel ? { ok: channel.startsWith("ok:"), text: channel.replace(/^(ok|err):/, "") } : null;
   const mapPreview = mapView(post.lat, post.lng, post.mapMode === "off" ? "exact" : post.mapMode);
@@ -326,6 +329,27 @@ export default async function SharedPostEditor({ params, searchParams }: { param
             <SubmitButton pending="ინახება…" formAction={saveToApp} className="ui-btn ui-btn-secondary">{post.catalog ? "📱 შენახვა (აპშია)" : "📱 მინი აპში დამატება"}</SubmitButton>
             <SubmitButton pending="იგზავნება…" formAction={saveToTelegram} className="ui-btn ui-btn-secondary">{!post.channelMessageIds ? `📣 Telegram-ში: ${channels.map((c) => CHANNEL_FLAG[c.lang]).join(" + ") || "არხი"}` : missing.length ? `📣 დამატება: ${missing.map((c) => CHANNEL_FLAG[c.lang]).join(" + ")}` : "📣 არხის პოსტის განახლება"}</SubmitButton>
             {!post.catalog || missing.length ? <SubmitButton pending="ქვეყნდება…" formAction={saveToBoth}>📱 + 📣 ორივეგან</SubmitButton> : null}
+          </div>
+          <div id="social" className="mt-3 rounded-lg border border-gray-200 p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-semibold">
+              {NETWORKS.map((n) =>
+                social[n] ? (
+                  <a key={n} href={social[n]!.url ?? "#social"} target="_blank" rel="noreferrer" className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">{NETWORK_LABEL[n]}: დადებულია{social[n]!.url ? " ↗" : ""}</a>
+                ) : (
+                  <span key={n} className={`rounded-full px-2.5 py-1 ${socialReady[n].ready ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`} title={socialReady[n].hint}>{NETWORK_LABEL[n]}: {socialReady[n].ready ? "არ არის" : "დასაყენებელია"}</span>
+                ),
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <SubmitButton pending="ქვეყნდება…" formAction={saveToFacebook} disabled={Boolean(social.fb)} className="ui-btn ui-btn-secondary ui-btn-sm">📘 Facebook</SubmitButton>
+              <SubmitButton pending="ქვეყნდება… (ფოტოები)" formAction={saveToInstagram} disabled={Boolean(social.ig)} className="ui-btn ui-btn-secondary ui-btn-sm">📸 Instagram</SubmitButton>
+              <SubmitButton pending="ქვეყნდება…" formAction={saveToThreads} disabled={Boolean(social.th)} className="ui-btn ui-btn-secondary ui-btn-sm">🧵 Threads</SubmitButton>
+              <SubmitButton pending="ქვეყნდება…" formAction={saveToTikTok} disabled={Boolean(social.tt)} className="ui-btn ui-btn-secondary ui-btn-sm">🎵 TikTok</SubmitButton>
+              <SubmitButton pending="ყველგან ქვეყნდება… (1–2 წუთი)" formAction={saveToEverywhere}>🌍 ყველგან: 📱 + 📣 + 4 ქსელი</SubmitButton>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              ინგლისურად, პირველი 10 ფოტოთი (წყლის ნიშნით) და აპის ბმულით. Threads-ზე მოკლე ტექსტია (500 სიმბოლო). „ყველგან“ დებს იქ, სადაც ჯერ არ არის — უკვე დადებულს არ იმეორებს.
+            </p>
           </div>
           <p className="mt-2 text-[11px] text-gray-500">ღილაკი ჯერ ინახავს ცვლილებებს. თითო არხში მიდის პირველი 10 ფოტო და ტექსტი იმ არხის ენაზე. მხოლოდ არხში დადებულ პოსტს „დეტალები აპში“ ბმული არ ექნება.</p>
           <div className="mt-4 rounded-lg border border-dashed border-gray-300 p-3">
