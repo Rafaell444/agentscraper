@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -26,6 +27,7 @@ from typing import Any
 
 from sites.common import COLUMNS, LOCAL_TIMEZONE, OWNER_PHYSICAL, normalize_id, number
 
+LOGGER = logging.getLogger("collector")
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 ENCODING = "utf-8-sig"  # BOM so Excel opens the CSV with Georgian text intact
 
@@ -366,6 +368,7 @@ class Database:
             'INSERT INTO "price_history" ("id", "listing_id", "price_usd", "seen_at") VALUES (?, ?, ?, ?)',
             history,
         )
+        self.fill_phones_from_copies()
         # Listings no longer present are archived, never deleted: agents' notes stay attached.
         ids = list(rows.keys())
         if not archive_missing:
@@ -380,6 +383,30 @@ class Database:
         else:
             self.execute('UPDATE "listings" SET "archived" = ? WHERE "site" = ?', (self.bool_value(True), site_key))
         self.commit()
+
+
+    def fill_phones_from_copies(self) -> None:
+        """A listing without a number takes the number of another posting of
+        the same flat (same property key) that has one: from that site, or
+        the number an agent or the Chrome extension found (leads.manual_phone)."""
+        source = (
+            'SELECT COALESCE(NULLIF(c."phone", \'\'), ld."manual_phone") FROM "listings" c '
+            'LEFT JOIN "leads" ld ON ld."listing_id" = c."id" '
+            'WHERE c."property_key" = "listings"."property_key" AND c."id" <> "listings"."id" '
+            'AND (COALESCE(c."phone", \'\') <> \'\' OR ld."manual_phone" IS NOT NULL) LIMIT 1'
+        )
+        # A savepoint, so a failure here (an older database without leads) undoes only this step, not the listings just saved.
+        self.execute("SAVEPOINT fill_phones")
+        try:
+            self.execute(
+                f'UPDATE "listings" SET "phone" = ({source}) '
+                'WHERE ("phone" IS NULL OR "phone" = \'\') AND "property_key" IS NOT NULL AND "property_key" <> \'\' '
+                f'AND EXISTS ({source})'
+            )
+            self.execute("RELEASE SAVEPOINT fill_phones")
+        except Exception as exc:
+            LOGGER.warning("phones from other copies skipped: %s", exc)
+            self.execute("ROLLBACK TO SAVEPOINT fill_phones")
 
 
 # --------------------------------------------------------------------------

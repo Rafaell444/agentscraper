@@ -25,6 +25,9 @@ function acceptCookies() {
   document.querySelectorAll('[id^="cookiescript_injected"]').forEach((n) => n.remove());
 }
 
+// MyHome's page for a removed listing ("the listing you were looking for is deleted or inactive").
+const GONE = /წაშლილი ან არააქტიურია|deleted or inactive|удален[оа]? или неактивн/i;
+
 // The popup MyHome puts over a listing when it wants an account ("… შექმენი, ან გამოიყენე არსებული ანგარიში").
 const LOGIN_POPUP = /სრულყოფილად სარგებლობისთვის|გამოიყენე არსებული ანგარიში|use an existing account|существующий аккаунт/i;
 
@@ -71,6 +74,7 @@ async function revealPhone() {
   // A managed browser check ("Just a moment…") is left to Chrome to finish, as for any visitor.
   for (let i = 0; i < 25 && /just a moment/i.test(document.title); i++) await sleep(1000);
   if (/just a moment/i.test(document.title)) return { status: "blocked", detail: "browser check" };
+  if (GONE.test(document.body?.innerText || "")) return { status: "gone" };
   if (loginNeeded()) return { status: "login" };
   if (!listingId()) return { status: "error", detail: "not a listing page" };
 

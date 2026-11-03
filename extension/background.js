@@ -39,6 +39,7 @@ const PROBLEMS = {
   blocked: "MyHome-მა ნომერი არ აჩვენა",
   login: "MyHome შესვლას ითხოვს",
   error: "გვერდი ვერ ჩაიტვირთა",
+  gone: "MyHome-ზე წაშლილია — არქივში გადავიდა",
 };
 
 async function addLog(line) {
