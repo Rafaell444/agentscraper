@@ -262,6 +262,13 @@ export const BRAND_NAME: Record<Lang, string> = {
   ka: "Tbilisi Home: Buy & Rent",
 };
 
+/** The same name in two parts, for the mini app's narrow header. */
+export const BRAND_SHORT: Record<Lang, { name: string; tag: string }> = {
+  en: { name: "Tbilisi Home", tag: "Buy & Rent" },
+  ru: { name: "Тбилиси Home", tag: "Продажа и Аренда" },
+  ka: { name: "Tbilisi Home", tag: "Buy & Rent" },
+};
+
 /** Russian noun form for a count: 1 спальня, 2 спальни, 5 спален (11–14 take the "many" form). */
 export function ruPlural(n: number, one: string, few: string, many: string): string {
   const tens = n % 100;
