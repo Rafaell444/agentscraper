@@ -67,3 +67,4 @@ summary:hover { color: #111827; }
 .switch input:checked + span { background: #10b981; }
 .switch input:checked + span::after { transform: translateX(20px); }
 .switch input:focus-visible + span { outline: 2px solid #fff; outline-offset: 2px; }
+.numbers .later { display: block; color: #b45309; font-size: 10px; }

@@ -91,3 +91,31 @@ export async function phoneQueueSize(): Promise<number> {
     },
   });
 }
+
+export type QueueBreakdown = { ready: number; later: number; noneSeen: number; otherSites: number; total: number };
+
+/**
+ * Listings without a number, split the way the extension sees them:
+ * ready now, tried recently and retried later (login stop, refusal,
+ * error), "no number" seen in the last day, and sites other than MyHome
+ * (their numbers come from the collector, not the extension).
+ */
+export async function phoneQueueBreakdown(): Promise<QueueBreakdown> {
+  const noPhone = { archived: false, OR: [{ phone: null }, { phone: "" }], AND: [{ OR: [{ lead: null }, { lead: { manualPhone: null } }] }] };
+  const [total, myhome, ready, noneSeen] = await Promise.all([
+    prisma.listing.count({ where: noPhone }),
+    prisma.listing.count({ where: { ...noPhone, site: "myhome" } }),
+    phoneQueueSize(),
+    prisma.listing.count({ where: { ...noPhone, site: "myhome", lead: { manualPhone: null, phoneCheck: "none", phoneCheckedAt: { gte: new Date(Date.now() - NONE_RETRY_MS) } } } }),
+  ]);
+  return { ready, noneSeen, later: Math.max(0, myhome - ready - noneSeen), otherSites: total - myhome, total };
+}
+
+/** After the agent logs in to MyHome again: listings stopped by the login (or a refusal) are tried right away, not in 6 hours. */
+export async function retryStoppedChecks(): Promise<number> {
+  const result = await prisma.lead.updateMany({
+    where: { manualPhone: null, phoneCheck: { in: ["login", "blocked", "pending"] } },
+    data: { phoneCheckedAt: null },
+  });
+  return result.count;
+}

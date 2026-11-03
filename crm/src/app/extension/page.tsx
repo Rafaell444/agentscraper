@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { shareBase } from "@/lib/shareUrl";
-import { phoneQueueSize } from "@/lib/ext";
+import { phoneQueueBreakdown } from "@/lib/ext";
 import { paceAnalytics } from "@/lib/extPace";
 import { Card, PageHeader, StatCard } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
@@ -18,10 +18,10 @@ export default async function ExtensionPage() {
   const [user, settings] = await Promise.all([prisma.user.findUnique({ where: { id: session.id }, select: { extToken: true } }), getSettings()]);
   const base = await shareBase(settings.public_base_url);
   const since = new Date(Date.now() - 24 * 3600_000);
-  const [mine, all, waiting, pace] = await Promise.all([
+  const [mine, all, queue, pace] = await Promise.all([
     prisma.activity.count({ where: { userId: session.id, type: "phone", detail: { endsWith: "(extension)" }, createdAt: { gte: since } } }),
     prisma.activity.count({ where: { type: "phone", detail: { endsWith: "(extension)" } } }),
-    phoneQueueSize(),
+    phoneQueueBreakdown(),
     paceAnalytics(),
   ]);
   const paceLabel = (s: number) => (s >= 60 ? `${s / 60} წთ` : `${s} წმ`);
@@ -33,8 +33,17 @@ export default async function ExtensionPage() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard label="ნომერი დღეს (შენ)" value={mine} />
         <StatCard label="სულ გაფართოებით" value={all} accent="blue" />
-        <StatCard label="რიგში (ნომრის გარეშე)" value={waiting} accent="amber" />
+        <StatCard label="რიგში ახლა (MyHome)" value={queue.ready} accent="amber" />
       </div>
+      <Card title="ნომრის გარეშე განცხადებები — რატომ არ არის ყველა რიგში">
+        <ul className="space-y-1 text-sm text-gray-700">
+          <li>📞 <b>{queue.ready}</b> — MyHome, გაფართოება ახლა მოიტანს</li>
+          <li>⏳ <b>{queue.later}</b> — MyHome, ცოტა ხნის წინ სცადა (შესვლის მოთხოვნა, უარი ან შეცდომა) — თავიდან ცდის 6 საათში ან „ისევ ჩართვა“-ზე მაშინვე</li>
+          <li>— <b>{queue.noneSeen}</b> — MyHome, ბოლო დღეში „ნომერი არ აქვს“ — ხვალ კიდევ ერთხელ შეამოწმებს</li>
+          <li>🌐 <b>{queue.otherSites}</b> — სხვა საიტები (ss.ge, binebi, korter…) — მათ ნომრებს შემგროვებელი მოიტანს, თუ საიტი აჩვენებს</li>
+        </ul>
+        <p className="mt-2 text-xs text-gray-500">სულ ნომრის გარეშე: {queue.total} (იგივე, რასაც „განცხადებები“ → „ნომრის გარეშე“ ფილტრი აჩვენებს, არქივის გარეშე).</p>
+      </Card>
 
       <Card title="📊 პაუზის ანალიტიკა (ბოლო 30 დღე)">
         {pace.rows.length ? (

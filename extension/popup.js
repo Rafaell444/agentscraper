@@ -76,6 +76,7 @@ async function check(s) {
   const me = await chrome.runtime.sendMessage({ type: "me" }).catch(() => null);
   if (me?.ok) {
     $("waiting").textContent = me.waiting;
+    $("later").textContent = me.later ? `+${me.later} მოგვიანებით` : "";
     $("whoSmall").textContent = `დაკავშირებულია: ${me.name}`;
     $("whoSmall").className = "note ok";
     if (s.auto && !s.alert && me.waiting === 0) setStatus("ok", "მუშაობს", "ყველა ნომერი მოტანილია — ახლებს ელოდება.");

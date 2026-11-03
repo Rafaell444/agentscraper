@@ -100,6 +100,8 @@ async function resume() {
   chrome.notifications?.clear("alert");
   await addLog("▶ ისევ ჩართულია");
   await badge();
+  // Listings the login stop left waiting are tried now, not in 6 hours.
+  api("/api/ext/retry", { method: "POST", body: "{}" }).catch(() => undefined);
   relayRun();
 }
 
