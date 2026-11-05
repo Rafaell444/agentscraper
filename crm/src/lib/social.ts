@@ -16,7 +16,7 @@ import { prisma } from "./db";
 import { getSettings } from "./settings";
 import { shareBase } from "./shareUrl";
 import { captionLinks, ensureRefNo } from "./channel";
-import { channelCaption, headline, priceText, dealKind, placeName } from "./catalog";
+import { FEATURES, PETS, bedroomsWord, channelCaption, dealKind, descriptionFor, featureList, headline, metroLine, placeName, priceText, termText } from "./catalog";
 
 export const NETWORKS = ["fb", "ig", "th", "tt"] as const;
 export type Network = (typeof NETWORKS)[number];
@@ -82,6 +82,44 @@ async function texts(post: Post) {
     .join("\n")
     .slice(0, 500);
   return { full, short, title: headline(post, "en").slice(0, 90) };
+}
+
+/**
+ * Threads post in Russian, within its 500 characters: title, place and
+ * metro, price, the facts, a few features, as much of the description as
+ * fits, the link and one topic tag (Threads allows one).
+ */
+async function threadsText(post: Post): Promise<string> {
+  const links = await captionLinks(post.refNo, "ru", post.catalog);
+  const link = links.details ?? links.catalog;
+  const kind = dealKind(post.dealType);
+  const unescape = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  const place = placeName(post.location || post.district, "ru");
+  const facts = [
+    post.area ? `${post.area} м²` : "",
+    post.rooms ? `${post.rooms} комн.` : "",
+    post.bedrooms ? `${post.bedrooms} ${bedroomsWord(post.bedrooms, "ru")}` : "",
+    post.floor ? `${post.floor}${post.totalFloors ? `/${post.totalFloors}` : ""} этаж` : "",
+  ].filter(Boolean).join(" · ");
+  const features = featureList(post.features).map((k) => FEATURES.find((f) => f.key === k)?.ru).filter(Boolean).slice(0, 4).join(" · ");
+  const extra = [post.pets && PETS[post.pets] ? `🐾 ${PETS[post.pets].ru}` : "", post.leaseTerm && kind === "rent" ? `🕐 Срок: ${termText(post.leaseTerm, "ru")}` : ""].filter(Boolean).join("  ");
+  const tag = kind === "rent" || kind === "daily" ? "АрендаТбилиси" : "КвартираТбилиси";
+  const head = [
+    `🏠 ${headline(post, "ru")}`,
+    place ? `📍 ${place}` : "",
+    unescape(metroLine(post, "ru")),
+    "",
+    `💰 ${priceText(post.price, post.currency, kind, "ru")}`,
+    facts ? `📐 ${facts}` : "",
+    features ? `✅ ${features}` : "",
+    extra,
+  ].filter((line, i, all) => line !== "" || (i > 0 && all[i - 1] !== "")).join("\n");
+  const tail = `\n\n👉 Все фото и детали: ${link}${post.refNo ? `\n🆔 ${post.refNo}` : ""}\n#${tag}`;
+  const room = 500 - head.length - tail.length - 2;
+  let description = descriptionFor(post, "ru").replace(/\s+/g, " ").trim();
+  if (room < 60) description = "";
+  else if (description.length > room) description = description.slice(0, room - 1).replace(/\s+\S*$/, "") + "…";
+  return (head + (description ? `\n\n${description}` : "") + tail).slice(0, 500);
 }
 
 // ---- configuration ----
@@ -190,7 +228,7 @@ async function postThreads(post: Post, fullPhotos: string[]): Promise<{ id: stri
   const token = process.env.THREADS_TOKEN!;
   // Threads refuses photos wider than 1440 px (Instagram scales them itself).
   const photos = fullPhotos.map((url) => `${url}&w=1440`);
-  const text = (await texts(post)).short;
+  const text = await threadsText(post);
   const me = await graphGet(`${THREADS}/me?fields=id,username&access_token=${encodeURIComponent(token)}`);
   const user = String(me.id);
   let creation: string;
