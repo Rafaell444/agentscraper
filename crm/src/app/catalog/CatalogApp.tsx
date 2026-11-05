@@ -358,7 +358,9 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
     if (ref) track("view", ref);
     if (ref) {
       setOpenRef(ref);
-      history.replaceState({ p: ref }, "", `?p=${ref}`);
+      // Opened straight from a channel post: the catalog goes underneath, so Back leads to it.
+      history.replaceState(null, "", location.pathname);
+      history.pushState({ p: ref }, "", `?p=${ref}`);
     }
     const onPop = (event: PopStateEvent) => {
       setSheet(null);
@@ -577,6 +579,9 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
           onFindSimilar={(item) => { setOpenRef(null); history.replaceState(null, "", location.pathname); setFilters({ ...emptyFilters(item.kind), districts: item.district ? [item.district] : [] }); setTab("request"); }}
           averages={averages}
           phone={phone}
+          currency={currency}
+          onCurrency={() => { haptic("tap"); setSheet("currency"); }}
+          onLang={changeLang}
         />
       ) : (
         <div className="pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
@@ -1337,10 +1342,11 @@ function Card({ item, lang, t, fav, onFav, onOpen, compact = false, good = null 
   );
 }
 
-function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, onAsk, onShare, onFindSimilar, averages, phone }: {
+function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, onAsk, onShare, onFindSimilar, averages, phone, currency, onCurrency, onLang }: {
   item: CatalogItem | null; items: CatalogItem[]; lang: Lang; t: Dict; fav: boolean; onFav: (ref: number) => void; onOpen: (ref: number) => void; onBack: () => void;
   onViewing: (ref: number) => void; onAsk: (item?: CatalogItem) => void; onShare: (item: CatalogItem) => void; onFindSimilar: (item: CatalogItem) => void;
   averages: Map<string, number>; phone: string | null;
+  currency: Currency | ""; onCurrency: () => void; onLang: (lang: Lang) => void;
 }) {
   const inTelegram = Boolean(tg());
   if (!item) {
@@ -1408,6 +1414,18 @@ function Detail({ item, items, lang, t, fav, onFav, onOpen, onBack, onViewing, o
       </div>
 
       <div className="space-y-3 p-3">
+        {/* Same currency and language choice as on the other screens (a flat opened from a post starts here). */}
+        <div className="flex items-center justify-end gap-2">
+          <button type="button" onClick={onCurrency} aria-label={t.currency} className={`flex h-9 shrink-0 items-center gap-0.5 rounded-xl px-2.5 text-sm font-bold shadow-sm active:scale-95 ${currency ? "bg-[var(--accent)] text-white" : "bg-[var(--bg)] text-[var(--accent)]"}`}>
+            {currency ? CURRENCY_SIGN[currency] : <span className="text-xs">$₾</span>}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="opacity-70"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <div className="flex rounded-lg bg-[var(--bg)] p-0.5 text-xs font-semibold">
+            {(["ka", "en", "ru"] as Lang[]).map((l) => (
+              <button key={l} type="button" onClick={() => onLang(l)} className={`min-h-8 rounded-md px-2.5 py-1 ${lang === l ? "bg-[var(--accent)] text-white" : "text-[var(--hint)]"}`}>{l.toUpperCase()}</button>
+            ))}
+          </div>
+        </div>
         <section className="space-y-2 rounded-2xl bg-[var(--bg)] p-4">
           <div className="flex items-center gap-2 text-xs text-[var(--hint)]">
             <span className="font-mono">#{item.ref}</span>
