@@ -129,6 +129,58 @@ export async function connectTikTokStart() {
   redirect(tiktokAuthUrl(await shareBase((await getSettings()).public_base_url), state));
 }
 
+/**
+ * The manager changed: "@old" (and t.me/old) becomes "@new" in the settings,
+ * the welcome texts and every flat's descriptions; the Telegram channel
+ * posts already out are edited to match.
+ */
+export async function replaceUsername(formData: FormData) {
+  await requireAdmin();
+  const clean = (v: FormDataEntryValue | null) => String(v ?? "").trim().replace(/^https?:\/\/t\.me\//i, "").replace(/^@/, "");
+  const from = clean(formData.get("from"));
+  const to = clean(formData.get("to"));
+  if (!/^[A-Za-z0-9_]{4,}$/.test(from) || !/^[A-Za-z0-9_]{4,}$/.test(to) || from.toLowerCase() === to.toLowerCase()) {
+    redirect(`/channel?rename=${encodeURIComponent("err:ჩაწერე ძველი და ახალი username (მაგ. @old_name → @new_name).")}#rename`);
+  }
+  const pattern = new RegExp(`(@|t\\.me/)${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9_])`, "gi");
+  const swap = (text: string | null) => (text ? text.replace(pattern, (_, lead: string) => `${lead}${to}`) : text);
+
+  let settingsChanged = 0;
+  for (const row of await prisma.setting.findMany()) {
+    const next = swap(row.value);
+    if (next !== row.value) {
+      await prisma.setting.update({ where: { key: row.key }, data: { value: next ?? "" } });
+      settingsChanged++;
+    }
+  }
+  // The manager setting may hold the bare name ("old_name"), without @.
+  const manager = await prisma.setting.findUnique({ where: { key: "catalog_manager" } });
+  if (manager && manager.value.replace(/^@/, "").toLowerCase() === from.toLowerCase()) {
+    await prisma.setting.update({ where: { key: "catalog_manager" }, data: { value: `@${to}` } });
+    settingsChanged++;
+  }
+
+  // Every flat is checked (a few hundred rows): the username may be in any of the three descriptions.
+  const posts = await prisma.sharedPost.findMany({ select: { id: true, description: true, descriptionEn: true, descriptionRu: true, channelMessageIds: true } });
+  let postsChanged = 0;
+  let channelEdited = 0;
+  for (const post of posts) {
+    const data = { description: swap(post.description) ?? "", descriptionEn: swap(post.descriptionEn), descriptionRu: swap(post.descriptionRu) };
+    const changed = data.description !== (post.description ?? "") || data.descriptionEn !== post.descriptionEn || data.descriptionRu !== post.descriptionRu;
+    if (changed) {
+      await prisma.sharedPost.update({ where: { id: post.id }, data });
+      postsChanged++;
+    }
+    // Captions carry the manager link too, so every post in the channels is refreshed.
+    if (post.channelMessageIds) {
+      const result = await publishToChannel(post.id, true).catch(() => null);
+      if (result?.ok) channelEdited++;
+    }
+  }
+  revalidatePath("/channel");
+  redirect(`/channel?rename=${encodeURIComponent(`ok:@${from} → @${to}: პარამეტრები ${settingsChanged}, ბინის აღწერა ${postsChanged}, არხის პოსტი განახლდა ${channelEdited}. მისასალმებელი პოსტი ხელახლა გამოაქვეყნე (ქვემოთ), რომ არხშიც შეიცვალოს.`)}#rename`);
+}
+
 /** Stop one client's "new flat" alerts for one request (the client can also send /stop). */
 export async function stopLeadAlerts(formData: FormData) {
   await requireUser();

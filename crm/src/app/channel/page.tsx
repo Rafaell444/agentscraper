@@ -11,7 +11,7 @@ import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { connectBot, connectTikTokStart, disableScheduler, enableScheduler, postWelcome, setLeadStatus, stopLeadAlerts } from "./actions";
+import { connectBot, connectTikTokStart, disableScheduler, replaceUsername, enableScheduler, postWelcome, setLeadStatus, stopLeadAlerts } from "./actions";
 import { NETWORKS, NETWORK_LABEL, socialStatus } from "@/lib/social";
 import { dbCronStatus } from "@/lib/dbCron";
 import { lastScheduleRun } from "@/lib/schedule";
@@ -36,9 +36,9 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
   );
 }
 
-export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string; scheduler?: string; social?: string }> }) {
+export default async function ChannelPage({ searchParams }: { searchParams: Promise<{ bot?: string; tab?: string; welcome?: string; days?: string; scheduler?: string; social?: string; rename?: string }> }) {
   const user = await requireUser();
-  const { bot, tab = "leads", welcome, days, scheduler, social } = await searchParams;
+  const { bot, tab = "leads", welcome, days, scheduler, social, rename } = await searchParams;
   const socialReady = await socialStatus();
   const [cron, lastRun, collectorAt, healthRow] = await Promise.all([dbCronStatus(), lastScheduleRun(), lastCollectorDispatch(), prisma.setting.findUnique({ where: { key: "collector_health" } })]);
   // Per-site result of the last collector run (written by collect.py).
@@ -122,6 +122,20 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
           <CopyButton value={appUrl} className="ui-btn ui-btn-ghost ui-btn-sm" />
         </div>
       </Card>
+
+      {user.role === "admin" ? (
+        <Card title="👤 მენეჯერის username-ის შეცვლა">
+          <div id="rename" className="space-y-2 text-sm">
+            {rename ? <p className={`rounded-lg px-3 py-2 text-xs ${rename.startsWith("ok:") ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>{rename.replace(/^(ok|err):/, "")}</p> : null}
+            <form action={replaceUsername} className="flex flex-wrap items-end gap-2">
+              <label className="text-xs text-gray-600">ძველი<input name="from" placeholder="@old_manager" className="ui-field mt-1 w-48" /></label>
+              <label className="text-xs text-gray-600">ახალი<input name="to" placeholder="@Manager_Tbilisi_Home_Buy_Rent" className="ui-field mt-1 w-64" /></label>
+              <SubmitButton pending="იცვლება… (არხის პოსტებიც)" className="ui-btn ui-btn-primary ui-btn-sm" confirm="ყველგან შევცვალო? არხის ყველა პოსტი განახლდება.">ყველგან შეცვლა</SubmitButton>
+            </form>
+            <p className="text-xs text-gray-500">იცვლება: პარამეტრები (მენეჯერის Telegram), მისასალმებელი ტექსტები, ბინების აღწერები (ქართ./ინგლ./რუს.) და არხში უკვე დადებული პოსტები. Facebook / Instagram-ზე უკვე დადებული პოსტები არ იცვლება.</p>
+          </div>
+        </Card>
+      ) : null}
 
       {user.role === "admin" ? (
         <Card title="🌍 სოციალური ქსელები">

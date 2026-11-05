@@ -178,7 +178,7 @@ export async function updatePost(formData: FormData) {
     failed = failed || !result.ok;
   }
   // The bot tells the agent where the flat went, with links (only when something was published).
-  if (app || tg || networks.length) await notifyPublished(user.id, id, notes, failed).catch(() => undefined);
+  if (app || tg || networks.length) await notifyPublished(user.id, id, notes, { app, tg, networks }).catch(() => undefined);
   // Places near the flat for the mini app (a no-op when they are saved for this pin already).
   queueNearby(id);
   revalidatePath(`/shared/${id}`);
