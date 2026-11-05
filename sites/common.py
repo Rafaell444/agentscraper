@@ -272,7 +272,15 @@ def get_html(session: requests.Session, url: str) -> str:
     host = urlparse(url).hostname or ""
     if RELAY is not None and host in RELAY.blocked:
         return relay_page(url, "blocked host")
-    response = session.get(url, timeout=(10, 35))
+    try:
+        response = session.get(url, timeout=(10, 35))
+    except (requests.ConnectionError, requests.Timeout) as exc:
+        # The site does not answer this server at all (often a silent block): the agents' browsers can still reach it.
+        if RELAY is None:
+            raise
+        RELAY.blocked.add(host)
+        LOGGER.warning("%s did not answer (%s); using the browser relay for this host", host, type(exc).__name__)
+        return relay_page(url, "no answer")
     if response.status_code in BLOCKED_STATUSES and RELAY is not None:
         # The site refuses this server: use (or ask for) a copy from the browser extension.
         RELAY.blocked.add(host)

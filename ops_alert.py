@@ -19,6 +19,7 @@ import html
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -115,11 +116,21 @@ def check(db: storage.Database, token: str) -> None:
         health = {}
     broken = {key: info for key, info in health.items() if int(info.get("fails", 0)) >= 2}
     if broken:
-        lines = "\n".join(f"• <b>{html.escape(key)}</b>: {html.escape(str(info.get('error', ''))[:140])}" for key, info in broken.items())
+        def reason(error: str) -> str:
+            # The raw error is long and technical; agents get what it means.
+            if re.search(r"HTTP (401|403|429|451)", error):
+                return "საიტი GitHub-ის სერვერს ბლოკავს"
+            if re.search(r"timed out|Timeout|Max retries|ConnectionError|RemoteDisconnected|Connection aborted", error):
+                return "საიტი GitHub-ის სერვერს არ პასუხობს (დროებით, ან ჩუმად ბლოკავს)"
+            if re.search(r"HTTP 5\d\d", error):
+                return "საიტის სერვერის შეცდომა (საიტი დროებით გათიშულია)"
+            return html.escape(error[:140])
+
+        lines = "\n".join(f"• <b>{html.escape(key)}</b>: {reason(str(info.get('error', '')))}" for key, info in broken.items())
         send(db, token, "sites_" + "_".join(sorted(broken)), (
             "⚠️ <b>საიტიდან განცხადებები ვერ მოდის</b>\n"
             f"{lines}\n"
-            "სხვა საიტები მუშაობს. 403 ნიშნავს, რომ საიტი GitHub-ის სერვერებს ბლოკავს."
+            "სხვა საიტები მუშაობს. ბლოკის ან უპასუხობის დროს გვერდებს Chrome-ის გაფართოება ჩამოიტანს, როცა Chrome ჩართულია."
             + (f"\nლოგი: {run_url()}" if run_url() else "")
         ))
 
