@@ -331,8 +331,10 @@ async function postTikTok(post: Post, photos: string[]): Promise<{ id: string; u
   const token = await tiktokAccess();
   const creator = await tiktokCall("/post/publish/creator_info/query/", token, {});
   const options = (creator.privacy_level_options as string[] | undefined) ?? [];
-  // Until TikTok approves the app, only private ("only me") posts are allowed.
-  const privacy = options.includes("PUBLIC_TO_EVERYONE") ? "PUBLIC_TO_EVERYONE" : options[0] ?? "SELF_ONLY";
+  // Until TikTok approves the app, only "only me" posts are allowed (from a private account).
+  // After approval, set TIKTOK_AUDITED=1 in Vercel and posts go public.
+  const audited = process.env.TIKTOK_AUDITED === "1";
+  const privacy = audited && options.includes("PUBLIC_TO_EVERYONE") ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
   const { full, title } = await texts(post);
   const data = await tiktokCall("/post/publish/content/init/", token, {
     post_info: { title, description: full.slice(0, 4000), privacy_level: privacy, disable_comment: false, auto_add_music: true },
