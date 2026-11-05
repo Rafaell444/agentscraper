@@ -326,33 +326,111 @@ async function tiktokCall(path: string, token: string, body: unknown): Promise<R
   return json.data ?? {};
 }
 
-async function postTikTok(post: Post, photos: string[]): Promise<{ id: string; url?: string }> {
-  if (!photos.length) throw new Error("TikTok-ს ფოტო სჭირდება");
+// TikTok's rules for apps that post directly (Content Sharing Guidelines):
+// the person sees the account, edits the text, picks who can see it (no
+// default), sets comments and the commercial-content disclosure, and agrees
+// to the Music Usage Confirmation before anything is sent.  So TikTok is
+// posted only from its own window (components/TikTokPost), never in a batch,
+// and the photos go without our watermark (apps may not brand them).
+
+export type TikTokCreator = {
+  nickname: string;
+  username: string;
+  avatar: string;
+  privacyOptions: string[];
+  commentDisabled: boolean;
+  audited: boolean;
+};
+
+export async function tiktokCreator(): Promise<TikTokCreator> {
   const token = await tiktokAccess();
-  const creator = await tiktokCall("/post/publish/creator_info/query/", token, {});
-  const options = (creator.privacy_level_options as string[] | undefined) ?? [];
-  // Until TikTok approves the app, only "only me" posts are allowed (from a private account).
-  // After approval, set TIKTOK_AUDITED=1 in Vercel and posts go public.
-  const audited = process.env.TIKTOK_AUDITED === "1";
-  const privacy = audited && options.includes("PUBLIC_TO_EVERYONE") ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
+  const info = await tiktokCall("/post/publish/creator_info/query/", token, {});
+  return {
+    nickname: String(info.creator_nickname ?? ""),
+    username: String(info.creator_username ?? ""),
+    avatar: String(info.creator_avatar_url ?? ""),
+    privacyOptions: ((info.privacy_level_options as string[] | undefined) ?? []).filter(Boolean),
+    commentDisabled: Boolean(info.comment_disabled),
+    audited: process.env.TIKTOK_AUDITED === "1",
+  };
+}
+
+/** The text and photos the window starts with (the person can edit the text). */
+export async function tiktokDraft(postId: string): Promise<{ title: string; description: string; photos: string[] }> {
+  const post = await loadPost(postId);
+  if (!post) throw new Error("პოსტი ვერ მოიძებნა");
+  await ensureRefNo(postId);
+  const base = await shareBase((await getSettings()).public_base_url);
   const { full, title } = await texts(post);
+  return { title, description: full.slice(0, 4000), photos: (await photoUrls(postId, base)).map((url) => `${url}&raw=1`) };
+}
+
+export type TikTokChoices = {
+  title: string;
+  description: string;
+  privacy: string;
+  allowComment: boolean;
+  brandOrganic: boolean;
+  brandContent: boolean;
+};
+
+/** Post with the person's choices, then wait (up to ~40 s) for TikTok to finish processing. */
+export async function postTikTokWithChoices(postId: string, choices: TikTokChoices): Promise<{ ok: boolean; message: string }> {
+  const creator = await tiktokCreator();
+  if (!creator.privacyOptions.includes(choices.privacy)) return { ok: false, message: "აირჩიე, ვინ დაინახავს პოსტს" };
+  if (choices.brandContent && choices.privacy === "SELF_ONLY") return { ok: false, message: "ბრენდირებული (ფასიანი) კონტენტი „მხოლოდ მე“ ვერ იქნება — აირჩიე სხვა ხილვადობა" };
+  const draft = await tiktokDraft(postId);
+  if (!draft.photos.length) return { ok: false, message: "TikTok-ს ფოტო სჭირდება" };
+  const token = await tiktokAccess();
   const data = await tiktokCall("/post/publish/content/init/", token, {
-    post_info: { title, description: full.slice(0, 4000), privacy_level: privacy, disable_comment: false, auto_add_music: true },
-    source_info: { source: "PULL_FROM_URL", photo_cover_index: 0, photo_images: photos.slice(0, 35) },
+    post_info: {
+      title: choices.title.slice(0, 90),
+      description: choices.description.slice(0, 4000),
+      privacy_level: choices.privacy,
+      disable_comment: creator.commentDisabled || !choices.allowComment,
+      auto_add_music: true,
+      brand_content_toggle: choices.brandContent,
+      brand_organic_toggle: choices.brandOrganic,
+    },
+    source_info: { source: "PULL_FROM_URL", photo_cover_index: 0, photo_images: draft.photos.slice(0, 35) },
     post_mode: "DIRECT_POST",
     media_type: "PHOTO",
   });
-  return { id: String(data.publish_id ?? "") };
+  const publishId = String(data.publish_id ?? "");
+  let status = "PROCESSING";
+  let reason = "";
+  for (let i = 0; i < 13 && /PROCESSING|SEND_TO_USER_INBOX/.test(status); i++) {
+    await sleep(3000);
+    const s = await tiktokCall("/post/publish/status/fetch/", token, { publish_id: publishId }).catch(() => ({}) as Record<string, unknown>);
+    status = String(s.status ?? status);
+    reason = String(s.fail_reason ?? "");
+  }
+  if (status === "FAILED") return { ok: false, message: `TikTok-მა ვერ დაამუშავა${reason ? `: ${reason}` : ""}` };
+  const post = await loadPost(postId);
+  const done = parseSocial(post?.socialPosts);
+  done.tt = { id: publishId, at: new Date().toISOString(), url: creator.username ? `https://www.tiktok.com/@${creator.username}` : undefined };
+  await prisma.sharedPost.update({ where: { id: postId }, data: { socialPosts: JSON.stringify(done) } });
+  return {
+    ok: true,
+    message: status === "PUBLISH_COMPLETE" ? `${NETWORK_LABEL.tt}: გამოქვეყნდა` : `${NETWORK_LABEL.tt}: გაიგზავნა — TikTok რამდენიმე წუთში აჩვენებს`,
+  };
+}
+
+/** Forget the TikTok connection (to connect another account, or for the review video). */
+export async function disconnectTikTok(): Promise<void> {
+  await prisma.setting.deleteMany({ where: { key: { in: ["tiktok_access_token", "tiktok_access_expires", "tiktok_refresh_token"] } } });
 }
 
 // ---- entry point ----
 
-const POSTERS: Record<Network, (post: Post, photos: string[]) => Promise<{ id: string; url?: string }>> = {
+const POSTERS: Partial<Record<Network, (post: Post, photos: string[]) => Promise<{ id: string; url?: string }>>> = {
   fb: postFacebook,
   ig: postInstagram,
   th: postThreads,
-  tt: postTikTok,
 };
+
+/** The networks posted by the buttons and "everywhere"; TikTok has its own window. */
+export const BATCH_NETWORKS = ["fb", "ig", "th"] as const satisfies readonly Network[];
 
 /** Post the flat to the given networks (skipping ones it is already on); one line per network for the CRM notice. */
 export async function publishToSocial(postId: string, networks: readonly Network[]): Promise<{ ok: boolean; message: string }> {
@@ -377,8 +455,13 @@ export async function publishToSocial(postId: string, networks: readonly Network
       failed++;
       continue;
     }
+    const poster = POSTERS[network];
+    if (!poster) {
+      lines.push(`${NETWORK_LABEL[network]}: გამოქვეყნდება მისივე ფანჯრიდან`);
+      continue;
+    }
     try {
-      const result = await POSTERS[network](post, photos);
+      const result = await poster(post, photos);
       done[network] = { id: result.id, at: new Date().toISOString(), url: result.url };
       await prisma.sharedPost.update({ where: { id: postId }, data: { socialPosts: JSON.stringify(done) } });
       lines.push(`${NETWORK_LABEL[network]}: გამოქვეყნდა`);

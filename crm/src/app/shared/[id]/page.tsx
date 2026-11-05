@@ -11,8 +11,9 @@ import { mapView } from "@/lib/map";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { deletePost, regenerateToken, retryCollectorFetch, saveToApp, saveToBoth, saveToEverywhere, saveToFacebook, saveToInstagram, saveToThreads, saveToTikTok, savePostAndPublish, saveToTelegram, setPostStatus, updatePost } from "../actions";
+import { deletePost, regenerateToken, retryCollectorFetch, saveToApp, saveToBoth, saveToEverywhere, saveToFacebook, saveToInstagram, saveToThreads, savePostAndPublish, saveToTelegram, setPostStatus, updatePost } from "../actions";
 import { NETWORKS, NETWORK_LABEL, parseSocial, socialStatus } from "@/lib/social";
+import { TikTokPost } from "@/components/TikTokPost";
 import { PhotoManager } from "./PhotoManager";
 import { filterOptions } from "@/lib/queries";
 import { AVAILABILITY, FEATURES, LEASE_TERMS, featureList, termText } from "@/lib/catalog";
@@ -344,11 +345,11 @@ export default async function SharedPostEditor({ params, searchParams }: { param
               <SubmitButton pending="ქვეყნდება…" formAction={saveToFacebook} disabled={Boolean(social.fb)} className="ui-btn ui-btn-secondary ui-btn-sm">📘 Facebook</SubmitButton>
               <SubmitButton pending="ქვეყნდება… (ფოტოები)" formAction={saveToInstagram} disabled={Boolean(social.ig)} className="ui-btn ui-btn-secondary ui-btn-sm">📸 Instagram</SubmitButton>
               <SubmitButton pending="ქვეყნდება…" formAction={saveToThreads} disabled={Boolean(social.th)} className="ui-btn ui-btn-secondary ui-btn-sm">🧵 Threads</SubmitButton>
-              <SubmitButton pending="ქვეყნდება…" formAction={saveToTikTok} disabled={Boolean(social.tt)} className="ui-btn ui-btn-secondary ui-btn-sm">🎵 TikTok</SubmitButton>
-              <SubmitButton pending="ყველგან ქვეყნდება… (1–2 წუთი)" formAction={saveToEverywhere}>🌍 ყველგან: 📱 + 📣 + 4 ქსელი</SubmitButton>
+              <TikTokPost postId={post.id} posted={Boolean(social.tt)} ready={socialReady.tt.ready} />
+              <SubmitButton pending="ყველგან ქვეყნდება… (1–2 წუთი)" formAction={saveToEverywhere}>🌍 ყველგან: 📱 + 📣 + 📘 📸 🧵</SubmitButton>
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              ინგლისურად, პირველი 10 ფოტოთი (წყლის ნიშნით) და აპის ბმულით. Threads-ზე მოკლე ტექსტია (500 სიმბოლო). „ყველგან“ დებს იქ, სადაც ჯერ არ არის — უკვე დადებულს არ იმეორებს.
+              ინგლისურად, პირველი 10 ფოტოთი (წყლის ნიშნით) და აპის ბმულით. Threads-ზე რუსულად, 500 სიმბოლომდე. „ყველგან“ დებს იქ, სადაც ჯერ არ არის — უკვე დადებულს არ იმეორებს. TikTok თავისი ფანჯრიდან ქვეყნდება (ხილვადობის და სხვა არჩევანით — TikTok-ის წესი), წყლის ნიშნის გარეშე.
             </p>
           </div>
           <p className="mt-2 text-[11px] text-gray-500">ღილაკი ჯერ ინახავს ცვლილებებს. თითო არხში მიდის პირველი 10 ფოტო და ტექსტი იმ არხის ენაზე. მხოლოდ არხში დადებულ პოსტს „დეტალები აპში“ ბმული არ ექნება.</p>

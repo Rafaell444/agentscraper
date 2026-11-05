@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { NETWORKS, forgetSocial, publishToSocial, type Network } from "@/lib/social";
+import { BATCH_NETWORKS, NETWORKS, forgetSocial, publishToSocial, type Network } from "@/lib/social";
 import { notifyPublished } from "@/lib/publishNotice";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -171,7 +171,8 @@ export async function updatePost(formData: FormData) {
   } else {
     await refreshChannelPost(id);
   }
-  const networks = target === "all" || target === "social" ? NETWORKS : (NETWORKS as readonly string[]).includes(target) ? [target as Network] : [];
+  // TikTok is posted only from its own window (its rules), never in a batch.
+  const networks: readonly Network[] = target === "all" || target === "social" ? BATCH_NETWORKS : (BATCH_NETWORKS as readonly string[]).includes(target) ? [target as Network] : [];
   if (networks.length) {
     const result = await publishToSocial(id, networks);
     notes.push(result.message);
@@ -228,11 +229,6 @@ export async function saveToInstagram(formData: FormData) {
 
 export async function saveToThreads(formData: FormData) {
   formData.set("target", "th");
-  await updatePost(formData);
-}
-
-export async function saveToTikTok(formData: FormData) {
-  formData.set("target", "tt");
   await updatePost(formData);
 }
 

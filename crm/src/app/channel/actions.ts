@@ -12,7 +12,7 @@ import { ensureRefNo, publishToChannel, publishWelcome, refreshChannelPost, remo
 import { alertMatchingClients } from "@/lib/clientAlerts";
 import { queueNearby } from "@/lib/nearby";
 import { callVerbose, webhookSecret } from "@/lib/telegram";
-import { tiktokAuthUrl } from "@/lib/social";
+import { disconnectTikTok, tiktokAuthUrl } from "@/lib/social";
 import { randomBytes } from "node:crypto";
 
 function back(id: string, result: { ok: boolean; message?: string; error?: string }): never {
@@ -119,6 +119,14 @@ export async function setLeadStatus(formData: FormData) {
   const status = formData.get("status") === "done" ? "done" : "new";
   if (id) await prisma.catalogLead.update({ where: { id }, data: { status } });
   revalidatePath("/channel");
+}
+
+/** Forget the TikTok account (connect another one, or show connecting in the review video). */
+export async function disconnectTikTokAction() {
+  await requireAdmin();
+  await disconnectTikTok();
+  revalidatePath("/channel");
+  redirect(`/channel?social=${encodeURIComponent("ok:TikTok გაითიშა.")}#social`);
 }
 
 /** "Connect TikTok": TikTok asks the admin to allow posting, then sends them back to /api/social/tiktok. */

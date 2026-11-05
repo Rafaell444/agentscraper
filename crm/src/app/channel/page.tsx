@@ -11,7 +11,7 @@ import { botUsername, callVerbose } from "@/lib/telegram";
 import { Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { connectBot, connectTikTokStart, disableScheduler, replaceUsername, enableScheduler, postWelcome, setLeadStatus, stopLeadAlerts } from "./actions";
+import { connectBot, connectTikTokStart, disableScheduler, disconnectTikTokAction, replaceUsername, enableScheduler, postWelcome, setLeadStatus, stopLeadAlerts } from "./actions";
 import { NETWORKS, NETWORK_LABEL, socialStatus } from "@/lib/social";
 import { dbCronStatus } from "@/lib/dbCron";
 import { lastScheduleRun } from "@/lib/schedule";
@@ -148,9 +148,16 @@ export default async function ChannelPage({ searchParams }: { searchParams: Prom
                 </span>
               ))}
             </div>
-            <form action={connectTikTokStart}>
-              <SubmitButton pending="…" className="ui-btn ui-btn-secondary ui-btn-sm">🎵 TikTok-ის დაკავშირება</SubmitButton>
-            </form>
+            <div className="flex flex-wrap gap-2">
+              <form action={connectTikTokStart}>
+                <SubmitButton pending="…" className="ui-btn ui-btn-secondary ui-btn-sm">🎵 TikTok-ის დაკავშირება</SubmitButton>
+              </form>
+              {socialReady.tt.ready ? (
+                <form action={disconnectTikTokAction}>
+                  <SubmitButton pending="…" className="ui-btn ui-btn-ghost ui-btn-sm" confirm="TikTok-ის კავშირი გავთიშო?">გათიშვა</SubmitButton>
+                </form>
+              ) : null}
+            </div>
             <p className="text-xs text-gray-500">ბინის პოსტზე („სად გამოვაქვეყნოთ“) ჩნდება ღილაკები: 📘 📸 🧵 🎵 თითოეულისთვის და „🌍 ყველგან“. ტოკენები Vercel-ის გარემოს ცვლადებშია (META_PAGE_TOKEN, THREADS_TOKEN, TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET).</p>
           </div>
         </Card>
