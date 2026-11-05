@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { NETWORKS, forgetSocial, publishToSocial, type Network } from "@/lib/social";
+import { notifyPublished } from "@/lib/publishNotice";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
@@ -95,7 +96,7 @@ function httpsUrl(value: string | null): string | null {
 }
 
 export async function updatePost(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const lang = String(formData.get("lang") ?? "ka");
@@ -176,6 +177,8 @@ export async function updatePost(formData: FormData) {
     notes.push(result.message);
     failed = failed || !result.ok;
   }
+  // The bot tells the agent where the flat went, with links (only when something was published).
+  if (app || tg || networks.length) await notifyPublished(user.id, id, notes, failed).catch(() => undefined);
   // Places near the flat for the mini app (a no-op when they are saved for this pin already).
   queueNearby(id);
   revalidatePath(`/shared/${id}`);

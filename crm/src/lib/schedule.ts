@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { ensureRefNo, publishToChannel, refreshChannelPost } from "./channel";
+import { notifyPublished } from "./publishNotice";
 import { alertMatchingClients } from "./clientAlerts";
 import { notifyRecipients } from "./telegram";
 
@@ -77,6 +78,8 @@ export async function runDueSchedules(now = new Date()): Promise<ScheduleRun> {
     await prisma.notification.create({
       data: { userId: post.createdById, type: "system", title: `⏰ ${failed ? "ავტომატური გამოქვეყნება ვერ მოხერხდა" : "ავტომატურად გამოქვეყნდა"}: ${name}`, body: notes.join(" · "), link: `/shared/${post.id}` },
     });
+    // The bot tells the agent where it went (links); a failure also goes to the alert chats.
+    await notifyPublished(post.createdById, post.id, notes, failed).catch(() => undefined);
     if (failed) await notifyRecipients(`⏰⚠️ ${name}\n${notes.join("\n")}`).catch(() => 0);
   }
 
