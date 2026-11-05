@@ -16,6 +16,7 @@ import { prisma } from "./db";
 import { getSettings } from "./settings";
 import { shareBase } from "./shareUrl";
 import { captionLinks, ensureRefNo } from "./channel";
+import { hookLine, socialCaption, tiktokTitle } from "./socialCopy";
 import { FEATURES, PETS, bedroomsWord, channelCaption, dealKind, descriptionFor, featureList, headline, metroLine, placeName, priceText, termText } from "./catalog";
 
 export const NETWORKS = ["fb", "ig", "th", "tt"] as const;
@@ -71,6 +72,12 @@ async function loadPost(postId: string) {
   return prisma.sharedPost.findUnique({ where: { id: postId } });
 }
 
+/** The link to the flat (or the catalog) in the post's language. */
+async function linkFor(post: Post, lang: "en" | "ru"): Promise<string> {
+  const links = await captionLinks(post.refNo, lang, post.catalog);
+  return links.details ?? links.catalog;
+}
+
 async function texts(post: Post) {
   const links = await captionLinks(post.refNo, "en", post.catalog);
   const full = plainCaption(channelCaption(post, "en", links));
@@ -105,6 +112,7 @@ async function threadsText(post: Post): Promise<string> {
   const extra = [post.pets && PETS[post.pets] ? `🐾 ${PETS[post.pets].ru}` : "", post.leaseTerm && kind === "rent" ? `🕐 Срок: ${termText(post.leaseTerm, "ru")}` : ""].filter(Boolean).join("  ");
   const tag = kind === "rent" || kind === "daily" ? "АрендаТбилиси" : "КвартираТбилиси";
   const head = [
+    hookLine(post, "ru"),
     `🏠 ${headline(post, "ru")}`,
     place ? `📍 ${place}` : "",
     unescape(metroLine(post, "ru")),
@@ -168,7 +176,8 @@ async function graphGet(url: string): Promise<Record<string, unknown>> {
 async function postFacebook(post: Post, photos: string[]): Promise<{ id: string; url?: string }> {
   const token = process.env.META_PAGE_TOKEN!;
   const page = (await getSettings()).facebook_page_id.trim();
-  const { full } = await texts(post);
+  // Facebook: English.
+  const full = socialCaption(post, "fb", await linkFor(post, "en"));
   const media: string[] = [];
   for (const url of photos) {
     const photo = await graphPost(`${GRAPH}/${page}/photos`, { url, published: "false", access_token: token });
@@ -206,7 +215,8 @@ async function postInstagram(post: Post, photos: string[]): Promise<{ id: string
   if (!photos.length) throw new Error("Instagram-ს ფოტო სჭირდება");
   const token = process.env.META_PAGE_TOKEN!;
   const ig = await instagramAccount(token);
-  const caption = (await texts(post)).full.slice(0, 2200);
+  // Instagram: Russian.
+  const caption = socialCaption(post, "ig", await linkFor(post, "ru"));
   let creation: string;
   if (photos.length === 1) {
     creation = String((await graphPost(`${GRAPH}/${ig}/media`, { image_url: photos[0], caption, access_token: token })).id);
@@ -361,8 +371,8 @@ export async function tiktokDraft(postId: string): Promise<{ title: string; desc
   if (!post) throw new Error("პოსტი ვერ მოიძებნა");
   await ensureRefNo(postId);
   const base = await shareBase((await getSettings()).public_base_url);
-  const { full, title } = await texts(post);
-  return { title, description: full.slice(0, 4000), photos: (await photoUrls(postId, base)).map((url) => `${url}&raw=1`) };
+  // TikTok: Russian; the hook is the title.
+  return { title: tiktokTitle(post), description: socialCaption(post, "tt", await linkFor(post, "ru")), photos: (await photoUrls(postId, base)).map((url) => `${url}&raw=1`) };
 }
 
 export type TikTokChoices = {
