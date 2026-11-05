@@ -246,6 +246,16 @@ async function tiktokAccess(): Promise<string> {
   return (await prisma.setting.findUniqueOrThrow({ where: { key: "tiktok_access_token" } })).value;
 }
 
+const TIKTOK_HINTS: Record<string, string> = {
+  unaudited_client_can_only_post_to_private_accounts: "TikTok-მა აპი ჯერ არ დაამტკიცა — ტესტისთვის TikTok ანგარიში Private უნდა იყოს",
+  privacy_level_option_mismatch: "ამ ანგარიშზე არჩეული ხილვადობა დაშვებული არაა",
+  spam_risk_too_many_posts: "TikTok: დღეს ძალიან ბევრი პოსტი — ცადე ხვალ",
+  spam_risk_user_banned_from_posting: "TikTok-მა ამ ანგარიშს პოსტვა შეუზღუდა",
+  url_ownership_unverified: "ფოტოს მისამართი TikTok-ში დადასტურებული არაა (URL properties)",
+  access_token_invalid: "TikTok-ის კავშირი ვადაგასულია — დააკავშირე ისევ",
+  scope_not_authorized: "TikTok-ის კავშირს video.publish ნებართვა აკლია — დააკავშირე ისევ",
+};
+
 async function tiktokCall(path: string, token: string, body: unknown): Promise<Record<string, unknown>> {
   const response = await fetch(`${TIKTOK}${path}`, {
     method: "POST",
@@ -255,7 +265,12 @@ async function tiktokCall(path: string, token: string, body: unknown): Promise<R
     cache: "no-store",
   });
   const json = (await response.json().catch(() => ({}))) as { data?: Record<string, unknown>; error?: { code?: string; message?: string } };
-  if (!response.ok || (json.error?.code && json.error.code !== "ok")) throw new Error(json.error?.message || json.error?.code || `HTTP ${response.status}`);
+  if (!response.ok || (json.error?.code && json.error.code !== "ok")) {
+    const code = json.error?.code ?? `HTTP ${response.status}`;
+    // The code says what is wrong; TikTok's message is often only a link to its guidelines.
+    const hint = TIKTOK_HINTS[code];
+    throw new Error(hint ? `${hint} (${code})` : `${code}: ${json.error?.message ?? ""}`.trim());
+  }
   return json.data ?? {};
 }
 
