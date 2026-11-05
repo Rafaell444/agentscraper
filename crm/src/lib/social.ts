@@ -101,17 +101,27 @@ export async function socialStatus(): Promise<Record<Network, { ready: boolean; 
   };
 }
 
+type MetaError = { message?: string; error_user_title?: string; error_user_msg?: string; code?: number; error_subcode?: number };
+
+/** "Invalid parameter" alone says nothing: add Meta's explanation for people and the codes. */
+function metaError(error: MetaError | undefined, status: number): string {
+  if (!error) return `HTTP ${status}`;
+  const detail = error.error_user_msg || error.error_user_title;
+  const codes = [error.code, error.error_subcode].filter(Boolean).join("/");
+  return [error.message, detail && detail !== error.message ? `— ${detail}` : "", codes ? `(${codes})` : ""].filter(Boolean).join(" ");
+}
+
 async function graphPost(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
   const response = await fetch(url, { method: "POST", body: new URLSearchParams(params), signal: AbortSignal.timeout(60_000), cache: "no-store" });
-  const json = (await response.json().catch(() => ({}))) as Record<string, unknown> & { error?: { message?: string } };
-  if (!response.ok || json.error) throw new Error(json.error?.message || `HTTP ${response.status}`);
+  const json = (await response.json().catch(() => ({}))) as Record<string, unknown> & { error?: MetaError };
+  if (!response.ok || json.error) throw new Error(metaError(json.error, response.status));
   return json;
 }
 
 async function graphGet(url: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
-  const json = (await response.json().catch(() => ({}))) as Record<string, unknown> & { error?: { message?: string } };
-  if (!response.ok || json.error) throw new Error(json.error?.message || `HTTP ${response.status}`);
+  const json = (await response.json().catch(() => ({}))) as Record<string, unknown> & { error?: MetaError };
+  if (!response.ok || json.error) throw new Error(metaError(json.error, response.status));
   return json;
 }
 
@@ -176,8 +186,10 @@ async function postInstagram(post: Post, photos: string[]): Promise<{ id: string
 
 // ---- Threads: carousel (or one photo), 500-character text ----
 
-async function postThreads(post: Post, photos: string[]): Promise<{ id: string; url?: string }> {
+async function postThreads(post: Post, fullPhotos: string[]): Promise<{ id: string; url?: string }> {
   const token = process.env.THREADS_TOKEN!;
+  // Threads refuses photos wider than 1440 px (Instagram scales them itself).
+  const photos = fullPhotos.map((url) => `${url}&w=1440`);
   const text = (await texts(post)).short;
   const me = await graphGet(`${THREADS}/me?fields=id,username&access_token=${encodeURIComponent(token)}`);
   const user = String(me.id);
@@ -185,6 +197,8 @@ async function postThreads(post: Post, photos: string[]): Promise<{ id: string; 
   if (photos.length >= 2) {
     const children: string[] = [];
     for (const url of photos) children.push(String((await graphPost(`${THREADS}/${user}/threads`, { media_type: "IMAGE", image_url: url, is_carousel_item: "true", access_token: token })).id));
+    // Each photo must be processed before the carousel that holds them is made.
+    for (const child of children) await waitReady(`${THREADS}/${child}?fields=status&access_token=${encodeURIComponent(token)}`, "status", ["FINISHED"]);
     creation = String((await graphPost(`${THREADS}/${user}/threads`, { media_type: "CAROUSEL", children: children.join(","), text, access_token: token })).id);
   } else if (photos.length === 1) {
     creation = String((await graphPost(`${THREADS}/${user}/threads`, { media_type: "IMAGE", image_url: photos[0], text, access_token: token })).id);
