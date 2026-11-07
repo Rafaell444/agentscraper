@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { roomsLabel, type CatalogItem, type DealKind, type Lang } from "@/lib/catalog";
 import { METRO, METRO_LINE_COLOR, metroLine } from "@/lib/metro";
 import { fetchNearby, placeHtml } from "./places";
-import { moneyShort } from "./money";
+import { moneyShort, shortNumber } from "./money";
 
 // Leaflet + marker clustering, loaded from a CDN only when the map tab opens.
 // Pins are photo "pills" coloured by deal type; nearby flats group into
@@ -111,8 +111,7 @@ export function shortPrice(item: Pick<CatalogItem, "price" | "currency">): strin
   if (item.price == null) return "•";
   const sym = item.currency === "GEL" ? "₾" : "$";
   const v = item.price;
-  const n = v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1).replace(/\.0$/, "")}M` : v >= 10_000 ? `${Math.round(v / 1000)}k` : v >= 1000 ? `${(v / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(v));
-  return `${sym}${n}`;
+  return `${sym}${shortNumber(v)}`;
 }
 
 // Brand blue for rent, gold for sale (the key in the logo), teal for daily.

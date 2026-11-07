@@ -265,7 +265,6 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
       // storage blocked
     }
   }, []);
-  setShownCurrency(currency, rates);
   const changeCurrency = (value: Currency | "") => {
     haptic("select");
     setCurrency(value);
@@ -281,6 +280,8 @@ export function CatalogApp({ items: allItems, agency, manager, phone, linkTempla
   const averages = useMemo(() => areaAverages(allItems), [allItems]);
   const [lang, setLang] = useState<Lang>("en");
   const t = DICT[lang];
+  // Prices everywhere below use the chosen currency and language ("1,2К ₾" in Russian).
+  setShownCurrency(currency, rates, lang);
   const deals = useMemo(() => (["rent", "sale", "daily"] as DealKind[]).filter((d) => items.some((i) => i.kind === d)), [items]);
   const emptyFilters = useCallback((deal: DealKind): Filters => ({ deal, type: "", districts: [], priceMin: "", priceMax: "", rooms: [], areaMin: "", pets: false, features: [], nearMetro: false, metro: [], near: [] }), []);
   const [filters, setFilters] = useState<Filters>(() => emptyFilters(deals[0] ?? "rent"));

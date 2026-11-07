@@ -4,10 +4,20 @@
 
 import { CURRENCY_SIGN, FALLBACK_RATES, convert, priceText, type CatalogItem, type Currency, type Lang, type Rates } from "@/lib/catalog";
 
-let shown: { currency: Currency | ""; rates: Rates } = { currency: "", rates: FALLBACK_RATES };
+let shown: { currency: Currency | ""; rates: Rates; lang: Lang } = { currency: "", rates: FALLBACK_RATES, lang: "en" };
 
-export function setShownCurrency(currency: Currency | "", rates: Rates) {
-  shown = { currency, rates };
+export function setShownCurrency(currency: Currency | "", rates: Rates, lang: Lang = shown.lang) {
+  shown = { currency, rates, lang };
+}
+
+/** 1 200 → "1.2k" / Russian "1,2К"; 1 500 000 → "1.5M" / "1,5 Млн". */
+export function shortNumber(v: number, lang: Lang = shown.lang): string {
+  const ru = lang === "ru";
+  const one = (x: number) => (ru ? x.toFixed(1).replace(/\.0$/, "").replace(".", ",") : x.toFixed(1).replace(/\.0$/, ""));
+  if (v >= 1_000_000) return ru ? `${one(v / 1_000_000)} Млн` : `${one(v / 1_000_000)}M`;
+  if (v >= 10_000) return `${Math.round(v / 1000)}${ru ? "К" : "k"}`;
+  if (v >= 1000) return `${one(v / 1000)}${ru ? "К" : "k"}`;
+  return String(Math.round(v));
 }
 
 type Priced = Pick<CatalogItem, "price" | "currency" | "kind">;
@@ -36,7 +46,7 @@ export function moneyShort(item: Pick<CatalogItem, "price" | "currency">): strin
   if (item.price == null) return "•";
   const currency = converted(item) ? (shown.currency as Currency) : (item.currency as Currency);
   const v = converted(item) ? convert(item.price, item.currency, currency, shown.rates) : item.price;
-  const n = v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1).replace(/\.0$/, "")}M` : v >= 10_000 ? `${Math.round(v / 1000)}k` : v >= 1000 ? `${(v / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(v));
+  const n = shortNumber(v);
   const sign = CURRENCY_SIGN[currency] ?? "$";
   return currency === "GEL" || currency === "RUB" ? `${n}${sign}` : `${sign}${n}`;
 }
