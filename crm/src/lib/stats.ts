@@ -36,7 +36,7 @@ async function dashboardStatsUncached(who = "owner") {
           phone: true,
         },
       }),
-      prisma.lead.findMany({ where: { listing: kind }, select: { status: true, assignedToId: true, updatedAt: true, createdAt: true } }),
+      prisma.lead.findMany({ where: { listing: kind }, select: { status: true, assignedToId: true, updatedAt: true, createdAt: true, listing: { select: { archived: true } } } }),
       prisma.activity.findMany({
         where: { createdAt: { gte: since7 } },
         select: { userId: true, type: true, createdAt: true },
@@ -153,7 +153,8 @@ async function dashboardStatsUncached(who = "owner") {
   const newToday = recent.filter((r) => r.collectedAt && r.collectedAt >= today).length;
   const new7 = recent.filter((r) => r.collectedAt && r.collectedAt >= since7).length;
   const signedThisMonth = leads.filter((l) => l.status === "signed" && l.updatedAt >= monthStart).length;
-  const interested = leads.filter((l) => ["interested", "meeting"].includes(l.status)).length;
+  // Same as the list the card opens: active (not archived) listings, interested or with a meeting.
+  const interested = leads.filter((l) => ["interested", "meeting"].includes(l.status) && !l.listing.archived).length;
   const uniquePhones = new Set(recent.map((r) => (r.phone ?? "").split(";")[0].trim()).filter(Boolean)).size;
 
   return {

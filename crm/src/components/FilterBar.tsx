@@ -61,7 +61,7 @@ export function FilterBar({ filters, options, userId, total }: Props) {
     { key: "new", label: "დაუმუშავებელი", values: { status: "new" }, active: filters.status === "new" },
     { key: "phone", label: "ტელეფონით", values: { phone: "1" }, active: filters.phone === "1" },
     { key: "mine", label: "ჩემი", values: { assigned: userId }, active: filters.assigned === userId },
-    { key: "hot", label: "დაინტერესდა", values: { status: "interested" }, active: filters.status === "interested" },
+    { key: "hot", label: "დაინტერესდა", values: { status: "interested,meeting" }, active: filters.status === "interested" || filters.status === "interested,meeting" },
     { key: "reposted", label: "გაზიარებული", values: { reposted: "1" }, active: filters.reposted === "1" },
   ];
   const quickHref = (values: Record<string, string>, active: boolean) => {

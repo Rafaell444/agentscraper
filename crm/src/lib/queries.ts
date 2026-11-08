@@ -113,7 +113,8 @@ export function buildWhere(filters: ListingFilters): Prisma.ListingWhereInput {
   }
   if (filters.status) {
     if (filters.status === "new") and.push({ OR: [{ lead: null }, { lead: { status: "new" } }] });
-    else where.lead = { status: filters.status };
+    // "interested,meeting" (the dashboard's "interested" card) means any of them.
+    else where.lead = { status: filters.status.includes(",") ? { in: filters.status.split(",") } : filters.status };
   }
   if (filters.assigned) {
     if (filters.assigned === "none") and.push({ OR: [{ lead: null }, { lead: { assignedToId: null } }] });

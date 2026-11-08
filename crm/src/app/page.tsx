@@ -40,7 +40,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <StatCard label="ტელეფონით" value={`${kpis.phonePct}%`} hint={`${kpis.withPhone} / ${kpis.totalActive}`} href={`/listings?${q}&phone=1`} accent="blue" />
         <StatCard label="უნიკალური ნომერი" value={kpis.uniquePhones} href={`/owners?${q}`} accent="blue" />
         <StatCard label="რამდენჯერმე განთავსებული" value={kpis.multiPosted} hint="იგივე ობიექტი სხვა საიტზე/განმთავსებლისგან" href={`/listings?${q}`} accent="amber" />
-        <StatCard label="დაინტერესებული" value={kpis.interested} href={`/listings?${q}&status=interested`} accent="violet" />
+        <StatCard label="დაინტერესებული" value={kpis.interested} href={`/listings?${q}&status=interested,meeting`} accent="violet" />
         <StatCard label="ხელშეკრულება (თვე)" value={kpis.signedThisMonth} href={`/listings?${q}&status=signed`} accent="violet" />
         <StatCard label="დასარეკი დღეს / ვადაგადაც." value={`${kpis.todayFollowUps} / ${kpis.overdue}`} href="/followups" accent={kpis.overdue ? "rose" : "amber"} />
         <StatCard label="დაუმუშავებელი" value={stats.funnel[0]?.value ?? 0} href={`/listings?${q}&status=new`} accent="slate" />

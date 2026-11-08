@@ -15,6 +15,8 @@ export const STATUSES: StatusOption[] = [
 export const STATUS_BY_VALUE = Object.fromEntries(STATUSES.map((s) => [s.value, s]));
 
 export function statusLabel(value: string | null | undefined): string {
+  // A list filter can hold several statuses ("interested,meeting").
+  if (value?.includes(",")) return value.split(",").map((v) => STATUS_BY_VALUE[v]?.label ?? v).join(" / ");
   return STATUS_BY_VALUE[value ?? "new"]?.label ?? value ?? "ახალი";
 }
 
