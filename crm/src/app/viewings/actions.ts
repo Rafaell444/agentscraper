@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { isPartner, requireMember } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 
 function revalidateAll(listingId?: string | null, clientId?: string | null) {
@@ -14,10 +14,16 @@ function revalidateAll(listingId?: string | null, clientId?: string | null) {
 }
 
 export async function createViewing(formData: FormData) {
-  const user = await requireUser();
-  const listingId = String(formData.get("listingId") ?? "") || null;
+  const user = await requireMember();
+  const partner = isPartner(user);
+  // A partner books for his own clients, as himself, by address (he does not see our listings).
+  const listingId = partner ? null : String(formData.get("listingId") ?? "") || null;
   const clientId = String(formData.get("clientId") ?? "") || null;
-  const agentId = String(formData.get("agentId") ?? "") || user.id;
+  const agentId = partner ? user.id : String(formData.get("agentId") ?? "") || user.id;
+  if (partner) {
+    const client = clientId ? await prisma.client.findUnique({ where: { id: clientId }, select: { segment: true } }) : null;
+    if (!client || client.segment !== user.segment) return;
+  }
   const when = String(formData.get("scheduledAt") ?? "");
   const address = String(formData.get("address") ?? "").trim() || null;
   const note = String(formData.get("note") ?? "").trim() || null;
@@ -29,19 +35,27 @@ export async function createViewing(formData: FormData) {
   revalidateAll(listingId, clientId);
 }
 
+/** A partner changes only his own viewings. */
+async function canEditViewing(user: { id: string; role: string }, id: string): Promise<boolean> {
+  if (!isPartner(user)) return true;
+  const viewing = await prisma.viewing.findUnique({ where: { id }, select: { agentId: true } });
+  return viewing?.agentId === user.id;
+}
+
 export async function setViewingStatus(formData: FormData) {
-  await requireUser();
+  const user = await requireMember();
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   if (!id || !["planned", "done", "cancelled", "no_show"].includes(status)) return;
+  if (!(await canEditViewing(user, id))) return;
   const viewing = await prisma.viewing.update({ where: { id }, data: { status } });
   revalidateAll(viewing.listingId, viewing.clientId);
 }
 
 export async function deleteViewing(formData: FormData) {
-  await requireUser();
+  const user = await requireMember();
   const id = String(formData.get("id") ?? "");
-  if (!id) return;
+  if (!id || !(await canEditViewing(user, id))) return;
   const viewing = await prisma.viewing.delete({ where: { id } });
   revalidateAll(viewing.listingId, viewing.clientId);
 }

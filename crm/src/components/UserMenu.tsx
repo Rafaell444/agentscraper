@@ -48,14 +48,22 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <div className="border-b border-gray-100 px-4 py-3">
             <div className="text-sm font-semibold text-gray-900">{user.name}</div>
             <div className="truncate text-xs text-gray-500">{user.email}</div>
-            <div className="mt-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{user.role === "admin" ? "ადმინისტრატორი" : "აგენტი"}</div>
+            <div className="mt-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{user.role === "admin" ? "ადმინისტრატორი" : user.role === "partner" ? "პარტნიორი" : "აგენტი"}</div>
           </div>
-          <Link href="/agents" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-            აგენტები და პაროლი
-          </Link>
-          <Link href="/followups?who=me" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-            ჩემი დასარეკი
-          </Link>
+          {user.role === "partner" ? (
+            <Link href="/account" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              პაროლის შეცვლა
+            </Link>
+          ) : (
+            <>
+              <Link href="/agents" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                აგენტები და პაროლი
+              </Link>
+              <Link href="/followups?who=me" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                ჩემი დასარეკი
+              </Link>
+            </>
+          )}
           {user.role === "admin" ? (
             <Link href="/settings" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
               პარამეტრები

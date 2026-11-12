@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { isPartner, requireMember } from "@/lib/auth";
 import { daysAgo, endOfToday, fmtDate, fmtMoney } from "@/lib/format";
 import { Button, Card, Chip, EmptyState, Input, PageHeader, PhoneButton, Select } from "@/components/ui";
 import { createViewing, deleteViewing, setViewingStatus } from "./actions";
@@ -26,8 +26,11 @@ function conflicts<T extends { agentId: string; scheduledAt: Date; id: string; s
 }
 
 export default async function ViewingsPage({ searchParams }: { searchParams: Promise<{ who?: string; range?: string }> }) {
-  const me = await requireUser();
-  const { who = "", range = "week" } = await searchParams;
+  const me = await requireMember();
+  // A partner sees only his own viewings and clients, and never our listings or owners' numbers.
+  const partner = isPartner(me);
+  const { range = "week" } = await searchParams;
+  const who = partner ? "me" : (await searchParams).who ?? "";
   const from = daysAgo(range === "all" ? 365 : 0);
   const to = new Date();
   to.setDate(to.getDate() + (range === "today" ? 0 : range === "week" ? 7 : 365));
@@ -38,8 +41,8 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
       include: { listing: { select: { id: true, title: true, address: true, neighbourhood: true, priceUsd: true, phone: true, lead: { select: { manualPhone: true } } } }, client: { select: { id: true, name: true, phone: true } }, agent: { select: { id: true, name: true } } },
       orderBy: { scheduledAt: "asc" },
     }),
-    prisma.user.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: partner ? { id: me.id } : { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] }, ...(partner ? { segment: me.segment ?? "indian" } : {}) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   const flagged = conflicts(viewings);
   const eod = endOfToday();
@@ -60,8 +63,12 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
             <Chip href={`/viewings?range=week&who=${who}`} active={range === "week"}>კვირა</Chip>
             <Chip href={`/viewings?range=all&who=${who}`} active={range === "all"}>ყველა</Chip>
             <span className="mx-1 text-gray-300">|</span>
-            <Chip href={`/viewings?range=${range}`} active={who !== "me"}>ყველა აგენტი</Chip>
-            <Chip href={`/viewings?range=${range}&who=me`} active={who === "me"}>ჩემი</Chip>
+            {!partner ? (
+              <>
+                <Chip href={`/viewings?range=${range}`} active={who !== "me"}>ყველა აგენტი</Chip>
+                <Chip href={`/viewings?range=${range}&who=me`} active={who === "me"}>ჩემი</Chip>
+              </>
+            ) : null}
           </>
         }
       />
@@ -75,7 +82,7 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </Select>
-          <Input name="listingId" placeholder="განცხადების ID, მაგ. myhome:123" />
+          {!partner ? <Input name="listingId" placeholder="განცხადების ID, მაგ. myhome:123" /> : null}
           <Input name="address" placeholder="მისამართი" />
           <Select name="agentId" defaultValue={me.id}>
             {users.map((u) => (
@@ -102,11 +109,11 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
                       <div className="text-xs text-gray-500">{v.agent.name}{flagged.has(v.id) ? " · ⚠ გადაფარვა" : ""}</div>
                     </div>
                     <div className="min-w-0 flex-1 text-sm">
-                      {v.listing ? (
+                      {v.listing && !partner ? (
                         <Link href={`/listings/${v.listing.id}`} className="block truncate font-medium text-gray-900 hover:text-emerald-700">{v.listing.title ?? v.listing.id}</Link>
                       ) : null}
                       <div className="truncate text-xs text-gray-500">
-                        {v.address ?? v.listing?.address ?? ""}{v.listing?.neighbourhood ? ` · ${v.listing.neighbourhood}` : ""}{v.listing?.priceUsd ? ` · ${fmtMoney(v.listing.priceUsd)}` : ""}
+                        {partner ? v.address ?? "" : <>{v.address ?? v.listing?.address ?? ""}{v.listing?.neighbourhood ? ` · ${v.listing.neighbourhood}` : ""}{v.listing?.priceUsd ? ` · ${fmtMoney(v.listing.priceUsd)}` : ""}</>}
                       </div>
                       {v.client ? (
                         <div className="text-xs text-gray-600">
@@ -118,7 +125,7 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
                     <div className="flex flex-wrap items-center gap-1">
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                       {v.client?.phone ? <PhoneButton phone={v.client.phone} /> : null}
-                      {v.listing ? <PhoneButton phone={v.listing.phone || v.listing.lead?.manualPhone} /> : null}
+                      {v.listing && !partner ? <PhoneButton phone={v.listing.phone || v.listing.lead?.manualPhone} /> : null}
                       {v.status === "planned" ? (
                         <>
                           <form action={setViewingStatus}><input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="done" /><Button size="sm" variant="secondary" type="submit">ჩატარდა</Button></form>

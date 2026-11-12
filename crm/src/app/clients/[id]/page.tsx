@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { isPartner, requireMember } from "@/lib/auth";
 import { fmtDate, fmtMoney, fmtNum, waHref } from "@/lib/format";
 import { CLIENT_SEGMENTS, CLIENT_STATUSES, SHORTLIST_STATUSES, splitAreas } from "@/lib/clients";
 import { Button, Card, Input, PageHeader, PhoneButton, PosterBadge, Select, SiteBadge } from "@/components/ui";
@@ -19,7 +19,8 @@ function toDateInput(date: Date | null | undefined): string {
 }
 
 export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
-  const me = await requireUser();
+  const me = await requireMember();
+  const partner = isPartner(me);
   const { id } = await params;
   const client = await prisma.client.findUnique({
     where: { id },
@@ -28,9 +29,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       shortlists: { include: { listing: { include: { lead: { select: { manualPhone: true } } } } }, orderBy: { createdAt: "desc" } },
     },
   });
-  if (!client) notFound();
+  // A partner opens only clients of his segment.
+  if (!client || (partner && client.segment !== me.segment)) notFound();
   const [users, settings, viewings] = await Promise.all([
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: partner ? { id: me.id } : { active: true }, orderBy: { name: "asc" } }),
     getSettings(),
     prisma.viewing.findMany({ where: { clientId: client.id }, include: { listing: { select: { id: true, title: true, address: true } }, agent: { select: { name: true } } }, orderBy: { scheduledAt: "desc" }, take: 10 }),
   ]);
@@ -45,7 +47,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   if (client.budgetMin != null || client.budgetMax != null) where.priceUsd = { gte: client.budgetMin ?? undefined, lte: client.budgetMax ?? undefined };
   if (client.roomsMin) where.rooms = { gte: client.roomsMin };
   if (areas.length) where.OR = [{ neighbourhood: { in: areas } }, { district: { in: areas } }];
-  const matches = await prisma.listing.findMany({
+  const matches = partner ? [] : await prisma.listing.findMany({
     where,
     orderBy: { collectedAt: "desc" },
     take: 30,
@@ -90,6 +92,9 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             </div>
           </Card>
 
+          {/* Our listings and owners' numbers: agency staff only, not a partner. */}
+          {!partner ? (
+            <>
           <Card title={`შესაფერისი განცხადებები (${matches.length})`} action={<span className="text-xs text-gray-400">{client.dealType ?? "ყველა"} · {areas.join(", ") || "ყველა უბანი"}</span>}>
             {matches.length === 0 ? (
               <p className="text-sm text-gray-400">ვერაფერი მოიძებნა — შეამსუბუქეთ მოთხოვნები (ბიუჯეტი, უბნები).</p>
@@ -177,6 +182,12 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               </ul>
             )}
           </Card>
+            </>
+          ) : (
+            <Card title="ბინების შერჩევა">
+              <p className="text-sm text-gray-600">შესაფერისი ბინები კლიენტს საჯარო კატალოგიდან გაუგზავნე — ბმული აქ: <a href="/catalog?lang=en" target="_blank" rel="noreferrer" className="font-semibold text-emerald-700 underline">კატალოგი ↗</a></p>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -185,12 +196,14 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               <input type="hidden" name="clientId" value={client.id} />
               <input type="hidden" name="agentId" value={client.assignedToId ?? me.id} />
               <Input name="scheduledAt" type="datetime-local" required />
-              <Select name="listingId" defaultValue="">
-                <option value="">ობიექტი (შერჩეულებიდან)</option>
-                {client.shortlists.map((s) => (
-                  <option key={s.listingId} value={s.listingId}>{s.listing.title ?? s.listingId}</option>
-                ))}
-              </Select>
+              {!partner ? (
+                <Select name="listingId" defaultValue="">
+                  <option value="">ობიექტი (შერჩეულებიდან)</option>
+                  {client.shortlists.map((s) => (
+                    <option key={s.listingId} value={s.listingId}>{s.listing.title ?? s.listingId}</option>
+                  ))}
+                </Select>
+              ) : null}
               <Input name="address" placeholder="მისამართი / შეხვედრის ადგილი" />
               <Button type="submit" variant="secondary" className="w-full">დაგეგმვა</Button>
             </form>

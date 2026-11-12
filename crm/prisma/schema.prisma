@@ -95,7 +95,8 @@ model User {
   email        String   @unique
   name         String
   passwordHash String   @map("password_hash")
-  role         String   @default("agent")
+  role         String   @default("agent") // admin | agent | partner (one client segment only, e.g. Indian rentals)
+  segment      String? // partner's client segment: indian | expat | …
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at")
 

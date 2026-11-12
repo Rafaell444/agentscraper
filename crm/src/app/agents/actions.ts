@@ -9,13 +9,17 @@ export async function createUser(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const role = String(formData.get("role") ?? "agent") === "admin" ? "admin" : "agent";
+  const chosen = String(formData.get("role") ?? "agent");
+  // "partner:indian" = a partner who works only the Indian clients.
+  const [roleName, segmentName] = chosen.split(":");
+  const role = roleName === "admin" ? "admin" : roleName === "partner" ? "partner" : "agent";
+  const segment = role === "partner" ? segmentName || "indian" : null;
   if (!email || !name || password.length < 6) return;
   const passwordHash = await hashPassword(password);
   await prisma.user.upsert({
     where: { email },
-    update: { name, role, passwordHash, active: true },
-    create: { email, name, role, passwordHash },
+    update: { name, role, segment, passwordHash, active: true },
+    create: { email, name, role, segment, passwordHash },
   });
   revalidatePath("/agents");
 }

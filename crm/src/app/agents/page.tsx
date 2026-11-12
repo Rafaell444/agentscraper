@@ -6,6 +6,8 @@ import { createUser, resetPassword, setTelegram, setUserActive } from "./actions
 
 export const dynamic = "force-dynamic";
 
+const SEGMENT_LABEL: Record<string, string> = { indian: "ინდოელები", expat: "ექსპატები", tourist: "ტურისტები", local: "ადგილობრივები" };
+
 export default async function AgentsPage() {
   const me = await requireUser();
   const since30 = daysAgo(30);
@@ -41,8 +43,8 @@ export default async function AgentsPage() {
                   </div>
                   <div className="truncate text-xs text-gray-500">{user.email}</div>
                 </div>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${user.role === "admin" ? "bg-violet-100 text-violet-800" : "bg-emerald-100 text-emerald-800"}`}>
-                  {user.role === "admin" ? "ადმინი" : "აგენტი"}
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${user.role === "admin" ? "bg-violet-100 text-violet-800" : user.role === "partner" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
+                  {user.role === "admin" ? "ადმინი" : user.role === "partner" ? `პარტნიორი · ${SEGMENT_LABEL[user.segment ?? ""] ?? user.segment}` : "აგენტი"}
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-5 gap-1 text-center">
@@ -94,6 +96,7 @@ export default async function AgentsPage() {
 
       {me.role === "admin" ? (
         <Card title="ახალი აგენტის დამატება">
+          <p className="mb-2 text-xs text-gray-500">„პარტნიორი“ ხედავს და მართავს მხოლოდ თავისი სეგმენტის კლიენტებს და მათ ჩვენებებს (+ საჯარო კატალოგს). განცხადებები, მესაკუთრეები და ნომრები, პოსტები, არხი, პარამეტრები და სხვა აგენტების საქმე მისთვის დახურულია.</p>
           <form action={createUser} className="grid gap-2 md:grid-cols-5">
             <Input name="name" required placeholder="სახელი და გვარი" />
             <Input name="email" type="email" required placeholder="ელფოსტა" />
@@ -101,6 +104,7 @@ export default async function AgentsPage() {
             <Select name="role" defaultValue="agent">
               <option value="agent">აგენტი</option>
               <option value="admin">ადმინი</option>
+              <option value="partner:indian">პარტნიორი — მხოლოდ ინდოელი კლიენტები</option>
             </Select>
             <Button type="submit">დამატება</Button>
           </form>

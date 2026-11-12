@@ -11,7 +11,19 @@ export type SessionUser = {
   email: string;
   name: string;
   role: string;
+  segment?: string | null;
 };
+
+/**
+ * A partner (e.g. the agent for Indian clients) sees only the clients of his
+ * segment and their viewings, and the public mini app: no listings, owners,
+ * posts, channels, settings or other people's work.
+ */
+export const PARTNER_PATHS = ["/clients", "/viewings", "/account"];
+
+export function isPartner(user: Pick<SessionUser, "role">): boolean {
+  return user.role === "partner";
+}
 
 function secret(): Uint8Array {
   return new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-me");
@@ -50,13 +62,23 @@ export async function getSession(): Promise<SessionUser | null> {
       email: String(payload.email ?? ""),
       name: String(payload.name ?? ""),
       role: String(payload.role ?? "agent"),
+      segment: typeof payload.segment === "string" ? payload.segment : null,
     };
   } catch {
     return null;
   }
 }
 
+/** Agency staff (admin or agent): a partner is sent to his clients. */
 export async function requireUser(): Promise<SessionUser> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (isPartner(session)) redirect("/clients");
+  return session;
+}
+
+/** Anyone logged in, partners included (the clients and viewings pages, which scope what a partner sees). */
+export async function requireMember(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) redirect("/login");
   return session;

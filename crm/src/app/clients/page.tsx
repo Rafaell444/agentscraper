@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { isPartner, requireMember } from "@/lib/auth";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { CLIENT_SEGMENTS, CLIENT_STATUS, CLIENT_STATUSES } from "@/lib/clients";
 import { Button, Card, Chip, EmptyState, Input, PageHeader, PhoneButton, Select } from "@/components/ui";
@@ -9,15 +9,18 @@ import { createClient } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ status?: string; segment?: string }> }) {
-  const me = await requireUser();
-  const { status = "", segment = "" } = await searchParams;
+  const me = await requireMember();
+  // A partner sees only his segment's clients (e.g. Indian), and only himself to assign.
+  const partner = isPartner(me);
+  const { status = "" } = await searchParams;
+  const segment = partner ? me.segment ?? "indian" : (await searchParams).segment ?? "";
   const [clients, users] = await Promise.all([
     prisma.client.findMany({
       where: { ...(status ? { status } : {}), ...(segment ? { segment } : {}) },
       include: { assignedTo: { select: { name: true } }, _count: { select: { shortlists: true } } },
       orderBy: { updatedAt: "desc" },
     }),
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.user.findMany({ where: partner ? { id: me.id } : { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const href = (extra: Record<string, string>) => {
     const params = new URLSearchParams({ status, segment, ...extra });
@@ -38,11 +41,15 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         {CLIENT_STATUSES.map((s) => (
           <Chip key={s.value} href={href({ status: s.value })} active={status === s.value}>{s.label}</Chip>
         ))}
-        <span className="mx-1 text-gray-300">|</span>
-        <Chip href={href({ segment: "" })} active={!segment}>ყველა სეგმენტი</Chip>
-        {CLIENT_SEGMENTS.map((s) => (
-          <Chip key={s.value} href={href({ segment: s.value })} active={segment === s.value}>{s.label}</Chip>
-        ))}
+        {!partner ? (
+          <>
+            <span className="mx-1 text-gray-300">|</span>
+            <Chip href={href({ segment: "" })} active={!segment}>ყველა სეგმენტი</Chip>
+            {CLIENT_SEGMENTS.map((s) => (
+              <Chip key={s.value} href={href({ segment: s.value })} active={segment === s.value}>{s.label}</Chip>
+            ))}
+          </>
+        ) : null}
       </div>
 
       <Card title="ახალი კლიენტი">
@@ -51,7 +58,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           <Input name="phone" placeholder="ტელეფონი" />
           <Input name="messenger" placeholder="WhatsApp / Telegram" />
           <Input name="nationality" placeholder="ეროვნება" />
-          <Select name="segment" defaultValue="">
+          <Select name="segment" defaultValue={partner ? segment : ""} disabled={partner}>
             <option value="">სეგმენტი</option>
             {CLIENT_SEGMENTS.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>

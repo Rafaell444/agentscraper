@@ -36,8 +36,18 @@ function Icon({ d }: { d: string }) {
   );
 }
 
+// A partner (one client segment) gets only his pages.
+const PARTNER_LINKS = [
+  { href: "/clients", label: "კლიენტები", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
+  { href: "/viewings", label: "ჩვენებები", icon: "M3 4h18v16H3zM3 10h18M8 2v4M16 2v4" },
+  { href: "/catalog?lang=en", label: "კატალოგი", icon: "M4 6h16M4 12h16M4 18h10" },
+  { href: "/account", label: "ჩემი ანგარიში", icon: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" },
+];
+
 export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }) {
   const [open, setOpen] = useState(false);
+  const partner = user.role === "partner";
+  const links = partner ? PARTNER_LINKS : LINKS;
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const linkClass = (href: string) =>
@@ -57,7 +67,7 @@ export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }
           <span className="text-base font-bold tracking-tight text-gray-900">Tbilisi Home CRM</span>
         </Link>
         <nav className="hidden flex-1 flex-wrap items-center gap-1 md:flex">
-          {LINKS.map((link) =>
+          {links.map((link) =>
             link.href === "/listings" ? (
               <ListingsLink key={link.href} className={linkClass(link.href)}>
                 <Icon d={link.icon} />
@@ -71,7 +81,7 @@ export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }
             ),
           )}
         </nav>
-        <Link href="/notifications" aria-label="შეტყობინებები" className="relative ml-auto rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:ml-0">
+        <Link href={partner ? "/clients" : "/notifications"} aria-label="შეტყობინებები" className="relative ml-auto rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:ml-0">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" /></svg>
           {unread > 0 ? <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold text-white">{unread > 99 ? "99+" : unread}</span> : null}
         </Link>
@@ -104,7 +114,7 @@ export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }
       {open ? (
         <div className="border-t border-gray-200 bg-white px-3 py-2 md:hidden">
           <nav className="flex flex-col gap-1">
-            {LINKS.map((link) =>
+            {links.map((link) =>
               link.href === "/listings" ? (
                 <ListingsLink key={link.href} className={linkClass(link.href)} onClick={() => setOpen(false)}>
                   <Icon d={link.icon} />
@@ -120,7 +130,7 @@ export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }
           </nav>
           <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
             <span className="text-gray-600">
-              {user.name} <span className="text-gray-400">({user.role === "admin" ? "ადმინი" : "აგენტი"})</span>
+              {user.name} <span className="text-gray-400">({user.role === "admin" ? "ადმინი" : partner ? "პარტნიორი" : "აგენტი"})</span>
             </span>
             <form action={logout}>
               <button className="ui-btn ui-btn-secondary ui-btn-sm" type="submit">

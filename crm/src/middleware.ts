@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
+// Same list as lib/auth PARTNER_PATHS (the middleware cannot import server-only code).
+const PARTNER_PATHS = ["/clients", "/viewings", "/account"];
+
 // /p/* are public listing pages reached through QR codes (no login).
 // /s/<token> is a private post sent to one client; the page itself checks the token.
 // /catalog is the public Telegram mini app; /api/telegram/webhook checks its own secret.
@@ -19,7 +22,11 @@ export async function middleware(request: NextRequest) {
   const loginUrl = new URL("/login", request.url);
   if (!token) return NextResponse.redirect(loginUrl);
   try {
-    await jwtVerify(token, new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-me"));
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-me"));
+    // A partner (one client segment) only reaches his clients and viewings; everything else goes to his clients.
+    if (payload.role === "partner" && !PARTNER_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
+      return NextResponse.redirect(new URL("/clients", request.url));
+    }
     return NextResponse.next({ request: { headers: requestHeaders } });
   } catch {
     return NextResponse.redirect(loginUrl);

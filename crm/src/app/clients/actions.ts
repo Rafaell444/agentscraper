@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { isPartner, requireMember, requireUser, type SessionUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 
 function num(value: FormDataEntryValue | null): number | null {
@@ -34,9 +34,21 @@ function clientData(formData: FormData) {
   };
 }
 
+/** A partner may touch only clients of his segment; others any client. */
+async function canEditClient(user: SessionUser, id: string): Promise<boolean> {
+  if (!isPartner(user)) return true;
+  const client = await prisma.client.findUnique({ where: { id }, select: { segment: true } });
+  return Boolean(client && client.segment === user.segment);
+}
+
+/** A partner's clients are always in his segment and assigned to him. */
+function scoped(user: SessionUser, data: ReturnType<typeof clientData>) {
+  return isPartner(user) ? { ...data, segment: user.segment ?? "indian", assignedToId: user.id } : data;
+}
+
 export async function createClient(formData: FormData) {
-  const user = await requireUser();
-  const data = clientData(formData);
+  const user = await requireMember();
+  const data = scoped(user, clientData(formData));
   if (!data.name) return;
   const client = await prisma.client.create({ data: { ...data, assignedToId: data.assignedToId ?? user.id } });
   await logActivity(user.id, "client", null, `ახალი კლიენტი: ${client.name}`);
@@ -45,20 +57,21 @@ export async function createClient(formData: FormData) {
 }
 
 export async function updateClient(formData: FormData) {
-  await requireUser();
+  const user = await requireMember();
   const id = String(formData.get("id") ?? "");
-  const data = clientData(formData);
-  if (!id || !data.name) return;
+  const data = scoped(user, clientData(formData));
+  if (!id || !data.name || !(await canEditClient(user, id))) return;
   await prisma.client.update({ where: { id }, data });
   revalidatePath(`/clients/${id}`);
   revalidatePath("/clients");
 }
 
 export async function setClientStatus(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireMember();
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   if (!id || !["new", "searching", "viewing", "closed_won", "closed_lost"].includes(status)) return;
+  if (!(await canEditClient(user, id))) return;
   await prisma.client.update({ where: { id }, data: { status } });
   await logActivity(user.id, "client_status", null, `${id}: ${status}`);
   revalidatePath(`/clients/${id}`);

@@ -9,7 +9,7 @@ export async function login(_state: { error?: string } | undefined, formData: Fo
   const password = String(formData.get("password") ?? "");
   const user = await verifyLogin(email, password);
   if (!user) return { error: "ელფოსტა ან პაროლი არასწორია" };
-  await createSession({ id: user.id, email: user.email, name: user.name, role: user.role });
+  await createSession({ id: user.id, email: user.email, name: user.name, role: user.role, segment: user.segment });
   await logActivity(user.id, "login");
   redirect("/");
 }
