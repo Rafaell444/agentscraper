@@ -101,7 +101,8 @@ export type QueueBreakdown = { ready: number; later: number; noneSeen: number; o
  * (their numbers come from the collector, not the extension).
  */
 export async function phoneQueueBreakdown(): Promise<QueueBreakdown> {
-  const noPhone = { archived: false, OR: [{ phone: null }, { phone: "" }], AND: [{ OR: [{ lead: null }, { lead: { manualPhone: null } }] }] };
+  // Listings MyHome deleted (phoneCheck "gone") are not waiting for anything.
+  const noPhone = { archived: false, OR: [{ phone: null }, { phone: "" }], AND: [{ OR: [{ lead: null }, { lead: { manualPhone: null } }] }, { NOT: { lead: { phoneCheck: "gone" } } }] };
   const [total, myhome, ready, noneSeen] = await Promise.all([
     prisma.listing.count({ where: noPhone }),
     prisma.listing.count({ where: { ...noPhone, site: "myhome" } }),

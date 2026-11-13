@@ -241,6 +241,10 @@ def main(argv: list[str] | None = None) -> int:
     any_changed = False
     # Per-site health for ops_alert.py: a site that keeps failing gets named in the Telegram alert.
     health = storage.load_health()
+    # Listings are never archived any more; the ones archived before come back once.
+    restored = storage.unarchive_all_once()
+    if restored:
+        LOGGER.info("restored %s archived listings", restored)
     # Pages a site refuses us come from agents' browsers (relay.py, the Chrome extension).
     relay = None
     if storage.database_url():

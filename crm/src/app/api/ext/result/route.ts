@@ -34,11 +34,8 @@ export async function POST(request: Request) {
     create: { listingId: listing.id, phoneCheck: status, phoneCheckedAt: new Date(), manualPhone: phone || null },
   });
   if (phone) await logActivity(user.id, "phone", listing.id, `${phone} (extension)`);
-  // Removed on MyHome and no number: nothing left to call, so it leaves the lists (archived, not deleted).
-  if (status === "gone") {
-    const known = await prisma.listing.findUnique({ where: { id: listing.id }, select: { phone: true, lead: { select: { manualPhone: true } } } });
-    if (!known?.phone && !known?.lead?.manualPhone) await prisma.listing.update({ where: { id: listing.id }, data: { archived: true } });
-  }
+  // Removed on MyHome: the listing stays in the CRM (never archived); its lead's
+  // phoneCheck "gone" keeps it out of the extension's queue.
   if (cadastral) {
     await prisma.listing.update({ where: { id: listing.id }, data: { cadastralCode: cadastral } });
     // Also the address's code (shared with banners and other listings there), unless an agent already set one.

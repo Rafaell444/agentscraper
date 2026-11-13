@@ -315,10 +315,10 @@ class Database:
                 rows[row["Property ID"]] = row
         return rows
 
-    def save_site(self, site_key: str, site_name: str, rows: dict[str, dict[str, Any]], archive_missing: bool = True) -> None:
-        """Upsert ``rows``; with ``archive_missing`` every other listing of the
-        site is archived (a full collector run).  A single-listing fetch passes
-        False so it never touches other listings."""
+    def save_site(self, site_key: str, site_name: str, rows: dict[str, dict[str, Any]]) -> None:
+        """Upsert ``rows``.  Listings that are not in ``rows`` (older than the
+        collector's window, gone from the site) are left as they are: the
+        CRM keeps every listing ever collected, nothing is archived."""
         now = datetime.now()
         previous_prices = dict(
             self.execute('SELECT "property_id", "price_usd" FROM "listings" WHERE "site" = ?', (site_key,)).fetchall()
@@ -369,20 +369,22 @@ class Database:
             history,
         )
         self.fill_phones_from_copies()
-        # Listings no longer present are archived, never deleted: agents' notes stay attached.
-        ids = list(rows.keys())
-        if not archive_missing:
-            self.commit()
-            return
-        if ids:
-            marks = ", ".join("?" for _ in ids)
-            self.execute(
-                f'UPDATE "listings" SET "archived" = ? WHERE "site" = ? AND "property_id" NOT IN ({marks})',
-                (self.bool_value(True), site_key, *ids),
-            )
-        else:
-            self.execute('UPDATE "listings" SET "archived" = ? WHERE "site" = ?', (self.bool_value(True), site_key))
         self.commit()
+
+    def unarchive_all_once(self) -> int:
+        """Listings used to be archived after 30 days; bring them all back,
+        once (settings key ``listings_unarchived_v1``)."""
+        key = "listings_unarchived_v1"
+        if self.execute('SELECT "value" FROM "settings" WHERE "key" = ?', (key,)).fetchone():
+            return 0
+        cursor = self.execute('UPDATE "listings" SET "archived" = ? WHERE "archived" = ?', (self.bool_value(False), self.bool_value(True)))
+        count = getattr(cursor, "rowcount", 0) or 0
+        self.execute(
+            'INSERT INTO "settings" ("key", "value", "updated_at") VALUES (?, ?, ?) ON CONFLICT ("key") DO NOTHING',
+            (key, str(count), self.date_value(datetime.now())),
+        )
+        self.commit()
+        return count
 
 
     def fill_phones_from_copies(self) -> None:
@@ -476,14 +478,29 @@ def save_health(health: dict[str, Any]) -> None:
         db.close()
 
 
+def unarchive_all_once() -> int:
+    """Run Database.unarchive_all_once against the configured database (no-op without one)."""
+    url = database_url()
+    if not url:
+        return 0
+    db = Database(url)
+    try:
+        return db.unarchive_all_once()
+    except Exception as exc:  # settings table missing (CRM not deployed yet)
+        LOGGER.warning("unarchive_all_once skipped: %s", exc)
+        return 0
+    finally:
+        db.close()
+
+
 def save_one(site_key: str, row: dict[str, Any]) -> None:
-    """Upsert one listing (on-demand fetch from the CRM) without archiving others."""
+    """Upsert one listing (on-demand fetch from the CRM)."""
     url = database_url()
     if not url:
         raise RuntimeError("DATABASE_URL is required to save a single listing")
     db = Database(url)
     try:
-        db.save_site(site_key, site_name(site_key), {row["Property ID"]: row}, archive_missing=False)
+        db.save_site(site_key, site_name(site_key), {row["Property ID"]: row})
     finally:
         db.close()
 
