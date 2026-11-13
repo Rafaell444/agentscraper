@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
@@ -15,13 +16,21 @@ export const dynamic = "force-dynamic";
 // Import downloads the photos of the source ad.
 export const maxDuration = 60;
 
-export default async function SharedPostsPage({ searchParams }: { searchParams: Promise<{ status?: string; mine?: string }> }) {
+export default async function SharedPostsPage({ searchParams }: { searchParams: Promise<{ status?: string; mine?: string; q?: string }> }) {
   const me = await requireUser();
-  const { status = "active", mine = "1" } = await searchParams;
-  const where = {
-    ...(status === "active" ? { status: { not: "archived" } } : { status }),
-    ...(mine === "1" ? { createdById: me.id } : {}),
-  };
+  const { status = "active", mine = "1", q: rawQ = "" } = await searchParams;
+  const q = rawQ.trim().replace(/^#|^id\s*/i, "");
+  // An app ID (e.g. 1004) opens that post straight away, whoever created it.
+  if (/^\d{3,6}$/.test(q)) {
+    const found = await prisma.sharedPost.findFirst({ where: { refNo: Number(q) }, select: { id: true } });
+    if (found) redirect(`/shared/${found.id}`);
+  }
+  const where = q
+    ? { OR: [{ title: { contains: q } }, { location: { contains: q } }, { district: { contains: q } }] }
+    : {
+        ...(status === "active" ? { status: { not: "archived" } } : { status }),
+        ...(mine === "1" ? { createdById: me.id } : {}),
+      };
   const [posts, clients, settings] = await Promise.all([
     prisma.sharedPost.findMany({
       where,
@@ -70,7 +79,12 @@ export default async function SharedPostsPage({ searchParams }: { searchParams: 
           hrefFor={(value) => qs({ status: value })}
         />
         <Tabs items={[{ value: "1", label: "ჩემი" }, { value: "0", label: "ყველა აგენტის" }]} current={mine} hrefFor={(value) => qs({ mine: value })} />
+        <form method="get" action="/shared" className="ml-auto flex gap-1">
+          <Input name="q" defaultValue={rawQ} placeholder="ID (მაგ. 1004) ან სათაური" className="w-56" />
+          <button type="submit" className="ui-btn ui-btn-secondary">ძებნა</button>
+        </form>
       </div>
+      {q ? <p className="text-xs text-gray-500">ძებნა „{q}“ — ყველა აგენტის პოსტებში. <Link href="/shared" className="underline">გასუფთავება</Link></p> : null}
 
       {posts.length === 0 ? (
         <Card>

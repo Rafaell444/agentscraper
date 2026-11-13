@@ -5,7 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { fmtDate } from "@/lib/format";
 import { fmtTbilisi, lastScheduleRun, toTbilisiInput } from "@/lib/schedule";
-import { POST_STATUS, intlPhone } from "@/lib/sharedPosts";
+import { POST_STATUS, intlPhone, listingForUrl } from "@/lib/sharedPosts";
+import { PhoneButton } from "@/components/ui";
 import { shareBase, shareLink } from "@/lib/shareUrl";
 import { mapView } from "@/lib/map";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
@@ -34,6 +35,29 @@ const GREETING: Record<string, string> = {
   ru: "Здравствуйте! Вот детали квартиры:",
 };
 
+/** The scraped listing a post was copied from, with the owner's number: its
+ * own, the one an agent found by hand, or one from another site's copy of
+ * the same flat. */
+async function sourceListing(listingId: string | null, sourceUrl: string | null) {
+  const select = { id: true, title: true, siteName: true, ownerName: true, phone: true, archived: true, propertyKey: true, lead: { select: { manualPhone: true } } } as const;
+  let listing = listingId ? await prisma.listing.findUnique({ where: { id: listingId }, select }) : null;
+  if (!listing && sourceUrl) {
+    const found = await listingForUrl(sourceUrl).catch(() => null);
+    if (found) listing = await prisma.listing.findUnique({ where: { id: found.id }, select });
+  }
+  if (!listing) return null;
+  let phone = listing.phone || listing.lead?.manualPhone || null;
+  let phoneFrom: string | null = null;
+  if (!phone && listing.propertyKey) {
+    const copy = await prisma.listing.findFirst({ where: { propertyKey: listing.propertyKey, NOT: [{ phone: null }, { phone: "" }] }, select: { phone: true, siteName: true } });
+    if (copy?.phone) {
+      phone = copy.phone;
+      phoneFrom = `${copy.siteName}-ის ასლიდან`;
+    }
+  }
+  return { listing, phone, phoneFrom };
+}
+
 function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <label className={`block ${wide ? "sm:col-span-2 lg:col-span-3" : ""}`}>
@@ -61,6 +85,7 @@ export default async function SharedPostEditor({ params, searchParams }: { param
     filterOptions(""),
   ]);
   if (!post) notFound();
+  const source = await sourceListing(post.listingId, post.sourceUrl);
   const lastRun = await lastScheduleRun();
   // The publisher normally runs every ~10 minutes; over an hour means it is not set up or stopped.
   const schedulerOk = Boolean(lastRun && Date.now() - lastRun.getTime() < 3600_000);
@@ -457,6 +482,19 @@ export default async function SharedPostEditor({ params, searchParams }: { param
             <p className="text-xs text-gray-500">
               {post.channelPostedAt ? `არხებშია: ${(Object.keys(postedIn) as (keyof typeof CHANNEL_FLAG)[]).map((l) => CHANNEL_FLAG[l]).join(", ")} · ${fmtDate(post.channelPostedAt, true)} · ` : ""}აპში ნახვები: {post.catalogViews}. სტატუსის შეცვლა არხის პოსტსაც ანახლებს.
             </p>
+          </div>
+        </Card>
+      ) : null}
+
+      {source ? (
+        <Card title="წყარო განცხადება (მესაკუთრე)">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <Link href={`/listings/${encodeURIComponent(source.listing.id)}`} className="font-semibold text-emerald-700 hover:underline">
+              {source.listing.title ?? source.listing.id} ↗
+            </Link>
+            <span className="text-gray-500">{source.listing.siteName}{source.listing.ownerName ? ` · ${source.listing.ownerName}` : ""}{source.listing.archived ? " · საიტიდან წაშლილია" : ""}</span>
+            {source.phone ? <PhoneButton phone={source.phone} size="md" /> : <span className="text-xs text-gray-500">ნომერი ჯერ არ გვაქვს</span>}
+            {source.phoneFrom ? <span className="text-xs text-gray-500">ნომერი: {source.phoneFrom}</span> : null}
           </div>
         </Card>
       ) : null}
