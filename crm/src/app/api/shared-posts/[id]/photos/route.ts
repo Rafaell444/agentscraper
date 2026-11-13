@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getSession, isPartner } from "@/lib/auth";
 import { MAX_PHOTOS, MAX_PHOTO_BYTES } from "@/lib/sharedPosts";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 /** Agent uploads photos (already resized in the browser) to a shared post. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await getSession())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
-  const post = await prisma.sharedPost.findUnique({ where: { id }, select: { id: true, _count: { select: { photos: true } } } });
-  if (!post) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const post = await prisma.sharedPost.findUnique({ where: { id }, select: { id: true, createdById: true, catalog: true, _count: { select: { photos: true } } } });
+  // A partner adds photos only to his own private posts.
+  if (!post || (isPartner(session) && (post.createdById !== session.id || post.catalog))) return NextResponse.json({ error: "not found" }, { status: 404 });
   const form = await request.formData();
   const files = form.getAll("file").filter((f): f is File => f instanceof File);
   const last = await prisma.sharedPostPhoto.findFirst({ where: { postId: id }, orderBy: { position: "desc" }, select: { position: true } });

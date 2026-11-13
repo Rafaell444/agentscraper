@@ -152,6 +152,12 @@ export function whatsappCaption(post: Post, link: string): string {
   return blocks.join("\n\n");
 }
 
+/** A partner's own post for his WhatsApp group: the same text plus his contact. */
+export function myPostCaption(post: Post, link: string): string {
+  const contact = post.contactPhone ? `\n\n📞 ${post.contactName ? `${post.contactName}: ` : ""}${post.contactPhone}` : "";
+  return `${whatsappCaption(post, link)}${contact}`;
+}
+
 /** TikTok's title (up to 90 characters): the hook, in Russian. */
 export function tiktokTitle(post: Post): string {
   return hookLine(post, "ru").slice(0, 90);

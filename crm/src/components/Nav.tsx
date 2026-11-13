@@ -40,6 +40,7 @@ function Icon({ d }: { d: string }) {
 const PARTNER_LINKS = [
   { href: "/clients", label: "Clients", hi: "ग्राहक", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
   { href: "/viewings", label: "Viewings", hi: "विज़िट", icon: "M3 4h18v16H3zM3 10h18M8 2v4M16 2v4" },
+  { href: "/browse", label: "Listings", hi: "लिस्टिंग", icon: "M4 6h16M4 12h16M4 18h10" },
   { href: "/share", label: "Share to WhatsApp", hi: "शेयर", icon: "M4 12v8h16v-8M12 3v12M7 8l5-5 5 5" },
   { href: "/catalog?lang=en", label: "Catalog", hi: "फ़्लैट", icon: "M4 6h16M4 12h16M4 18h10" },
   { href: "/account", label: "My account", hi: "खाता", icon: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" },
