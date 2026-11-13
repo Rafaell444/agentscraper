@@ -11,6 +11,7 @@ import { WaTemplates } from "@/components/WaTemplates";
 import { createViewing } from "@/app/viewings/actions";
 import { getSettings } from "@/lib/settings";
 import { renderTemplate, waLink } from "@/lib/templates";
+import { CLIENT_STATUS_EN, SEGMENT_EN, Tx, VIEWING_STATUS_EN, tx } from "@/lib/partnerText";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     prisma.viewing.findMany({ where: { clientId: client.id }, include: { listing: { select: { id: true, title: true, address: true } }, agent: { select: { name: true } } }, orderBy: { scheduledAt: "desc" }, take: 10 }),
   ]);
   const publicBase = settings.public_base_url.replace(/\/$/, "");
-  const lang = (client.language ?? "").toLowerCase().startsWith("ru") || client.segment === "ru" ? "ru" : client.language && !client.language.toLowerCase().startsWith("ka") && !client.language.toLowerCase().startsWith("ქართ") ? "en" : "ka";
+  const lang = partner ? "en" : (client.language ?? "").toLowerCase().startsWith("ru") || client.segment === "ru" ? "ru" : client.language && !client.language.toLowerCase().startsWith("ka") && !client.language.toLowerCase().startsWith("ქართ") ? "en" : "ka";
   const templateValues = { name: client.name.split(" ")[0], agent: me.name, agency: settings.agency_name, phone: settings.agency_phone, listing: "", price: "", area: "", time: "", address: "", link: "" };
 
   // Listings matching the client's wishes (newest first), excluding ones already shortlisted.
@@ -57,13 +58,13 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Link href="/clients" className="ui-btn ui-btn-ghost ui-btn-sm -ml-2">← კლიენტები</Link>
+        <Link href="/clients" className="ui-btn ui-btn-ghost ui-btn-sm -ml-2">← {tx(partner, "კლიენტები", "My clients")}</Link>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <PageHeader
             title={client.name}
-            subtitle={[client.nationality, CLIENT_SEGMENTS.find((s) => s.value === client.segment)?.label, client.language].filter(Boolean).join(" · ")}
+            subtitle={[client.nationality, partner ? SEGMENT_EN[client.segment ?? ""] : CLIENT_SEGMENTS.find((s) => s.value === client.segment)?.label, client.language].filter(Boolean).join(" · ")}
             actions={
               <>
                 <PhoneButton phone={client.phone} size="md" />
@@ -74,18 +75,18 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             }
           />
 
-          <Card title="სწრაფი კავშირი">
-            <WaTemplates phone={client.messenger || client.phone} kinds={["client_first", "client_followup"]} values={templateValues} />
+          <Card title={<Tx p={partner} ka="სწრაფი კავშირი" en="Quick message" hi="जल्दी संदेश" />}>
+            <WaTemplates phone={client.messenger || client.phone} kinds={["client_first", "client_followup"]} values={templateValues} english={partner} />
           </Card>
 
-          <Card title="სტატუსი">
+          <Card title={<Tx p={partner} ka="სტატუსი" en="Status" hi="स्थिति" />}>
             <div className="flex flex-wrap gap-1.5">
               {CLIENT_STATUSES.map((s) => (
                 <form key={s.value} action={setClientStatus}>
                   <input type="hidden" name="id" value={client.id} />
                   <input type="hidden" name="status" value={s.value} />
                   <button type="submit" className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${client.status === s.value ? `${s.color} border-transparent ring-2 ring-emerald-500/30` : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
-                    {s.label}
+                    {partner ? CLIENT_STATUS_EN[s.value] : s.label}
                   </button>
                 </form>
               ))}
@@ -184,14 +185,19 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           </Card>
             </>
           ) : (
-            <Card title="ბინების შერჩევა">
-              <p className="text-sm text-gray-600">შესაფერისი ბინები კლიენტს საჯარო კატალოგიდან გაუგზავნე — ბმული აქ: <a href="/catalog?lang=en" target="_blank" rel="noreferrer" className="font-semibold text-emerald-700 underline">კატალოგი ↗</a></p>
+            <Card title={<Tx p={partner} ka="ბინების შერჩევა" en="Find flats" hi="फ़्लैट खोजें" />}>
+              <p className="text-sm text-gray-600">
+                Send matching flats from our catalog:{" "}
+                <a href="/catalog?lang=en" target="_blank" rel="noreferrer" className="font-semibold text-emerald-700 underline">Catalog ↗</a>
+                {" · "}
+                <a href="/share" className="font-semibold text-emerald-700 underline">Share to WhatsApp</a>
+              </p>
             </Card>
           )}
         </div>
 
         <div className="space-y-4">
-          <Card title="დათვალიერება">
+          <Card title={<Tx p={partner} ka="დათვალიერება" en="Plan a viewing" hi="विज़िट तय करें" />}>
             <form action={createViewing} className="space-y-2 text-sm">
               <input type="hidden" name="clientId" value={client.id} />
               <input type="hidden" name="agentId" value={client.assignedToId ?? me.id} />
@@ -204,14 +210,14 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                   ))}
                 </Select>
               ) : null}
-              <Input name="address" placeholder="მისამართი / შეხვედრის ადგილი" />
-              <Button type="submit" variant="secondary" className="w-full">დაგეგმვა</Button>
+              <Input name="address" placeholder={tx(partner, "მისამართი / შეხვედრის ადგილი", "Address / meeting place")} />
+              <Button type="submit" variant="secondary" className="w-full">{tx(partner, "დაგეგმვა", "Plan")}</Button>
             </form>
             {viewings.length ? (
               <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">
                 {viewings.map((v) => (
                   <li key={v.id} className="flex flex-wrap items-center justify-between gap-1">
-                    <span>{fmtDate(v.scheduledAt, true)} · {v.listing?.title ?? v.address ?? ""} · {v.status}</span>
+                    <span>{fmtDate(v.scheduledAt, true)} · {v.listing?.title ?? v.address ?? ""} · {partner ? VIEWING_STATUS_EN[v.status] ?? v.status : v.status}</span>
                     {client.messenger || client.phone ? (
                       <a
                         href={waLink(client.messenger || client.phone, renderTemplate("viewing_confirm", lang, { ...templateValues, time: fmtDate(v.scheduledAt, true), address: v.address ?? v.listing?.address ?? "", listing: v.listing?.title ?? "", price: "" }))}
@@ -219,7 +225,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                         rel="noreferrer"
                         className="text-emerald-700 hover:underline"
                       >
-                        💬 დადასტურება
+                        💬 {tx(partner, "დადასტურება", "Confirm")}
                       </a>
                     ) : null}
                   </li>
@@ -228,46 +234,46 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             ) : null}
           </Card>
 
-          <Card title="მოთხოვნა">
+          <Card title={<Tx p={partner} ka="მოთხოვნა" en="Client details" hi="ग्राहक की जानकारी" />}>
             <form action={updateClient} className="space-y-2 text-sm">
               <input type="hidden" name="id" value={client.id} />
-              <Input name="name" defaultValue={client.name} required placeholder="სახელი" />
-              <Input name="phone" defaultValue={client.phone ?? ""} placeholder="ტელეფონი" />
+              <Input name="name" defaultValue={client.name} required placeholder={tx(partner, "სახელი", "Name")} />
+              <Input name="phone" defaultValue={client.phone ?? ""} placeholder={tx(partner, "ტელეფონი", "Phone")} />
               <Input name="messenger" defaultValue={client.messenger ?? ""} placeholder="WhatsApp / Telegram" />
               <div className="grid grid-cols-2 gap-2">
-                <Input name="nationality" defaultValue={client.nationality ?? ""} placeholder="ეროვნება" />
-                <Input name="language" defaultValue={client.language ?? ""} placeholder="ენა" />
+                <Input name="nationality" defaultValue={client.nationality ?? ""} placeholder={tx(partner, "ეროვნება", "Nationality")} />
+                <Input name="language" defaultValue={client.language ?? ""} placeholder={tx(partner, "ენა", "Language")} />
               </div>
-              <Select name="segment" defaultValue={client.segment ?? ""}>
-                <option value="">სეგმენტი</option>
+              <Select name="segment" defaultValue={client.segment ?? ""} disabled={partner}>
+                <option value="">{tx(partner, "სეგმენტი", "Segment")}</option>
                 {CLIENT_SEGMENTS.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
+                  <option key={s.value} value={s.value}>{partner ? SEGMENT_EN[s.value] : s.label}</option>
                 ))}
               </Select>
               <Select name="dealType" defaultValue={client.dealType ?? ""}>
-                <option value="">გარიგება: ყველა</option>
-                <option value="ქირავდება">ქირავდება</option>
-                <option value="ქირავდება დღიურად">ქირავდება დღიურად</option>
-                <option value="იყიდება">იყიდება</option>
+                <option value="">{tx(partner, "გარიგება: ყველა", "Deal: any")}</option>
+                <option value="ქირავდება">{tx(partner, "ქირავდება", "Rent")}</option>
+                <option value="ქირავდება დღიურად">{tx(partner, "ქირავდება დღიურად", "Daily rent")}</option>
+                <option value="იყიდება">{tx(partner, "იყიდება", "Sale")}</option>
               </Select>
               <div className="grid grid-cols-2 gap-2">
-                <Input name="budgetMin" defaultValue={client.budgetMin ?? ""} placeholder="ბიუჯეტი $ დან" inputMode="numeric" />
-                <Input name="budgetMax" defaultValue={client.budgetMax ?? ""} placeholder="ბიუჯეტი $ მდე" inputMode="numeric" />
+                <Input name="budgetMin" defaultValue={client.budgetMin ?? ""} placeholder={tx(partner, "ბიუჯეტი $ დან", "Budget from $")} inputMode="numeric" />
+                <Input name="budgetMax" defaultValue={client.budgetMax ?? ""} placeholder={tx(partner, "ბიუჯეტი $ მდე", "Budget to $")} inputMode="numeric" />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Input name="roomsMin" defaultValue={client.roomsMin ?? ""} placeholder="ოთახი (მინ.)" inputMode="numeric" />
-                <Input name="durationMonths" defaultValue={client.durationMonths ?? ""} placeholder="ვადა, თვე" inputMode="numeric" />
+                <Input name="roomsMin" defaultValue={client.roomsMin ?? ""} placeholder={tx(partner, "ოთახი (მინ.)", "Rooms (min)")} inputMode="numeric" />
+                <Input name="durationMonths" defaultValue={client.durationMonths ?? ""} placeholder={tx(partner, "ვადა, თვე", "Months")} inputMode="numeric" />
               </div>
-              <Input name="areas" defaultValue={client.areas ?? ""} placeholder="უბნები მძიმით: ვაკე, საბურთალო" />
-              <Input name="moveIn" type="date" defaultValue={toDateInput(client.moveIn)} />
+              <Input name="areas" defaultValue={client.areas ?? ""} placeholder={tx(partner, "უბნები მძიმით: ვაკე, საბურთალო", "Areas: Vake, Saburtalo")} />
+              <Input name="moveIn" type="date" defaultValue={toDateInput(client.moveIn)} title={tx(partner, "შესვლის თარიღი", "Move-in date")} />
               <Select name="assignedToId" defaultValue={client.assignedToId ?? ""}>
-                <option value="">— აგენტი</option>
+                <option value="">{tx(partner, "— აგენტი", "— Agent")}</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </Select>
-              <textarea name="notes" defaultValue={client.notes ?? ""} rows={4} placeholder="შენიშვნები" className="ui-field h-auto py-2" />
-              <Button type="submit" className="w-full">შენახვა</Button>
+              <textarea name="notes" defaultValue={client.notes ?? ""} rows={4} placeholder={tx(partner, "შენიშვნები", "Notes")} className="ui-field h-auto py-2" />
+              <Button type="submit" className="w-full">{tx(partner, "შენახვა", "Save")}</Button>
             </form>
           </Card>
         </div>

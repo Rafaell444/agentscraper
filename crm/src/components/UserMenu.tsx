@@ -48,11 +48,11 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <div className="border-b border-gray-100 px-4 py-3">
             <div className="text-sm font-semibold text-gray-900">{user.name}</div>
             <div className="truncate text-xs text-gray-500">{user.email}</div>
-            <div className="mt-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{user.role === "admin" ? "ადმინისტრატორი" : user.role === "partner" ? "პარტნიორი" : "აგენტი"}</div>
+            <div className="mt-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{user.role === "admin" ? "ადმინისტრატორი" : user.role === "partner" ? "Partner" : "აგენტი"}</div>
           </div>
           {user.role === "partner" ? (
             <Link href="/account" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-              პაროლის შეცვლა
+              Change password <span className="text-[11px] text-gray-400">पासवर्ड बदलें</span>
             </Link>
           ) : (
             <>
@@ -71,7 +71,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
           ) : null}
           <form action={logout} className="border-t border-gray-100">
             <button type="submit" className="block w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">
-              გასვლა
+              {user.role === "partner" ? "Log out" : "გასვლა"}
             </button>
           </form>
         </div>

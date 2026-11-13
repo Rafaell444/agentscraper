@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 // Same list as lib/auth PARTNER_PATHS (the middleware cannot import server-only code).
-const PARTNER_PATHS = ["/clients", "/viewings", "/account"];
+const PARTNER_PATHS = ["/clients", "/viewings", "/account", "/share"];
 
 // /p/* are public listing pages reached through QR codes (no login).
 // /s/<token> is a private post sent to one client; the page itself checks the token.

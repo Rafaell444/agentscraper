@@ -15,7 +15,7 @@ export default async function LoginPage() {
         <span className="text-xl font-bold tracking-tight text-gray-900">Tbilisi Home CRM</span>
       </div>
       <div className="ui-card p-6">
-        <h1 className="text-lg font-semibold text-gray-900">შესვლა</h1>
+        <h1 className="text-lg font-semibold text-gray-900">შესვლა <span className="text-sm font-normal text-gray-400">· Sign in</span></h1>
         <p className="mb-5 text-sm text-gray-500">შედით თქვენი აგენტის ანგარიშით</p>
         <LoginForm />
       </div>

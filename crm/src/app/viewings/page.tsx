@@ -4,6 +4,7 @@ import { isPartner, requireMember } from "@/lib/auth";
 import { daysAgo, endOfToday, fmtDate, fmtMoney } from "@/lib/format";
 import { Button, Card, Chip, EmptyState, Input, PageHeader, PhoneButton, Select } from "@/components/ui";
 import { createViewing, deleteViewing, setViewingStatus } from "./actions";
+import { Tx, VIEWING_STATUS_EN, tx } from "@/lib/partnerText";
 
 export const dynamic = "force-dynamic";
 
@@ -47,24 +48,24 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
   const flagged = conflicts(viewings);
   const eod = endOfToday();
   const groups = [
-    { title: "დღეს", items: viewings.filter((v) => v.scheduledAt <= eod && v.scheduledAt >= daysAgo(0)) },
-    { title: "მომავალი", items: viewings.filter((v) => v.scheduledAt > eod) },
-    { title: "წარსული", items: viewings.filter((v) => v.scheduledAt < daysAgo(0)) },
+    { title: tx(partner, "დღეს", "Today"), hi: "आज", items: viewings.filter((v) => v.scheduledAt <= eod && v.scheduledAt >= daysAgo(0)) },
+    { title: tx(partner, "მომავალი", "Upcoming"), hi: "आने वाले", items: viewings.filter((v) => v.scheduledAt > eod) },
+    { title: tx(partner, "წარსული", "Past"), hi: "पिछले", items: viewings.filter((v) => v.scheduledAt < daysAgo(0)) },
   ].filter((g) => g.items.length);
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="დათვალიერებები"
-        subtitle="დაგეგმილი ჩვენებები აგენტების მიხედვით; ერთი აგენტის ორი ჩვენება ერთ საათში — გაფრთხილება"
+        title={<Tx p={partner} ka="დათვალიერებები" en="My viewings" hi="मेरी विज़िट" />}
+        subtitle={tx(partner, "დაგეგმილი ჩვენებები აგენტების მიხედვით; ერთი აგენტის ორი ჩვენება ერთ საათში — გაფრთხილება", "Flat viewings with your clients. Two viewings within one hour are flagged.")}
         actions={
           <>
-            <Chip href={`/viewings?range=today&who=${who}`} active={range === "today"}>დღეს</Chip>
-            <Chip href={`/viewings?range=week&who=${who}`} active={range === "week"}>კვირა</Chip>
-            <Chip href={`/viewings?range=all&who=${who}`} active={range === "all"}>ყველა</Chip>
-            <span className="mx-1 text-gray-300">|</span>
+            <Chip href={`/viewings?range=today&who=${who}`} active={range === "today"}>{tx(partner, "დღეს", "Today")}</Chip>
+            <Chip href={`/viewings?range=week&who=${who}`} active={range === "week"}>{tx(partner, "კვირა", "Week")}</Chip>
+            <Chip href={`/viewings?range=all&who=${who}`} active={range === "all"}>{tx(partner, "ყველა", "All")}</Chip>
             {!partner ? (
               <>
+                <span className="mx-1 text-gray-300">|</span>
                 <Chip href={`/viewings?range=${range}`} active={who !== "me"}>ყველა აგენტი</Chip>
                 <Chip href={`/viewings?range=${range}&who=me`} active={who === "me"}>ჩემი</Chip>
               </>
@@ -73,32 +74,32 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
         }
       />
 
-      <Card title="ახალი დათვალიერება">
+      <Card title={<Tx p={partner} ka="ახალი დათვალიერება" en="New viewing" hi="नई विज़िट" />}>
         <form action={createViewing} className="grid gap-2 md:grid-cols-6">
           <Input name="scheduledAt" type="datetime-local" required />
           <Select name="clientId" defaultValue="">
-            <option value="">კლიენტი (არასავალდებულო)</option>
+            <option value="">{tx(partner, "კლიენტი (არასავალდებულო)", "Client")}</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </Select>
           {!partner ? <Input name="listingId" placeholder="განცხადების ID, მაგ. myhome:123" /> : null}
-          <Input name="address" placeholder="მისამართი" />
+          <Input name="address" placeholder={tx(partner, "მისამართი", "Address")} />
           <Select name="agentId" defaultValue={me.id}>
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </Select>
-          <Button type="submit">დაგეგმვა</Button>
+          <Button type="submit">{tx(partner, "დაგეგმვა", "Plan")}</Button>
         </form>
-        <p className="mt-1 text-xs text-gray-400">განცხადების ან კლიენტის გვერდიდან დაგეგმვა უფრო მოსახერხებელია — იქ ID ავტომატურად ივსება.</p>
+        <p className="mt-1 text-xs text-gray-400">{tx(partner, "განცხადების ან კლიენტის გვერდიდან დაგეგმვა უფრო მოსახერხებელია — იქ ID ავტომატურად ივსება.", "You can also plan a viewing from the client’s page.")}</p>
       </Card>
 
       {groups.length === 0 ? (
-        <Card><EmptyState title="დათვალიერებები არ არის" /></Card>
+        <Card><EmptyState title={tx(partner, "დათვალიერებები არ არის", "No viewings")} /></Card>
       ) : (
         groups.map((group) => (
-          <Card key={group.title} title={group.title} action={<span className="text-xs text-gray-400">{group.items.length}</span>}>
+          <Card key={group.title} title={<Tx p={partner} ka={group.title} en={group.title} hi={group.hi} />} action={<span className="text-xs text-gray-400">{group.items.length}</span>}>
             <ul className="divide-y divide-gray-100">
               {group.items.map((v) => {
                 const st = STATUS[v.status] ?? STATUS.planned;
@@ -106,7 +107,7 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
                   <li key={v.id} className={`flex flex-col gap-2 py-3 md:flex-row md:items-center ${flagged.has(v.id) ? "rounded-lg bg-rose-50/60 px-2" : ""}`}>
                     <div className="w-full md:w-44">
                       <div className="text-sm font-semibold tabular-nums text-gray-900">{fmtDate(v.scheduledAt, true)}</div>
-                      <div className="text-xs text-gray-500">{v.agent.name}{flagged.has(v.id) ? " · ⚠ გადაფარვა" : ""}</div>
+                      <div className="text-xs text-gray-500">{v.agent.name}{flagged.has(v.id) ? tx(partner, " · ⚠ გადაფარვა", " · ⚠ overlap") : ""}</div>
                     </div>
                     <div className="min-w-0 flex-1 text-sm">
                       {v.listing && !partner ? (
@@ -117,23 +118,23 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
                       </div>
                       {v.client ? (
                         <div className="text-xs text-gray-600">
-                          კლიენტი: <Link href={`/clients/${v.client.id}`} className="hover:underline">{v.client.name}</Link>
+                          {tx(partner, "კლიენტი", "Client")}: <Link href={`/clients/${v.client.id}`} className="hover:underline">{v.client.name}</Link>
                         </div>
                       ) : null}
                       {v.note ? <div className="text-xs text-gray-500">{v.note}</div> : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{partner ? VIEWING_STATUS_EN[v.status] ?? st.label : st.label}</span>
                       {v.client?.phone ? <PhoneButton phone={v.client.phone} /> : null}
                       {v.listing && !partner ? <PhoneButton phone={v.listing.phone || v.listing.lead?.manualPhone} /> : null}
                       {v.status === "planned" ? (
                         <>
-                          <form action={setViewingStatus}><input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="done" /><Button size="sm" variant="secondary" type="submit">ჩატარდა</Button></form>
-                          <form action={setViewingStatus}><input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="no_show" /><Button size="sm" variant="secondary" type="submit">არ მოვიდა</Button></form>
-                          <form action={setViewingStatus}><input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="cancelled" /><Button size="sm" variant="ghost" type="submit">გაუქმება</Button></form>
+                          <form action={setViewingStatus}><input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="done" /><Button size="sm" variant="secondary" type="submit">{tx(partner, "ჩატარდა", "Done")}</Button></form>
+                          <form action={setViewingStatus}><input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="no_show" /><Button size="sm" variant="secondary" type="submit">{tx(partner, "არ მოვიდა", "No-show")}</Button></form>
+                          <form action={setViewingStatus}><input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="cancelled" /><Button size="sm" variant="ghost" type="submit">{tx(partner, "გაუქმება", "Cancel")}</Button></form>
                         </>
                       ) : (
-                        <form action={deleteViewing}><input type="hidden" name="id" value={v.id} /><Button size="sm" variant="ghost" type="submit">წაშლა</Button></form>
+                        <form action={deleteViewing}><input type="hidden" name="id" value={v.id} /><Button size="sm" variant="ghost" type="submit">{tx(partner, "წაშლა", "Delete")}</Button></form>
                       )}
                     </div>
                   </li>

@@ -5,6 +5,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { CLIENT_SEGMENTS, CLIENT_STATUS, CLIENT_STATUSES } from "@/lib/clients";
 import { Button, Card, Chip, EmptyState, Input, PageHeader, PhoneButton, Select } from "@/components/ui";
 import { createClient } from "./actions";
+import { CLIENT_STATUS_EN, DEAL_EN, SEGMENT_EN, Tx, tx } from "@/lib/partnerText";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +33,14 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   return (
     <div className="space-y-4">
       <PageHeader
-        title={<>კლიენტები <span className="text-base font-normal text-gray-400">{clients.length}</span></>}
-        subtitle="მდგმურები და მყიდველები, რომლებსაც ჩვენ ვემსახურებით (ტურისტები, ექსპატები, ინდოელი თემი...)"
+        title={<><Tx p={partner} ka="კლიენტები" en="My clients" hi="मेरे ग्राहक" /> <span className="text-base font-normal text-gray-400">{clients.length}</span></>}
+        subtitle={tx(partner, "მდგმურები და მყიდველები, რომლებსაც ჩვენ ვემსახურებით (ტურისტები, ექსპატები, ინდოელი თემი...)", "People looking for a flat. Write everything in English.")}
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <Chip href={href({ status: "" })} active={!status}>ყველა სტატუსი</Chip>
+        <Chip href={href({ status: "" })} active={!status}>{tx(partner, "ყველა სტატუსი", "All")}</Chip>
         {CLIENT_STATUSES.map((s) => (
-          <Chip key={s.value} href={href({ status: s.value })} active={status === s.value}>{s.label}</Chip>
+          <Chip key={s.value} href={href({ status: s.value })} active={status === s.value}>{partner ? CLIENT_STATUS_EN[s.value] : s.label}</Chip>
         ))}
         {!partner ? (
           <>
@@ -52,41 +53,41 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         ) : null}
       </div>
 
-      <Card title="ახალი კლიენტი">
+      <Card title={<Tx p={partner} ka="ახალი კლიენტი" en="New client" hi="नया ग्राहक" />}>
         <form action={createClient} className="grid gap-2 md:grid-cols-4 xl:grid-cols-6">
-          <Input name="name" required placeholder="სახელი *" />
-          <Input name="phone" placeholder="ტელეფონი" />
+          <Input name="name" required placeholder={tx(partner, "სახელი *", "Name *")} />
+          <Input name="phone" placeholder={tx(partner, "ტელეფონი", "Phone")} />
           <Input name="messenger" placeholder="WhatsApp / Telegram" />
-          <Input name="nationality" placeholder="ეროვნება" />
+          <Input name="nationality" placeholder={tx(partner, "ეროვნება", "Nationality")} />
           <Select name="segment" defaultValue={partner ? segment : ""} disabled={partner}>
-            <option value="">სეგმენტი</option>
+            <option value="">{tx(partner, "სეგმენტი", "Segment")}</option>
             {CLIENT_SEGMENTS.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
+              <option key={s.value} value={s.value}>{partner ? SEGMENT_EN[s.value] : s.label}</option>
             ))}
           </Select>
           <Select name="dealType" defaultValue="ქირავდება">
-            <option value="ქირავდება">ქირავდება</option>
-            <option value="ქირავდება დღიურად">ქირავდება დღიურად</option>
-            <option value="იყიდება">იყიდება</option>
+            <option value="ქირავდება">{tx(partner, "ქირავდება", "Rent")}</option>
+            <option value="ქირავდება დღიურად">{tx(partner, "ქირავდება დღიურად", "Daily rent")}</option>
+            <option value="იყიდება">{tx(partner, "იყიდება", "Sale")}</option>
           </Select>
-          <Input name="budgetMin" placeholder="ბიუჯეტი $ დან" inputMode="numeric" />
-          <Input name="budgetMax" placeholder="ბიუჯეტი $ მდე" inputMode="numeric" />
-          <Input name="roomsMin" placeholder="ოთახი (მინ.)" inputMode="numeric" />
-          <Input name="areas" placeholder="უბნები: ვაკე, საბურთალო" className="md:col-span-2" />
-          <Input name="moveIn" type="date" />
-          <Input name="durationMonths" placeholder="ვადა, თვე" inputMode="numeric" />
+          <Input name="budgetMin" placeholder={tx(partner, "ბიუჯეტი $ დან", "Budget from $")} inputMode="numeric" />
+          <Input name="budgetMax" placeholder={tx(partner, "ბიუჯეტი $ მდე", "Budget to $")} inputMode="numeric" />
+          <Input name="roomsMin" placeholder={tx(partner, "ოთახი (მინ.)", "Rooms (min)")} inputMode="numeric" />
+          <Input name="areas" placeholder={tx(partner, "უბნები: ვაკე, საბურთალო", "Areas: Vake, Saburtalo")} className="md:col-span-2" />
+          <Input name="moveIn" type="date" title={tx(partner, "შესვლის თარიღი", "Move-in date")} />
+          <Input name="durationMonths" placeholder={tx(partner, "ვადა, თვე", "Months")} inputMode="numeric" />
           <Select name="assignedToId" defaultValue={me.id}>
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </Select>
-          <Input name="notes" placeholder="შენიშვნა" className="md:col-span-3 xl:col-span-3" />
-          <Button type="submit">დამატება</Button>
+          <Input name="notes" placeholder={tx(partner, "შენიშვნა", "Notes")} className="md:col-span-3 xl:col-span-3" />
+          <Button type="submit">{tx(partner, "დამატება", "Add")}</Button>
         </form>
       </Card>
 
       {clients.length === 0 ? (
-        <Card><EmptyState title="კლიენტები ჯერ არ არის" hint="დაამატეთ პირველი კლიენტი ზემოთ" /></Card>
+        <Card><EmptyState title={tx(partner, "კლიენტები ჯერ არ არის", "No clients yet")} hint={tx(partner, "დაამატეთ პირველი კლიენტი ზემოთ", "Add your first client above")} /></Card>
       ) : (
         <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {clients.map((client) => {
@@ -99,22 +100,22 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                       {client.name}
                     </Link>
                     <div className="text-xs text-gray-500">
-                      {[client.nationality, CLIENT_SEGMENTS.find((s) => s.value === client.segment)?.label, client.assignedTo?.name].filter(Boolean).join(" · ")}
+                      {[client.nationality, partner ? SEGMENT_EN[client.segment ?? ""] : CLIENT_SEGMENTS.find((s) => s.value === client.segment)?.label, client.assignedTo?.name].filter(Boolean).join(" · ")}
                     </div>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{partner ? CLIENT_STATUS_EN[client.status] ?? st.label : st.label}</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-700">
-                  <span>{client.dealType ?? "—"}</span>
+                  <span>{(partner ? DEAL_EN[client.dealType ?? ""] : null) ?? client.dealType ?? "—"}</span>
                   {client.budgetMin || client.budgetMax ? <span>{fmtMoney(client.budgetMin) || "$0"} – {fmtMoney(client.budgetMax) || "∞"}</span> : null}
-                  {client.roomsMin ? <span>{client.roomsMin}+ ოთ.</span> : null}
+                  {client.roomsMin ? <span>{client.roomsMin}+ {tx(partner, "ოთ.", "rooms")}</span> : null}
                   {client.areas ? <span className="truncate">{client.areas}</span> : null}
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
                   <span>
-                    {client._count.shortlists} შერჩეული · {client.moveIn ? `შესვლა ${fmtDate(client.moveIn)}` : fmtDate(client.updatedAt)}
+                    {partner ? (client.moveIn ? `Move-in ${fmtDate(client.moveIn)}` : `Updated ${fmtDate(client.updatedAt)}`) : <>{client._count.shortlists} შერჩეული · {client.moveIn ? `შესვლა ${fmtDate(client.moveIn)}` : fmtDate(client.updatedAt)}</>}
                   </span>
-                  <PhoneButton phone={client.phone} />
+                  {partner && !client.phone ? null : <PhoneButton phone={client.phone} />}
                 </div>
               </li>
             );

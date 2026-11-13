@@ -38,16 +38,17 @@ function Icon({ d }: { d: string }) {
 
 // A partner (one client segment) gets only his pages.
 const PARTNER_LINKS = [
-  { href: "/clients", label: "კლიენტები", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
-  { href: "/viewings", label: "ჩვენებები", icon: "M3 4h18v16H3zM3 10h18M8 2v4M16 2v4" },
-  { href: "/catalog?lang=en", label: "კატალოგი", icon: "M4 6h16M4 12h16M4 18h10" },
-  { href: "/account", label: "ჩემი ანგარიში", icon: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" },
+  { href: "/clients", label: "Clients", hi: "ग्राहक", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
+  { href: "/viewings", label: "Viewings", hi: "विज़िट", icon: "M3 4h18v16H3zM3 10h18M8 2v4M16 2v4" },
+  { href: "/share", label: "Share to WhatsApp", hi: "शेयर", icon: "M4 12v8h16v-8M12 3v12M7 8l5-5 5 5" },
+  { href: "/catalog?lang=en", label: "Catalog", hi: "फ़्लैट", icon: "M4 6h16M4 12h16M4 18h10" },
+  { href: "/account", label: "My account", hi: "खाता", icon: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" },
 ];
 
 export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }) {
   const [open, setOpen] = useState(false);
   const partner = user.role === "partner";
-  const links = partner ? PARTNER_LINKS : LINKS;
+  const links: { href: string; label: string; icon: string; hi?: string }[] = partner ? PARTNER_LINKS : LINKS;
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const linkClass = (href: string) =>
@@ -77,6 +78,7 @@ export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }
               <Link key={link.href} href={link.href} className={linkClass(link.href)}>
                 <Icon d={link.icon} />
                 {link.label}
+                {link.hi ? <span className="text-[10px] font-normal opacity-60">{link.hi}</span> : null}
               </Link>
             ),
           )}
@@ -124,17 +126,18 @@ export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }
                 <Link key={link.href} href={link.href} className={linkClass(link.href)} onClick={() => setOpen(false)}>
                   <Icon d={link.icon} />
                   {link.label}
+                  {link.hi ? <span className="text-[10px] font-normal opacity-60">{link.hi}</span> : null}
                 </Link>
               ),
             )}
           </nav>
           <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
             <span className="text-gray-600">
-              {user.name} <span className="text-gray-400">({user.role === "admin" ? "ადმინი" : partner ? "პარტნიორი" : "აგენტი"})</span>
+              {user.name} <span className="text-gray-400">({user.role === "admin" ? "ადმინი" : partner ? "Partner" : "აგენტი"})</span>
             </span>
             <form action={logout}>
               <button className="ui-btn ui-btn-secondary ui-btn-sm" type="submit">
-                გასვლა
+                {partner ? "Log out" : "გასვლა"}
               </button>
             </form>
           </div>

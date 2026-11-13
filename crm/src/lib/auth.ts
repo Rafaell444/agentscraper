@@ -19,7 +19,7 @@ export type SessionUser = {
  * segment and their viewings, and the public mini app: no listings, owners,
  * posts, channels, settings or other people's work.
  */
-export const PARTNER_PATHS = ["/clients", "/viewings", "/account"];
+export const PARTNER_PATHS = ["/clients", "/viewings", "/account", "/share"];
 
 export function isPartner(user: Pick<SessionUser, "role">): boolean {
   return user.role === "partner";

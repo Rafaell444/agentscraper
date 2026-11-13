@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes } from "react";
 import { statusColor, statusLabel } from "@/lib/options";
 
-export function Card({ title, children, className = "", action }: { title?: string; children: React.ReactNode; className?: string; action?: React.ReactNode }) {
+export function Card({ title, children, className = "", action }: { title?: React.ReactNode; children: React.ReactNode; className?: string; action?: React.ReactNode }) {
   return (
     <section className={`ui-card p-4 ${className}`}>
       {title || action ? (

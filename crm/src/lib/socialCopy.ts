@@ -144,6 +144,14 @@ export function socialCaption(post: Post, network: CopyNetwork, link: string): s
   return network === "ig" ? text.slice(0, 2200) : text.slice(0, 4000);
 }
 
+/** A WhatsApp group message in English: the Facebook text with a bold first
+ * line (WhatsApp's *bold*) and no hashtags, which do nothing on WhatsApp. */
+export function whatsappCaption(post: Post, link: string): string {
+  const blocks = socialCaption(post, "fb", link).split("\n\n").filter((block) => !block.trim().startsWith("#"));
+  if (blocks.length) blocks[0] = `*${blocks[0].trim()}*`;
+  return blocks.join("\n\n");
+}
+
 /** TikTok's title (up to 90 characters): the hook, in Russian. */
 export function tiktokTitle(post: Post): string {
   return hookLine(post, "ru").slice(0, 90);
