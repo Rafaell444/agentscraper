@@ -8,3 +8,4 @@ google-api-python-client==2.200.0
 google-auth==2.57.1
 google-auth-oauthlib==1.4.1
 playwright==1.62.0
+Pillow==11.0.0

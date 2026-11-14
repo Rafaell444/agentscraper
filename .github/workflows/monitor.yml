@@ -82,6 +82,14 @@ jobs:
           fi
           python collect.py "${args[@]}"
 
+      # Photo fingerprints for the CRM's image search (newest listings first).
+      - name: Fingerprint listing photos for image search
+        continue-on-error: true
+        env:
+          HASH_LISTINGS_PER_RUN: "400"
+          HASH_PHOTOS_PER_LISTING: "8"
+        run: python hash_images.py
+
       # MyHome phone reveal is not run here: MyHome's bot check never completes
       # for an automated browser, so agents enter MyHome numbers in the CRM by
       # hand (phone_enricher.py remains available for manual local use).

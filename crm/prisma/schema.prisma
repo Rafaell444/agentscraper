@@ -66,6 +66,7 @@ model Listing {
   viewings     Viewing[]
   deals        Deal[]
   clientLinks  ClientLink[]
+  imageHashes  ListingImageHash[]
 
   @@unique([site, propertyId])
   @@index([postedAt])
@@ -622,4 +623,20 @@ model ExtPaceLog {
   @@index([pace])
   @@index([createdAt])
   @@map("ext_pace_logs")
+}
+
+// Fingerprints of listing photos for the image search (written by the
+// collector's hash_images.py; the browser hashes uploads the same way, see
+// lib/imageHash.ts).  hash: 64-bit dHash as 16 hex chars, "" = unreadable.
+model ListingImageHash {
+  id        String   @id
+  listingId String   @map("listing_id")
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  url       String
+  hash      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([listingId])
+  @@index([hash])
+  @@map("listing_image_hashes")
 }

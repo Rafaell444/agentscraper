@@ -11,6 +11,7 @@ import { ListingsLink } from "./ListingsLink";
 const LINKS = [
   { href: "/", label: "დეშბორდი", icon: "M3 13h8V3H3v10zm10 8h8V11h-8v10zM3 21h8v-6H3v6zm10-18v6h8V3h-8z" },
   { href: "/listings", label: "განცხადებები", icon: "M4 6h16M4 12h16M4 18h10" },
+  { href: "/image-search", label: "ფოტოთი ძებნა", icon: "M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9.5a1.5 1.5 0 1 0 0-.01" },
   { href: "/owners", label: "განმთავსებლები", icon: "M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0" },
   { href: "/followups", label: "დასარეკი", icon: "M8 2v3M16 2v3M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" },
   { href: "/clients", label: "კლიენტები", icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
