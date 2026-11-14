@@ -29,19 +29,23 @@ function n(value: string | undefined): number | undefined {
 export default async function BrowsePage({ searchParams }: { searchParams: Promise<Params> }) {
   await requireMember();
   const p = await searchParams;
-  const deal = p.deal ?? "ქირავდება";
+  // Every listing by default (rent, daily and sale); the filters narrow it down.
+  const deal = p.deal ?? "";
   const page = Math.max(1, Number(p.page) || 1);
   const where: Prisma.ListingWhereInput = { archived: false };
   const and: Prisma.ListingWhereInput[] = [];
   if (deal) where.dealType = deal;
   if (p.type) where.propertyType = p.type;
   if (p.district) where.district = p.district;
+  if (p.neighbourhood) where.neighbourhood = p.neighbourhood;
   if (p.who === "owner" || p.who === "agent") where.posterKind = p.who;
   const priceMin = n(p.priceMin);
   const priceMax = n(p.priceMax);
   if (priceMin || priceMax) where.priceUsd = { gte: priceMin, lte: priceMax };
   const areaMin = n(p.areaMin);
-  if (areaMin) where.areaM2 = { gte: areaMin };
+  const areaMax = n(p.areaMax);
+  if (areaMin || areaMax) where.areaM2 = { gte: areaMin, lte: areaMax };
+  if (p.photos === "1") where.NOT = [{ image: null }, { image: "" }];
   const rooms = n(p.rooms);
   if (rooms) where.rooms = rooms >= 5 ? { gte: 5 } : rooms;
   const days = n(p.days);
@@ -87,7 +91,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Promi
             <option value="">Any type</option>
             {options.types.map((t) => <option key={t} value={t}>{en(EN_TYPE, t)}</option>)}
           </Select>
-          <Select name="district" defaultValue={p.district ?? ""}>
+          <Select name="district" defaultValue={p.district ?? ""} title="Pick a district and press Show to choose a neighbourhood">
             <option value="">Any district</option>
             {options.districts.filter((d) => d.name).map((d) => <option key={d.name} value={d.name}>{placeName(d.name, "en")} ({d.count})</option>)}
           </Select>
@@ -98,7 +102,18 @@ export default async function BrowsePage({ searchParams }: { searchParams: Promi
             {[1, 2, 3, 4].map((r) => <option key={r} value={r}>{r} room{r > 1 ? "s" : ""}</option>)}
             <option value="5">5+ rooms</option>
           </Select>
+          {p.district && options.neighbourhoodsByDistrict[p.district]?.length ? (
+            <Select name="neighbourhood" defaultValue={p.neighbourhood ?? ""}>
+              <option value="">Any neighbourhood</option>
+              {options.neighbourhoodsByDistrict[p.district].map((name) => <option key={name} value={name}>{placeName(name, "en")}</option>)}
+            </Select>
+          ) : null}
           <Input name="areaMin" defaultValue={p.areaMin ?? ""} placeholder="Area from m²" inputMode="numeric" />
+          <Input name="areaMax" defaultValue={p.areaMax ?? ""} placeholder="Area to m²" inputMode="numeric" />
+          <Select name="photos" defaultValue={p.photos ?? ""}>
+            <option value="">With or without photos</option>
+            <option value="1">With photos only</option>
+          </Select>
           <Select name="who" defaultValue={p.who ?? ""}>
             <option value="">Owners and agents</option>
             <option value="owner">Owners only</option>

@@ -3,11 +3,11 @@
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { hashPassword, isPartner, requireMember } from "@/lib/auth";
+import { hashPassword, isPartner, requireUser } from "@/lib/auth";
 
 /** Anyone changes their own password (the current one is asked first). */
 export async function changeOwnPassword(formData: FormData) {
-  const me = await requireMember();
+  const me = await requireUser();
   const current = String(formData.get("current") ?? "");
   const next = String(formData.get("next") ?? "");
   const again = String(formData.get("again") ?? "");

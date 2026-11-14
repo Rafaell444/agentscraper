@@ -42,7 +42,7 @@ export default async function MyPostPage({ params, searchParams }: { params: Pro
       {from === "listing" ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Filled in from the listing. Check the title and write the description in English, then save.</p> : null}
 
       <Card title={<Tx p ka="" en="Share" hi="शेयर करें" />}>
-        <ShareFlat refNo={0} text={myPostCaption(post, link)} photos={photos.slice(0, 6).map((p) => p.url)} />
+        <ShareFlat refNo={0} label={`საკუთარი პოსტი: ${post.title}`} text={myPostCaption(post, link)} photos={photos.slice(0, 6).map((p) => p.url)} />
       </Card>
 
       <Card title={<Tx p ka="" en="Photos" hi="फ़ोटो" />}>

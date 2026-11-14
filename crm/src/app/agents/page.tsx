@@ -46,6 +46,7 @@ export default async function AgentsPage() {
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${user.role === "admin" ? "bg-violet-100 text-violet-800" : user.role === "partner" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
                   {user.role === "admin" ? "ადმინი" : user.role === "partner" ? `პარტნიორი · ${SEGMENT_LABEL[user.segment ?? ""] ?? user.segment}` : "აგენტი"}
                 </span>
+                {user.role === "partner" ? <a href={`/partners?u=${user.id}`} className="text-[11px] font-semibold text-emerald-700 underline">სამუშაოს ნახვა →</a> : null}
               </div>
               <div className="mt-3 grid grid-cols-5 gap-1 text-center">
                 {[

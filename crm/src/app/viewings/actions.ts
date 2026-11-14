@@ -30,8 +30,8 @@ export async function createViewing(formData: FormData) {
   if (!when) return;
   const scheduledAt = new Date(when);
   if (Number.isNaN(scheduledAt.getTime())) return;
-  await prisma.viewing.create({ data: { listingId, clientId, agentId, scheduledAt, address, note } });
-  await logActivity(user.id, "viewing", listingId, scheduledAt.toISOString().slice(0, 16).replace("T", " "));
+  const created = await prisma.viewing.create({ data: { listingId, clientId, agentId, scheduledAt, address, note }, select: { client: { select: { name: true } } } });
+  await logActivity(user.id, "viewing", listingId, `ჩვენება დაიგეგმა ${scheduledAt.toISOString().slice(0, 16).replace("T", " ")}${created.client ? ` · ${created.client.name}` : ""}${address ? ` · ${address}` : ""}`);
   revalidateAll(listingId, clientId);
 }
 
@@ -48,7 +48,9 @@ export async function setViewingStatus(formData: FormData) {
   const status = String(formData.get("status") ?? "");
   if (!id || !["planned", "done", "cancelled", "no_show"].includes(status)) return;
   if (!(await canEditViewing(user, id))) return;
-  const viewing = await prisma.viewing.update({ where: { id }, data: { status } });
+  const viewing = await prisma.viewing.update({ where: { id }, data: { status }, include: { client: { select: { name: true } } } });
+  const label: Record<string, string> = { planned: "დაგეგმილი", done: "ჩატარდა", cancelled: "გაუქმდა", no_show: "არ მოვიდა" };
+  await logActivity(user.id, "viewing_status", viewing.listingId, `ჩვენება: ${label[status] ?? status}${viewing.client ? ` · ${viewing.client.name}` : ""}`);
   revalidateAll(viewing.listingId, viewing.clientId);
 }
 

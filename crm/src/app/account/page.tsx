@@ -1,4 +1,4 @@
-import { isPartner, requireMember } from "@/lib/auth";
+import { isPartner, requireUser } from "@/lib/auth";
 import { Tx, tx } from "@/lib/partnerText";
 import { Button, Card, Input, PageHeader } from "@/components/ui";
 import { changeOwnPassword } from "./actions";
@@ -6,7 +6,8 @@ import { changeOwnPassword } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
-  const me = await requireMember();
+  // Staff only: a partner's password is set by the admin (Agents page).
+  const me = await requireUser();
   const { msg } = await searchParams;
   const partner = isPartner(me);
   return (

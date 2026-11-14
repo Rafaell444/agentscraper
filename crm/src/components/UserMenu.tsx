@@ -50,11 +50,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
             <div className="truncate text-xs text-gray-500">{user.email}</div>
             <div className="mt-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{user.role === "admin" ? "ადმინისტრატორი" : user.role === "partner" ? "Partner" : "აგენტი"}</div>
           </div>
-          {user.role === "partner" ? (
-            <Link href="/account" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-              Change password <span className="text-[11px] text-gray-400">पासवर्ड बदलें</span>
-            </Link>
-          ) : (
+          {user.role === "partner" ? null : (
             <>
               <Link href="/agents" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                 აგენტები და პაროლი
@@ -64,6 +60,11 @@ export function UserMenu({ user }: { user: SessionUser }) {
               </Link>
             </>
           )}
+          {user.role === "admin" ? (
+            <Link href="/partners" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              პარტნიორების სამუშაო
+            </Link>
+          ) : null}
           {user.role === "admin" ? (
             <Link href="/settings" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
               პარამეტრები

@@ -79,7 +79,7 @@ export default async function SharePage({ searchParams }: { searchParams: Promis
                       <Link href={`/share/mine/${post.id}`} className="font-semibold text-gray-900 hover:text-emerald-700">{post.title}</Link>
                       <div className="text-sm text-gray-600">{post.price ? priceText(post.price, post.currency, dealKind(post.dealType), "en") : "No price yet"}</div>
                     </div>
-                    <ShareFlat refNo={0} text={myPostCaption(post, `${base}/s/${post.token}`)} photos={photos} />
+                    <ShareFlat refNo={0} label={`საკუთარი პოსტი: ${post.title}`} text={myPostCaption(post, `${base}/s/${post.token}`)} photos={photos} />
                     <Link href={`/share/mine/${post.id}`} className="ui-btn ui-btn-ghost ui-btn-sm">✏️ Edit</Link>
                   </div>
                 </li>

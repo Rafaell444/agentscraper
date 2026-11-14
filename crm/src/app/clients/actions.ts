@@ -62,6 +62,7 @@ export async function updateClient(formData: FormData) {
   const data = scoped(user, clientData(formData));
   if (!id || !data.name || !(await canEditClient(user, id))) return;
   await prisma.client.update({ where: { id }, data });
+  await logActivity(user.id, "client_edit", null, `კლიენტის მონაცემები შეიცვალა: ${data.name}`);
   revalidatePath(`/clients/${id}`);
   revalidatePath("/clients");
 }
@@ -72,8 +73,9 @@ export async function setClientStatus(formData: FormData) {
   const status = String(formData.get("status") ?? "");
   if (!id || !["new", "searching", "viewing", "closed_won", "closed_lost"].includes(status)) return;
   if (!(await canEditClient(user, id))) return;
-  await prisma.client.update({ where: { id }, data: { status } });
-  await logActivity(user.id, "client_status", null, `${id}: ${status}`);
+  const client = await prisma.client.update({ where: { id }, data: { status }, select: { name: true } });
+  const label: Record<string, string> = { new: "ახალი", searching: "ვეძებთ", viewing: "დათვალიერება", closed_won: "დაქირავდა / იყიდა", closed_lost: "დაიკარგა" };
+  await logActivity(user.id, "client_status", null, `${client.name}: ${label[status] ?? status}`);
   revalidatePath(`/clients/${id}`);
   revalidatePath("/clients");
 }

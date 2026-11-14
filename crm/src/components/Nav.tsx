@@ -43,7 +43,6 @@ const PARTNER_LINKS = [
   { href: "/browse", label: "Listings", hi: "लिस्टिंग", icon: "M4 6h16M4 12h16M4 18h10" },
   { href: "/share", label: "Share to WhatsApp", hi: "शेयर", icon: "M4 12v8h16v-8M12 3v12M7 8l5-5 5 5" },
   { href: "/catalog?lang=en", label: "Catalog", hi: "फ़्लैट", icon: "M4 6h16M4 12h16M4 18h10" },
-  { href: "/account", label: "My account", hi: "खाता", icon: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" },
 ];
 
 export function Nav({ user, unread = 0 }: { user: SessionUser; unread?: number }) {
