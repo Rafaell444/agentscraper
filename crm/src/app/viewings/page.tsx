@@ -43,7 +43,7 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
       orderBy: { scheduledAt: "asc" },
     }),
     prisma.user.findMany({ where: partner ? { id: me.id } : { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] }, ...(partner ? { segment: me.segment ?? "indian" } : {}) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.client.findMany({ where: { status: { notIn: ["closed_won", "closed_lost"] }, ...(partner ? { assignedToId: me.id } : {}) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   const flagged = conflicts(viewings);
   const eod = endOfToday();

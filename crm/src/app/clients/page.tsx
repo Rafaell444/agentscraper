@@ -11,13 +11,13 @@ export const dynamic = "force-dynamic";
 
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ status?: string; segment?: string }> }) {
   const me = await requireMember();
-  // A partner sees only his segment's clients (e.g. Indian), and only himself to assign.
+  // A partner sees only his own clients (never another partner's), and only himself to assign.
   const partner = isPartner(me);
   const { status = "" } = await searchParams;
   const segment = partner ? me.segment ?? "indian" : (await searchParams).segment ?? "";
   const [clients, users] = await Promise.all([
     prisma.client.findMany({
-      where: { ...(status ? { status } : {}), ...(segment ? { segment } : {}) },
+      where: { ...(status ? { status } : {}), ...(partner ? { assignedToId: me.id } : segment ? { segment } : {}) },
       include: { assignedTo: { select: { name: true } }, _count: { select: { shortlists: true } } },
       orderBy: { updatedAt: "desc" },
     }),

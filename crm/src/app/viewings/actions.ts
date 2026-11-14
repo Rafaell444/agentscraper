@@ -21,8 +21,8 @@ export async function createViewing(formData: FormData) {
   const clientId = String(formData.get("clientId") ?? "") || null;
   const agentId = partner ? user.id : String(formData.get("agentId") ?? "") || user.id;
   if (partner) {
-    const client = clientId ? await prisma.client.findUnique({ where: { id: clientId }, select: { segment: true } }) : null;
-    if (!client || client.segment !== user.segment) return;
+    const client = clientId ? await prisma.client.findUnique({ where: { id: clientId }, select: { assignedToId: true } }) : null;
+    if (!client || client.assignedToId !== user.id) return;
   }
   const when = String(formData.get("scheduledAt") ?? "");
   const address = String(formData.get("address") ?? "").trim() || null;

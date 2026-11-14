@@ -38,11 +38,11 @@ function clientData(formData: FormData) {
   };
 }
 
-/** A partner may touch only clients of his segment; others any client. */
+/** A partner may touch only his own clients (not another partner's); others any client. */
 async function canEditClient(user: SessionUser, id: string): Promise<boolean> {
   if (!isPartner(user)) return true;
-  const client = await prisma.client.findUnique({ where: { id }, select: { segment: true } });
-  return Boolean(client && client.segment === user.segment);
+  const client = await prisma.client.findUnique({ where: { id }, select: { assignedToId: true } });
+  return Boolean(client && client.assignedToId === user.id);
 }
 
 /** A partner's clients are always in his segment and assigned to him. */

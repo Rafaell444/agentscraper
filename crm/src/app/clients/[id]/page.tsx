@@ -35,8 +35,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       likedLinks: { orderBy: { createdAt: "desc" } },
     },
   });
-  // A partner opens only clients of his segment.
-  if (!client || (partner && client.segment !== me.segment)) notFound();
+  // A partner opens only his own clients (not another partner's).
+  if (!client || (partner && client.assignedToId !== me.id)) notFound();
   // Liked flats not matched yet: the collector may have fetched them since.
   for (const link of client?.likedLinks ?? []) {
     if (link.listingId) continue;
