@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { isPartner, requireMember, requireUser, type SessionUser } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
+import { collectorFetches, listingForUrl, parseSourceUrl, requestCollectorFetch } from "@/lib/sharedPosts";
 
 function num(value: FormDataEntryValue | null): number | null {
   const text = String(value ?? "").trim();
@@ -29,6 +30,9 @@ function clientData(formData: FormData) {
     areas: String(formData.get("areas") ?? "").trim() || null,
     moveIn: moveIn ? new Date(moveIn) : null,
     durationMonths: num(formData.get("durationMonths")) != null ? Math.round(num(formData.get("durationMonths"))!) : null,
+    occupants: num(formData.get("occupants")) != null ? Math.round(num(formData.get("occupants"))!) : null,
+    pets: ["yes", "no"].includes(String(formData.get("pets"))) ? String(formData.get("pets")) : null,
+    interests: String(formData.get("interests") ?? "").trim().slice(0, 2000) || null,
     notes: String(formData.get("notes") ?? "").trim() || null,
     assignedToId: String(formData.get("assignedToId") ?? "").trim() || null,
   };
@@ -107,4 +111,33 @@ export async function removeFromShortlist(formData: FormData) {
   if (!id) return;
   await prisma.shortlist.delete({ where: { id } });
   revalidatePath(`/clients/${clientId}`);
+}
+
+/** Links to flats the client liked (one per line); each is matched to our scraped listing. */
+export async function addClientLinks(formData: FormData) {
+  const user = await requireMember();
+  const clientId = String(formData.get("clientId") ?? "");
+  if (!clientId || !(await canEditClient(user, clientId))) return;
+  const note = String(formData.get("note") ?? "").trim().slice(0, 500) || null;
+  const urls = String(formData.get("urls") ?? "").match(/https?:\/\/\S+/g) ?? [];
+  for (const raw of Array.from(new Set(urls)).slice(0, 20)) {
+    const url = raw.replace(/[),.;]+$/, "").slice(0, 600);
+    const listing = await listingForUrl(url).catch(() => null);
+    const parsed = parseSourceUrl(url);
+    // Not collected yet: MyHome pages are fetched by the collector (about a minute).
+    const fetchAsked = !listing && parsed && collectorFetches(parsed) ? await requestCollectorFetch(url) : false;
+    await prisma.clientLink.create({ data: { clientId, url, listingId: listing?.id ?? null, note, fetchAsked, createdById: user.id } });
+    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
+    await logActivity(user.id, "client_link", listing?.id ?? null, `${client?.name ?? ""} — მოწონებული ბინა: ${url}${listing ? " (ბაზაშია)" : ""}`);
+  }
+  revalidatePath(`/clients/${clientId}`);
+}
+
+export async function removeClientLink(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id") ?? "");
+  const link = id ? await prisma.clientLink.findUnique({ where: { id }, select: { clientId: true } }) : null;
+  if (!link || !(await canEditClient(user, link.clientId))) return;
+  await prisma.clientLink.delete({ where: { id } });
+  revalidatePath(`/clients/${link.clientId}`);
 }

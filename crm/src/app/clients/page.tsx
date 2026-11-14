@@ -76,6 +76,13 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           <Input name="areas" placeholder={tx(partner, "უბნები: ვაკე, საბურთალო", "Areas: Vake, Saburtalo")} className="md:col-span-2" />
           <Input name="moveIn" type="date" title={tx(partner, "შესვლის თარიღი", "Move-in date")} />
           <Input name="durationMonths" placeholder={tx(partner, "ვადა, თვე", "Months")} inputMode="numeric" />
+          <Input name="occupants" placeholder={tx(partner, "რამდენი იცხოვრებს", "People living")} inputMode="numeric" />
+          <Select name="pets" defaultValue="">
+            <option value="">{tx(partner, "შინაური ცხოველი?", "Pets?")}</option>
+            <option value="yes">{tx(partner, "კი", "Yes, has pets")}</option>
+            <option value="no">{tx(partner, "არა", "No pets")}</option>
+          </Select>
+          <Input name="interests" placeholder={tx(partner, "სურვილები: ავეჯი, აივანი, მეტროსთან…", "Wishes: furnished, balcony, near metro, work place…")} className="md:col-span-2 xl:col-span-3" />
           <Select name="assignedToId" defaultValue={me.id}>
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>

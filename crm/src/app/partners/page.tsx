@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { daysAgo, fmtDate } from "@/lib/format";
 import { CLIENT_STATUS, CLIENT_STATUSES } from "@/lib/clients";
-import { Card, Chip, EmptyState, PageHeader } from "@/components/ui";
+import { Card, Chip, EmptyState, PageHeader, PhoneButton } from "@/components/ui";
+import { fmtMoney } from "@/lib/format";
+import { ownerPhones } from "@/lib/ownerPhone";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,7 @@ const TYPE_LABEL: Record<string, string> = {
   client: "👤 კლიენტი",
   client_edit: "✏️ კლიენტი",
   client_status: "🔄 სტატუსი",
+  client_link: "🔗 მოწონებული",
   viewing: "📅 ჩვენება",
   viewing_status: "✅ ჩვენება",
   partner_post: "⭐ პოსტი",
@@ -52,12 +55,23 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   }
 
   const [clients, newClients, viewings, posts, activity] = await Promise.all([
-    prisma.client.findMany({ where: { assignedToId: chosen.id }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, status: true, phone: true, budgetMax: true, areas: true, createdAt: true, updatedAt: true } }),
+    prisma.client.findMany({ where: { assignedToId: chosen.id }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, status: true, phone: true, budgetMax: true, areas: true, occupants: true, interests: true, createdAt: true, updatedAt: true } }),
     prisma.client.count({ where: { assignedToId: chosen.id, createdAt: { gte: since } } }),
     prisma.viewing.findMany({ where: { agentId: chosen.id, scheduledAt: { gte: since } }, orderBy: { scheduledAt: "desc" }, take: 100, include: { client: { select: { id: true, name: true } } } }),
     prisma.sharedPost.findMany({ where: { createdById: chosen.id, catalog: false }, orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, title: true, price: true, currency: true, createdAt: true, updatedAt: true } }),
     prisma.activity.findMany({ where: { userId: chosen.id, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 300, select: { id: true, type: true, detail: true, createdAt: true } }),
   ]);
+  // Flats his clients liked (links he pasted), with our listing and the owner's number.
+  const liked = await prisma.clientLink.findMany({
+    where: { client: { assignedToId: chosen.id } },
+    orderBy: { createdAt: "desc" },
+    take: 60,
+    include: {
+      client: { select: { id: true, name: true } },
+      listing: { select: { id: true, title: true, siteName: true, ownerName: true, phone: true, propertyKey: true, priceUsd: true, archived: true, lead: { select: { manualPhone: true } } } },
+    },
+  });
+  const likedPhones = await ownerPhones(liked.flatMap((l) => (l.listing ? [l.listing] : [])));
   const shares = activity.filter((a) => a.type === "share").length;
   const last = await prisma.activity.findFirst({ where: { userId: chosen.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
   const byStatus = Object.fromEntries(CLIENT_STATUSES.map((s) => [s.value, clients.filter((c) => c.status === s.value).length]));
@@ -124,10 +138,43 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
               <ul className="max-h-96 divide-y divide-gray-100 overflow-y-auto text-sm">
                 {clients.slice(0, 100).map((c) => (
                   <li key={c.id} className="flex items-center justify-between gap-2 py-1.5">
-                    <Link href={`/clients/${c.id}`} className="min-w-0 truncate font-medium text-gray-900 hover:text-emerald-700">{c.name}</Link>
+                    <div className="min-w-0">
+                      <Link href={`/clients/${c.id}`} className="block truncate font-medium text-gray-900 hover:text-emerald-700">{c.name}</Link>
+                      <div className="truncate text-[11px] text-gray-500">{[c.budgetMax ? `≤ ${fmtMoney(c.budgetMax)}` : "", c.occupants ? `${c.occupants} ადამიანი` : "", c.areas ?? "", c.interests ?? ""].filter(Boolean).join(" · ")}</div>
+                    </div>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${(CLIENT_STATUS[c.status] ?? CLIENT_STATUS.new).color}`}>{(CLIENT_STATUS[c.status] ?? CLIENT_STATUS.new).label}</span>
                   </li>
                 ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title={`კლიენტებს მოწონებული ბინები (${liked.length})`}>
+            {liked.length === 0 ? (
+              <p className="text-sm text-gray-400">ბმული ჯერ არ ჩაუსვამს</p>
+            ) : (
+              <ul className="max-h-[28rem] divide-y divide-gray-100 overflow-y-auto text-sm">
+                {liked.map((link) => {
+                  const owner = link.listing ? likedPhones[link.listing.id] : undefined;
+                  return (
+                    <li key={link.id} className="space-y-0.5 py-2">
+                      <div className="flex justify-between gap-2 text-xs">
+                        <Link href={`/clients/${link.client.id}`} className="font-semibold text-gray-900 hover:underline">{link.client.name}</Link>
+                        <span className="text-gray-400">{fmtDate(link.createdAt)}</span>
+                      </div>
+                      {link.listing ? (
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <Link href={`/listings/${encodeURIComponent(link.listing.id)}`} className="text-emerald-700 hover:underline">{link.listing.title ?? link.listing.id}</Link>
+                          <span className="text-gray-500">{link.listing.siteName}{link.listing.priceUsd ? ` · ${fmtMoney(link.listing.priceUsd)}` : ""}{link.listing.ownerName ? ` · ${link.listing.ownerName}` : ""}</span>
+                          {owner ? <PhoneButton phone={owner.phone} /> : <span className="text-gray-400">ნომერი ჯერ არ გვაქვს</span>}
+                        </div>
+                      ) : (
+                        <a href={link.url} target="_blank" rel="noreferrer" className="block truncate text-xs text-amber-700 underline">ბაზაში ჯერ არ არის: {link.url}</a>
+                      )}
+                      {link.note ? <div className="text-xs text-gray-500">{link.note}</div> : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>

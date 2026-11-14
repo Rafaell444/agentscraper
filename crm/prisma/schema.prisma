@@ -65,6 +65,7 @@ model Listing {
   shortlists   Shortlist[]
   viewings     Viewing[]
   deals        Deal[]
+  clientLinks  ClientLink[]
 
   @@unique([site, propertyId])
   @@index([postedAt])
@@ -240,6 +241,9 @@ model Client {
   areas          String? // comma-separated neighbourhoods/districts
   moveIn         DateTime? @map("move_in")
   durationMonths Int?      @map("duration_months")
+  occupants      Int? // how many people will live in the flat
+  pets           String? // yes | no
+  interests      String? // must-haves in the client's words: furnished, balcony, near metro…
   notes          String?
   status         String    @default("new") // new | searching | viewing | closed_won | closed_lost
   assignedToId   String?   @map("assigned_to_id")
@@ -252,10 +256,31 @@ model Client {
   deals        Deal[]
   sharedPosts  SharedPost[]
   catalogLeads CatalogLead[]
+  likedLinks   ClientLink[]
 
   @@index([status])
   @@index([segment])
   @@map("clients")
+}
+
+// A flat the client liked on a website (MyHome, SS.ge…), pasted by the agent
+// or partner.  listingId links it to our scraped listing (owner, phone) once
+// the collector has it.
+model ClientLink {
+  id          String   @id @default(cuid())
+  clientId    String   @map("client_id")
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  url         String
+  listingId   String?  @map("listing_id")
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  note        String?
+  fetchAsked  Boolean  @default(false) @map("fetch_asked") // the collector was asked to fetch the page
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([clientId])
+  @@index([listingId])
+  @@map("client_links")
 }
 
 model Shortlist {

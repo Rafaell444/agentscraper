@@ -12,6 +12,10 @@ import { createViewing } from "@/app/viewings/actions";
 import { getSettings } from "@/lib/settings";
 import { renderTemplate, waLink } from "@/lib/templates";
 import { CLIENT_STATUS_EN, SEGMENT_EN, Tx, VIEWING_STATUS_EN, tx } from "@/lib/partnerText";
+import { addClientLinks, removeClientLink } from "../actions";
+import { listingForUrl } from "@/lib/sharedPosts";
+import { ownerPhones } from "@/lib/ownerPhone";
+import { englishTitle } from "@/lib/browse";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +32,29 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     include: {
       assignedTo: true,
       shortlists: { include: { listing: { include: { lead: { select: { manualPhone: true } } } } }, orderBy: { createdAt: "desc" } },
+      likedLinks: { orderBy: { createdAt: "desc" } },
     },
   });
   // A partner opens only clients of his segment.
   if (!client || (partner && client.segment !== me.segment)) notFound();
+  // Liked flats not matched yet: the collector may have fetched them since.
+  for (const link of client?.likedLinks ?? []) {
+    if (link.listingId) continue;
+    const found = await listingForUrl(link.url).catch(() => null);
+    if (found) {
+      link.listingId = found.id;
+      await prisma.clientLink.update({ where: { id: link.id }, data: { listingId: found.id } });
+    }
+  }
+  const likedIds = (client?.likedLinks ?? []).map((l) => l.listingId).filter((v): v is string => Boolean(v));
+  const likedListings = likedIds.length
+    ? await prisma.listing.findMany({
+        where: { id: { in: likedIds } },
+        select: { id: true, title: true, siteName: true, ownerName: true, phone: true, propertyKey: true, archived: true, rooms: true, propertyType: true, dealType: true, neighbourhood: true, district: true, priceUsd: true, areaM2: true, floor: true, totalFloors: true, image: true, lead: { select: { manualPhone: true } } },
+      })
+    : [];
+  // Owners' numbers: agency staff only.
+  const likedPhones = partner ? {} : await ownerPhones(likedListings);
   const [users, settings, viewings] = await Promise.all([
     prisma.user.findMany({ where: partner ? { id: me.id } : { active: true }, orderBy: { name: "asc" } }),
     getSettings(),
@@ -77,6 +100,57 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
 
           <Card title={<Tx p={partner} ka="სწრაფი კავშირი" en="Quick message" hi="जल्दी संदेश" />}>
             <WaTemplates phone={client.messenger || client.phone} kinds={["client_first", "client_followup"]} values={templateValues} english={partner} />
+          </Card>
+
+          <Card title={<Tx p={partner} ka={`კლიენტს მოწონებული ბინები (${client.likedLinks.length})`} en={`Flats the client liked (${client.likedLinks.length})`} hi="पसंद किए फ़्लैट" />}>
+            <form action={addClientLinks} className="space-y-2">
+              <input type="hidden" name="clientId" value={client.id} />
+              <textarea name="urls" rows={2} required placeholder={tx(partner, "ჩასვი ბმულები (myhome.ge, ss.ge…), თითო ხაზზე", "Paste links from myhome.ge, ss.ge… one per line")} className="ui-field h-auto py-2" />
+              <div className="flex gap-2">
+                <Input name="note" placeholder={tx(partner, "შენიშვნა (არასავალდებულო)", "Note (optional), e.g. likes the balcony")} className="flex-1" />
+                <Button type="submit" variant="secondary">{tx(partner, "დამატება", "Add")}</Button>
+              </div>
+            </form>
+            {client.likedLinks.length ? (
+              <ul className="mt-3 divide-y divide-gray-100">
+                {client.likedLinks.map((link) => {
+                  const l = likedListings.find((x) => x.id === link.listingId);
+                  const owner = l ? (likedPhones as Record<string, { phone: string; from?: string }>)[l.id] : undefined;
+                  return (
+                    <li key={link.id} className="flex items-start gap-3 py-2 text-sm">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      {l?.image ? <img src={l.image} alt="" className="h-14 w-20 shrink-0 rounded-md object-cover" referrerPolicy="no-referrer" /> : null}
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <a href={link.url} target="_blank" rel="noreferrer" className="block truncate text-emerald-700 underline">{link.url}</a>
+                        {l ? (
+                          partner ? (
+                            <div className="text-xs text-gray-700">✓ In our database: {englishTitle(l)}{l.priceUsd ? ` · $${Math.round(l.priceUsd)}` : ""}{l.areaM2 ? ` · ${Math.round(l.areaM2)} m²` : ""}. Our team has the owner’s contact.</div>
+                          ) : (
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                              <Link href={`/listings/${encodeURIComponent(l.id)}`} className="font-semibold text-gray-900 hover:text-emerald-700">✓ ბაზაშია: {l.title ?? l.id}</Link>
+                              <span className="text-gray-500">{l.siteName}{l.ownerName ? ` · ${l.ownerName}` : ""}{l.priceUsd ? ` · ${fmtMoney(l.priceUsd)}` : ""}{l.archived ? " · საიტიდან წაშლილია" : ""}</span>
+                              {owner ? <PhoneButton phone={owner.phone} /> : <span className="text-gray-500">ნომერი ჯერ არ გვაქვს</span>}
+                              {owner?.from ? <span className="text-gray-400">({owner.from}-იდან)</span> : null}
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-xs text-amber-700">
+                            {link.fetchAsked
+                              ? tx(partner, "ჯერ ბაზაში არ არის — სისტემა გვერდს იღებს (~1 წთ), განაახლე გვერდი.", "Not in our database yet: the system is fetching it (about 1 min). Refresh later.")
+                              : tx(partner, "ბაზაში ვერ მოიძებნა.", "Not found in our database.")}
+                          </div>
+                        )}
+                        {link.note ? <div className="text-xs text-gray-500">{link.note}</div> : null}
+                      </div>
+                      <form action={removeClientLink}>
+                        <input type="hidden" name="id" value={link.id} />
+                        <button type="submit" className="text-xs text-gray-400 hover:text-rose-600" aria-label="Remove">✕</button>
+                      </form>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </Card>
 
           <Card title={<Tx p={partner} ka="სტატუსი" en="Status" hi="स्थिति" />}>
@@ -264,6 +338,15 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                 <Input name="roomsMin" defaultValue={client.roomsMin ?? ""} placeholder={tx(partner, "ოთახი (მინ.)", "Rooms (min)")} inputMode="numeric" />
                 <Input name="durationMonths" defaultValue={client.durationMonths ?? ""} placeholder={tx(partner, "ვადა, თვე", "Months")} inputMode="numeric" />
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input name="occupants" defaultValue={client.occupants ?? ""} placeholder={tx(partner, "რამდენი იცხოვრებს", "People living")} inputMode="numeric" title={tx(partner, "რამდენი იცხოვრებს", "People living")} />
+                <Select name="pets" defaultValue={client.pets ?? ""}>
+                  <option value="">{tx(partner, "შინაური ცხოველი?", "Pets?")}</option>
+                  <option value="yes">{tx(partner, "კი", "Yes, has pets")}</option>
+                  <option value="no">{tx(partner, "არა", "No pets")}</option>
+                </Select>
+              </div>
+              <textarea name="interests" defaultValue={client.interests ?? ""} rows={2} placeholder={tx(partner, "სურვილები: ავეჯი, აივანი, მეტროსთან…", "Wishes: furnished, balcony, near metro, work place…")} className="ui-field h-auto py-2" />
               <Input name="areas" defaultValue={client.areas ?? ""} placeholder={tx(partner, "უბნები მძიმით: ვაკე, საბურთალო", "Areas: Vake, Saburtalo")} />
               <Input name="moveIn" type="date" defaultValue={toDateInput(client.moveIn)} title={tx(partner, "შესვლის თარიღი", "Move-in date")} />
               <Select name="assignedToId" defaultValue={client.assignedToId ?? ""}>
