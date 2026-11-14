@@ -1,8 +1,16 @@
 """SS.ge adapter.  Result and detail pages embed JSON in ``__NEXT_DATA__``.
 
-The unfiltered feed is ordered by ``orderDate`` (newest first).  The detail
-page is read once per listing for the phone, contact name, owner type and
-building details that the list card does not carry.
+SS.ge's default order is ``orderDate`` (last "move up"): owners and agents
+bump years-old ads every day, so that feed showed almost no new listings.
+Two feeds are read instead, page by page together:
+
+* the main feed with ``order=1`` = newest *posted* first (about 1,000 new
+  Tbilisi ads an hour, most of them agents' reposts), and
+* the owners-only feed (``individualEntityOnly``), which SS.ge cannot sort by
+  date, for owners' ads even when they were posted a while ago.
+
+The detail page is read once per listing for the phone, contact name, owner
+type and building details that the list card does not carry.
 """
 
 from __future__ import annotations
@@ -21,6 +29,7 @@ from sites.common import (
     OWNER_PHYSICAL,
     OWNERS_ONLY,
     ScraperError,
+    env_int,
     deal_from_title,
     get_html,
     integer,
@@ -38,13 +47,18 @@ from sites.common import (
 KEY = "ssge"
 SHEET = "SS.ge"
 BASE_URL = "https://home.ss.ge"
-# Tbilisi (cityIdList=95), every poster, deal and property type.  OWNERS_ONLY=1
-# narrows the feed to individual posters.
-LIST_URL = BASE_URL + "/ka/udzravi-qoneba/l?cityIdList=95&page={page}"
+# Tbilisi (cityIdList=95), every poster, deal and property type, newest
+# posted first (order=1).  OWNERS_ONLY=1 reads only the owners' feed.
+LIST_URL = BASE_URL + "/ka/udzravi-qoneba/l?cityIdList=95&order=1&page={page}"
 OWNERS_LIST_URL = (
     BASE_URL + "/ka/udzravi-qoneba/l?cityIdList=95"
     "&advancedSearch=%7B%22individualEntityOnly%22%3Atrue%7D&page={page}"
 )
+# Owners' feed pages read along with the first main-feed pages of every run.
+OWNER_PAGES = env_int("SSGE_OWNER_PAGES", 15)
+# Owners' ads are kept even when posted more than NEW_WITHIN_DAYS before we
+# first saw them (collect.in_scope): the owner's number is what matters.
+KEEP_OLDER_OWNER_ADS = True
 
 DEAL_TYPES = {1: DEAL_RENT, 2: DEAL_MORTGAGE, 3: DEAL_DAILY, 4: DEAL_SALE}
 PROPERTY_TYPES = {1: "აგარაკი", 4: "კერძო სახლი", 5: "ბინა", 6: "კომერციული ფართი"}
@@ -131,10 +145,45 @@ def row_from_record(record: dict[str, Any]) -> dict[str, Any]:
     })
 
 
+def list_records(session: requests.Session, url: str) -> list[dict[str, Any]]:
+    """One result page; SS.ge now and then serves a page without the list, so retry."""
+    for attempt in range(3):
+        try:
+            return extract_listing_records(next_data(get_html(session, url), url))
+        except ScraperError:
+            if attempt == 2:
+                raise
+            polite_pause()
+    return []
+
+
+def owner_rows(session: requests.Session, page: int) -> list[dict[str, Any]]:
+    rows = []
+    for record in list_records(session, OWNERS_LIST_URL.format(page=page)):
+        if record.get("applicationId"):
+            row = row_from_record(record)
+            row["Owner Type"] = OWNER_PHYSICAL  # the feed holds individuals only
+            rows.append(row)
+    return rows
+
+
 def parse_list(session: requests.Session, page: int) -> list[dict[str, Any]]:
-    url = (OWNERS_LIST_URL if OWNERS_ONLY else LIST_URL).format(page=page)
-    records = extract_listing_records(next_data(get_html(session, url), url))
-    return [row_from_record(record) for record in records if record.get("applicationId")]
+    if OWNERS_ONLY:
+        return owner_rows(session, page)
+    rows = [row_from_record(record) for record in list_records(session, LIST_URL.format(page=page)) if record.get("applicationId")]
+    if page <= OWNER_PAGES:
+        polite_pause()
+        try:
+            owners = owner_rows(session, page)
+        except (requests.RequestException, ScraperError):
+            owners = []  # the main feed still counts; owners come next run
+        by_id = {row["Property ID"]: row for row in rows}
+        for row in owners:
+            if row["Property ID"] in by_id:
+                by_id[row["Property ID"]]["Owner Type"] = OWNER_PHYSICAL
+            else:
+                rows.append(row)
+    return rows
 
 
 def needs_detail(row: dict[str, Any]) -> bool:

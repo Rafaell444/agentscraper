@@ -70,6 +70,9 @@ def in_scope(site: ModuleType, row: dict[str, Any]) -> bool:
         return False
     can_resolve = site.needs_detail(row) and row.get("Detail Status") != "failed"
     newly_added = is_newly_added(row)
+    # SS.ge: owners' ads count even when posted a while before we saw them.
+    if getattr(site, "KEEP_OLDER_OWNER_ADS", False) and row.get("Owner Type") == OWNER_PHYSICAL:
+        newly_added = True
     if newly_added is False or (newly_added is None and not can_resolve):
         return False
     if not OWNERS_ONLY:

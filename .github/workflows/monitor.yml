@@ -66,7 +66,10 @@ jobs:
           BACKFILL_PAGES: "20"
           DELTA_PAGES: "10"
           DETAIL_LIMIT: "150"
-          SSGE_DETAIL_LIMIT: "300"
+          SSGE_DETAIL_LIMIT: "250"
+          # SS.ge gets ~1,000 new Tbilisi ads an hour: read deeper (stops early at known ads).
+          SSGE_DELTA_PAGES: "60"
+          SSGE_OWNER_PAGES: "15"
           BINEBI_DETAIL_LIMIT: "300"
           REQUEST_DELAY_SECONDS: "0.35"
           DEEP_BACKFILL_PAGES: ${{ github.event.inputs.backfill_pages }}
