@@ -28,6 +28,7 @@ from sites.common import (
     OWNER_DEVELOPER,
     OWNER_PHYSICAL,
     OWNERS_ONLY,
+    RelayMissing,
     ScraperError,
     env_int,
     deal_from_title,
@@ -59,6 +60,10 @@ OWNER_PAGES = env_int("SSGE_OWNER_PAGES", 15)
 # Owners' ads are kept even when posted more than NEW_WITHIN_DAYS before we
 # first saw them (collect.in_scope): the owner's number is what matters.
 KEEP_OLDER_OWNER_ADS = True
+# SS.ge blocks GitHub's servers, so its pages come from the agents' Chrome
+# extension (about 40 pages a round, every 30 minutes): ask for this many
+# result pages per run (each = an owners' page + a main-feed page).
+RELAY_LIST_PAGES = 5
 
 DEAL_TYPES = {1: DEAL_RENT, 2: DEAL_MORTGAGE, 3: DEAL_DAILY, 4: DEAL_SALE}
 PROPERTY_TYPES = {1: "აგარაკი", 4: "კერძო სახლი", 5: "ბინა", 6: "კომერციული ფართი"}
@@ -150,6 +155,8 @@ def list_records(session: requests.Session, url: str) -> list[dict[str, Any]]:
     for attempt in range(3):
         try:
             return extract_listing_records(next_data(get_html(session, url), url))
+        except RelayMissing:
+            raise  # asked of the browser extension: nothing to retry now
         except ScraperError:
             if attempt == 2:
                 raise
@@ -170,19 +177,32 @@ def owner_rows(session: requests.Session, page: int) -> list[dict[str, Any]]:
 def parse_list(session: requests.Session, page: int) -> list[dict[str, Any]]:
     if OWNERS_ONLY:
         return owner_rows(session, page)
-    rows = [row_from_record(record) for record in list_records(session, LIST_URL.format(page=page)) if record.get("applicationId")]
+    # Owners' page first (it matters most), then the main feed.  Through the
+    # browser relay both are asked for even when one is not there yet.
+    owners: list[dict[str, Any]] = []
+    missing: RelayMissing | None = None
     if page <= OWNER_PAGES:
-        polite_pause()
         try:
             owners = owner_rows(session, page)
+        except RelayMissing as exc:
+            missing = exc
         except (requests.RequestException, ScraperError):
             owners = []  # the main feed still counts; owners come next run
-        by_id = {row["Property ID"]: row for row in rows}
-        for row in owners:
-            if row["Property ID"] in by_id:
-                by_id[row["Property ID"]]["Owner Type"] = OWNER_PHYSICAL
-            else:
-                rows.append(row)
+        polite_pause()
+    try:
+        rows = [row_from_record(record) for record in list_records(session, LIST_URL.format(page=page)) if record.get("applicationId")]
+    except RelayMissing:
+        if not owners:
+            raise
+        rows = []
+    if missing and not rows and not owners:
+        raise missing
+    by_id = {row["Property ID"]: row for row in rows}
+    for row in owners:
+        if row["Property ID"] in by_id:
+            by_id[row["Property ID"]]["Owner Type"] = OWNER_PHYSICAL
+        else:
+            rows.append(row)
     return rows
 
 

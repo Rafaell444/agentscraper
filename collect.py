@@ -109,10 +109,10 @@ def collect_site(session: requests.Session, site: ModuleType, args: argparse.Nam
             page_rows = site.parse_list(session, page)
         except RelayMissing as exc:
             # Blocked site: the page is now asked of the browser extension.  Ask
-            # for the first three result pages at once, then stop for this run.
+            # for the first few result pages at once, then stop for this run.
             stats["waiting"] += 1
             LOGGER.info("[%s] %s", site.KEY, exc)
-            if page < 3:
+            if page < getattr(site, "RELAY_LIST_PAGES", 3):
                 continue
             break
         except (requests.RequestException, ScraperError) as exc:
