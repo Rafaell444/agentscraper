@@ -142,6 +142,19 @@ export default async function SharedPostEditor({ params, searchParams }: { param
         </div>
       ) : null}
 
+      {source ? (
+        <Card title="📞 მესაკუთრე — მხოლოდ CRM-ში (კლიენტი და პოსტი ამას ვერ ხედავს)" className="border-emerald-200 bg-emerald-50/40">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <Link href={`/listings/${encodeURIComponent(source.listing.id)}`} className="font-semibold text-emerald-700 hover:underline">
+              {source.listing.title ?? source.listing.id} ↗
+            </Link>
+            <span className="text-gray-500">{source.listing.siteName}{source.listing.ownerName ? ` · ${source.listing.ownerName}` : ""}{source.listing.archived ? " · საიტიდან წაშლილია" : ""}</span>
+            {source.phone ? <PhoneButton phone={source.phone} size="md" /> : <span className="text-xs text-gray-500">ნომერი ჯერ არ გვაქვს</span>}
+            {source.phoneFrom ? <span className="text-xs text-gray-500">ნომერი: {source.phoneFrom}</span> : null}
+          </div>
+        </Card>
+      ) : null}
+
       {post.importState === "waiting" ? <ImportWaiter postId={post.id} /> : null}
       {post.importState === "failed" ? (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -486,18 +499,6 @@ export default async function SharedPostEditor({ params, searchParams }: { param
         </Card>
       ) : null}
 
-      {source ? (
-        <Card title="წყარო განცხადება (მესაკუთრე)">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-            <Link href={`/listings/${encodeURIComponent(source.listing.id)}`} className="font-semibold text-emerald-700 hover:underline">
-              {source.listing.title ?? source.listing.id} ↗
-            </Link>
-            <span className="text-gray-500">{source.listing.siteName}{source.listing.ownerName ? ` · ${source.listing.ownerName}` : ""}{source.listing.archived ? " · საიტიდან წაშლილია" : ""}</span>
-            {source.phone ? <PhoneButton phone={source.phone} size="md" /> : <span className="text-xs text-gray-500">ნომერი ჯერ არ გვაქვს</span>}
-            {source.phoneFrom ? <span className="text-xs text-gray-500">ნომერი: {source.phoneFrom}</span> : null}
-          </div>
-        </Card>
-      ) : null}
 
       <Card title={`ფოტოები (${post.photos.length})`}>
         <PhotoManager postId={post.id} token={post.token} photoIds={post.photos.map((p) => p.id)} planIds={post.photos.filter((p) => p.kind === "plan").map((p) => p.id)} />
