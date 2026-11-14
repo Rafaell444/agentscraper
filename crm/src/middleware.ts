@@ -25,6 +25,11 @@ export async function middleware(request: NextRequest) {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-me"));
     // A partner (one client segment) only reaches his clients and viewings; everything else goes to his clients.
     if (payload.role === "partner" && !PARTNER_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
+      // The staff listings pages: a partner gets his own view-only Listings (no numbers).
+      if (pathname === "/listings" || pathname.startsWith("/listings/")) {
+        const target = new URL(pathname.replace(/^\/listings/, "/browse"), request.url);
+        return NextResponse.redirect(target);
+      }
       return NextResponse.redirect(new URL("/clients", request.url));
     }
     return NextResponse.next({ request: { headers: requestHeaders } });

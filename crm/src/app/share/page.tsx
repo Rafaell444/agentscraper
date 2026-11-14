@@ -57,11 +57,11 @@ export default async function SharePage({ searchParams }: { searchParams: Promis
       />
       <form action={createMyPost} className="flex flex-wrap items-center gap-2">
         <Button type="submit">＋ New post</Button>
-        <span className="text-xs text-gray-500">Your own flat, only for your WhatsApp group. Or open <Link href="/browse" className="underline">Listings</Link> and press “Make my post”.</span>
+        <span className="text-xs text-gray-500">Your own flat, only for your WhatsApp group.</span>
       </form>
       {kind === "mine" ? (
         mine.length === 0 ? (
-          <Card><EmptyState title="No posts yet" hint="Press “New post” or make one from Listings." /></Card>
+          <Card><EmptyState title="No posts yet" hint="Press “New post” to add your own flat." /></Card>
         ) : (
           <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {mine.map((post) => {

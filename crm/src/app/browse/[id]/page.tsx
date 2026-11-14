@@ -7,9 +7,8 @@ import { placeName } from "@/lib/catalog";
 import { EN_CONDITION, EN_DEAL, EN_TYPE, en } from "@/lib/segments";
 import { replacePhones } from "@/lib/sharedPosts";
 import { englishTitle } from "@/lib/browse";
-import { Button, Card } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { Tx } from "@/lib/partnerText";
-import { createMyPostFromListing } from "@/app/share/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -74,12 +73,8 @@ export default async function BrowseListingPage({ params }: { params: Promise<{ 
             ))}
           </dl>
         </Card>
-        <Card title={<Tx p ka="" en="Share" hi="शेयर करें" />}>
-          <p className="mb-2 text-xs text-gray-500">Make your own WhatsApp post from this flat. The owner’s number is not included; our team arranges viewings.</p>
-          <form action={createMyPostFromListing}>
-            <input type="hidden" name="listingId" value={l.id} />
-            <Button type="submit" className="w-full">⭐ Make my post</Button>
-          </form>
+        <Card title={<Tx p ka="" en="Interested?" hi="रुचि है?" />}>
+          <p className="text-sm text-gray-600">This page is for viewing only. The owner’s contact stays with our team: tell the manager the listing’s link and we arrange the viewing.</p>
         </Card>
       </div>
 
